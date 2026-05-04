@@ -12,7 +12,7 @@ This homelab is build using k3s (since I only have one node)
 helm repo add argo https://argoproj.github.io/argo-helm
 helm repo update
 kubectl create namespace argocd
-helm install argocd argo/argo-cd --namespace argocd --version 9.5.11
+helm install argocd argo/argo-cd --namespace argocd --version 9.5.0 --set global.fullnameOverride=argocd
 ```
 
 ## Access ArgoCD UI
