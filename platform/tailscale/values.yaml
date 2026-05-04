@@ -1,0 +1,23 @@
+tailscale-operator:
+  image:
+    tag: v1.96.4
+  enabled: true
+  oauth:
+    clientID:
+      valueFrom:
+        secretKeyRef:
+          name: operator-oauth
+          key: client_id
+    clientSecret:
+      valueFrom:
+        secretKeyRef:
+          name: operator-oauth
+          key: client_secret
+
+# Example nginx toggle for demo templates. Disabled by default.
+# nginx:
+#   enabled: false
+
+# This is for the k3s upgrade plan. It is enabled by default, but can be disabled if you do not want to use the k3s upgrade plan.
+# server-plan:
+#   enabled: true

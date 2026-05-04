@@ -1,0 +1,15 @@
+# {{- if .Values.nginx.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: nginx
+  # Only if the service is not HTTP / HTTPS you use a load balancer. 
+  # type: LoadBalancer
+  # loadBalancerClass: tailscale
+# {{- end }}
