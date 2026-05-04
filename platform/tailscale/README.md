@@ -8,5 +8,6 @@ Use .env.template as reference
 ```bash
 kubectl create secret generic operator-oauth \
   --from-env-file=.env \
+  --namespace tailscale \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
