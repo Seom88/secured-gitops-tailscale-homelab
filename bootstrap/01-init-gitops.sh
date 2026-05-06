@@ -214,28 +214,6 @@ kubectl exec -n vault vault-app-0 -- /bin/sh \
         policies=tailscale-policy \
         ttl=24h"
 
-# Transfer ownership of ArgoCD resources from Helm to ArgoCD (self-management).
-# ArgoCD was installed via Helm in the bootstrap step. Before handing control
-# to GitOps, we remove the Helm managed-by annotations so ArgoCD can adopt
-# its own resources without ownership conflicts.
-echo "Transferring ArgoCD resource ownership from Helm to ArgoCD..."
-for resource in \
-  deployment/argocd-server \
-  deployment/argocd-repo-server \
-  deployment/argocd-applicationset-controller \
-  deployment/argocd-dex-server \
-  deployment/argocd-notifications-controller \
-  statefulset/argocd-application-controller; do
-  kubectl annotate "$resource" -n argocd \
-    "meta.helm.sh/release-name-" \
-    "meta.helm.sh/release-namespace-" \
-    --overwrite 2>/dev/null || true
-  kubectl label "$resource" -n argocd \
-    "app.kubernetes.io/managed-by-" \
-    --overwrite 2>/dev/null || true
-done
-echo "Ownership transfer complete."
-
 # Deploy ArgoCD via its own Application manifest (GitOps style).
 # ArgoCD will now manage its own versioning via platform/argocd/ chart.
 echo "Initializing ArgoCD via GitOps..."
