@@ -12,6 +12,7 @@ spec:
     targetRevision: HEAD
     path: platform/kubevault
     helm:
+      skipCrds: true
       valueFiles:
         - values.yaml
   destination:
