@@ -1,0 +1,10 @@
+# Need tailscale namespace for tailscale-operator before it tries to 
+# connect to tailscale api
+{{- if .Values.tailscale.enabled }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tailscale
+  labels:
+    name: tailscale
+{{- end }}

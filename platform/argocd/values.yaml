@@ -2,5 +2,5 @@
 global:
   fullnameOverride: argocd
 
-argocdingress:
+tailscale:
   enabled: true

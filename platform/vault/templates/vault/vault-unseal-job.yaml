@@ -1,3 +1,4 @@
+{{- if .Values.vault.enabled }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -79,5 +80,4 @@ spec:
               vault operator unseal $UNSEAL_KEY_3
               
               echo "Vault unsealed successfully"
-          
-
+{{- end }}

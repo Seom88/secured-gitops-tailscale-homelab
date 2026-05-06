@@ -1,8 +1,0 @@
-# Need tailscale namespace for taislcale-operator before it tries to 
-# connect to taislcale api
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: tailscale
-  labels:
-    name: tailscale

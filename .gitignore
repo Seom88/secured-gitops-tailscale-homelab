@@ -1,2 +1,5 @@
 charts/
 .env
+*~
+*.bak
+*.swp

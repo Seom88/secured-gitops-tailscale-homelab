@@ -76,4 +76,4 @@ echo "Key 4: $KEY4"
 echo "Key 5: $KEY5"
 
 # enter to UI
-echo "You should now config secrets, before executing init argoCD"
+echo "You should now config secrets, before executing init argoCD, check doc/secrets-structure.md for more info"

@@ -1,7 +1,12 @@
 # vault-production-values.yaml
 global:
-  enabled: true
   tlsDisable: false
+
+vault:
+  enabled: true
+
+tailscale:
+  enabled: true
 
 injector:
   enabled: true

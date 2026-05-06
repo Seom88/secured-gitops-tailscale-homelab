@@ -19,7 +19,7 @@ This homelab is build using k3s (since I only have one node)
 
 ### Access Vault UI
 
-Change credentials to yours
+Change credentials to yours, check [secrets-structure](doc/secrets-structure.md) for more info.
 
 ```bash
 # Port forward
