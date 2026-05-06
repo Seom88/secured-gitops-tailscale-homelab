@@ -24,7 +24,7 @@ spec:
   ignoreDifferences:
   - group: external-secrets.io
     kind: ExternalSecret
-    jsonPointers:
-    - /spec/data/*/remoteRef/conversionStrategy
-    - /spec/data/*/remoteRef/decodingStrategy
-    - /spec/data/*/remoteRef/metadataPolicy
+    jqPathExpressions:
+    - .spec.data[].remoteRef.conversionStrategy
+    - .spec.data[].remoteRef.decodingStrategy
+    - .spec.data[].remoteRef.metadataPolicy
