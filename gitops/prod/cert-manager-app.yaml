@@ -15,7 +15,7 @@ spec:
       releaseName: cert-manager
       values: |
         crds:
-          enabled: true # Sustituye al antiguo --set installCRDs=true
+          enabled: true
         global:
           leaderElection:
             namespace: cert-manager
@@ -28,3 +28,4 @@ spec:
       selfHeal: true
     syncOptions:
     - CreateNamespace=true
+    - ServerSideApply=true
