@@ -6,6 +6,7 @@ This homelab is build using k3s (since I only have one node)
 - k3s
 - kubectl
 - helm
+- jq
 - argocd
 
 ### k3s install (optional)

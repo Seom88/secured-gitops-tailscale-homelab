@@ -2,6 +2,16 @@
 
 This document describes the secrets required by applications in this homelab setup.
 
+## Enable Secrets Engine (KV v2)
+
+Before creating secrets, ensure the KV v2 secrets engine is enabled at path `secret`:
+
+![Secret Engines](secrets-steps/secret-engines.png)
+
+1. Go to **Secrets Engines** in Vault UI
+2. Enable **KV** at path `secret`
+3. Select version 2
+
 ## Tailscale OAuth Secret
 
 **Path in Vault**: `secret/tailscale/auth`
@@ -16,9 +26,12 @@ This document describes the secrets required by applications in this homelab set
 
 1. Open Vault UI at your Vault address
 2. Navigate to **Secrets** → **secret/**
-3. Click **Create secret** next to `tailscale/`
+![Create Secret](secrets-steps/secret-engines.png)
+3. Click **Create secret**
+![Create Secret](secrets-steps/create-secret.png)
 4. Set path to `tailscale/auth`
 5. Add the keys listed above with your actual values
+![Save Secrets](secrets-steps/save-secrets.png)
 
 **Why This Exists**:
 
