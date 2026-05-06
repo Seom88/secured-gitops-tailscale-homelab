@@ -164,6 +164,55 @@ kubectl exec -n vault vault-app-0 -- /bin/sh \
         client_id=$TS_CLIENT_ID \
         client_secret=$TS_CLIENT_SECRET"
 
+# Enable Kubernetes authentication
+echo "Enabling Kubernetes authentication..."
+kubectl exec -n vault vault-app-0 -- /bin/sh \
+    -c "export VAULT_TOKEN=$ROOT_TOKEN; vault auth enable \
+        -address=https://127.0.0.1:8200 \
+        -ca-cert=/vault/userconfig/vault-tls/ca.crt \
+        -tls-server-name=vault kubernetes" || echo "Kubernetes auth already enabled"
+
+# Configure Kubernetes authentication
+echo "Configuring Kubernetes authentication..."
+K8S_ISSUER=$(kubectl get --raw /.well-known/openid-configuration | jq -r .issuer)
+K8S_CA=$(kubectl exec -n vault vault-app-0 -- cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt)
+
+kubectl exec -n vault vault-app-0 -- /bin/sh \
+    -c "export VAULT_TOKEN=$ROOT_TOKEN; vault write \
+        -address=https://127.0.0.1:8200 \
+        -ca-cert=/vault/userconfig/vault-tls/ca.crt \
+        -tls-server-name=vault \
+        auth/kubernetes/config \
+        kubernetes_host=\"https://kubernetes.default.svc\" \
+        kubernetes_ca_cert=\"$K8S_CA\" \
+        issuer=\"$K8S_ISSUER\""
+
+# Create Tailscale policy
+echo "Creating Tailscale policy..."
+kubectl exec -n vault vault-app-0 -- /bin/sh \
+    -c "export VAULT_TOKEN=$ROOT_TOKEN; vault policy write \
+        -address=https://127.0.0.1:8200 \
+        -ca-cert=/vault/userconfig/vault-tls/ca.crt \
+        -tls-server-name=vault \
+        tailscale-policy - <<EOF
+path \"secret/data/tailscale/*\" {
+  capabilities = [\"read\"]
+}
+EOF"
+
+# Create ESO role
+echo "Creating ESO role..."
+kubectl exec -n vault vault-app-0 -- /bin/sh \
+    -c "export VAULT_TOKEN=$ROOT_TOKEN; vault write \
+        -address=https://127.0.0.1:8200 \
+        -ca-cert=/vault/userconfig/vault-tls/ca.crt \
+        -tls-server-name=vault \
+        auth/kubernetes/role/eso-tailscale-role \
+        bound_service_account_names=eso-app-external-secrets \
+        bound_service_account_namespaces=external-secrets \
+        policies=tailscale-policy \
+        ttl=24h"
+
 # Deploy ArgoCD via its own Application manifest (GitOps style)
 # ArgoCD will manage its own versioning via platform/argocd/ chart
 echo "Initializing ArgoCD via GitOps..."

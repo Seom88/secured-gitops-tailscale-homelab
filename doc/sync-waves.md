@@ -11,7 +11,7 @@ ArgoCD deploys components in a specific order. Components with lower numbers are
 | 1 | `-6` | `cert-manager` | Manages TLS certificates (HTTPS) for Vault and other services |
 | 2 | `-5` | `vault` | Deploys HashiCorp Vault with TLS enabled |
 | 3 | `-4` | `vault-unseal-job` | Automatically unseals Vault using keys generated during bootstrap |
-| 4 | `-3` | `kubevault` | Configures Vault: enables secret engines, policies, and roles |
+| 4 | `-3` | `vault-config` | Configures Vault: enables auth methods, policies, and roles (handled via bootstrap/Job) |
 | 5 | `-2` | `eso-sync` | Installs External Secrets Operator and connects it to Vault |
 | 6 | `-1` | `tailscale` | Deploys Tailscale operator and creates secure Ingresses for Vault and ArgoCD |
 
@@ -23,7 +23,7 @@ ArgoCD deploys components in a specific order. Components with lower numbers are
 
 3. **Vault Unseal** (`-4`): A one-time Kubernetes Job. it takes the unseal keys stored in the `vault-unseal-keys` secret (created by the bootstrap script) and unseals Vault so it can be used.
 
-4. **KubeVault** (`-3`): Handles the internal configuration of Vault, like enabling the KV engine and setting up permissions.
+4. **Vault Config** (`-3`): Handles the internal configuration of Vault, like enabling Kubernetes authentication and setting up permissions. This is done during the bootstrap process or via a configurator job.
 
 5. **ESO** (`-2`): External Secrets Operator reads secrets from Vault and syncs them into Kubernetes. It creates the Tailscale OAuth credentials secret needed for the next step.
 
