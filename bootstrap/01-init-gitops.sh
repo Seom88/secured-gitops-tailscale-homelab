@@ -89,23 +89,23 @@ for i in $(seq 1 60); do
   sleep 2
 done
 
-# Wait for vault-0 pod to be created
-echo "Waiting for vault-0 pod to be created..."
+# Wait for vault-app-0 pod to be created
+echo "Waiting for vault-app-0 pod to be created..."
 for i in $(seq 1 60); do
-  if kubectl get pod/vault-0 -n vault &>/dev/null; then
-    echo "Pod vault-0 created"
+  if kubectl get pod/vault-app-0 -n vault &>/dev/null; then
+    echo "Pod vault-app-0 created"
     break
   fi
   sleep 2
 done
 
 # Wait Vault pod to be running (it won't be 'Ready' until unsealed)
-echo "Waiting for vault-0 pod to be running..."
-kubectl wait --for=jsonpath='{.status.phase}'=Running pod/vault-0 -n vault --timeout=120s
+echo "Waiting for vault-app-0 pod to be running..."
+kubectl wait --for=jsonpath='{.status.phase}'=Running pod/vault-app-0 -n vault --timeout=120s
 
 # Init Vault
-INIT_OUTPUT=$(kubectl exec -n vault vault-0 -- vault operator init \
-    -address=https://127.0.0.1:8200 \
+INIT_OUTPUT=$(kubectl exec -n vault vault-app-0 -- vault operator init \
+    -address=http://127.0.0.1:8200 \
     -tls-skip-verify \
     -format=json)
 
@@ -129,14 +129,14 @@ kubectl get secret vault-unseal-keys -n vault &>/dev/null || kubectl create secr
 
 # Unseal Vault
 echo "Unsealing Vault..."
-kubectl exec -n vault vault-0 -- vault operator unseal -address=https://127.0.0.1:8200 -tls-skip-verify $KEY1
-kubectl exec -n vault vault-0 -- vault operator unseal -address=https://127.0.0.1:8200 -tls-skip-verify $KEY2
-kubectl exec -n vault vault-0 -- vault operator unseal -address=https://127.0.0.1:8200 -tls-skip-verify $KEY3
+kubectl exec -n vault vault-app-0 -- vault operator unseal -address=http://127.0.0.1:8200 -tls-skip-verify $KEY1
+kubectl exec -n vault vault-app-0 -- vault operator unseal -address=http://127.0.0.1:8200 -tls-skip-verify $KEY2
+kubectl exec -n vault vault-app-0 -- vault operator unseal -address=http://127.0.0.1:8200 -tls-skip-verify $KEY3
 echo "Vault unsealed successfully."
 
 # Enable kv-v2 secrets engine at path "secret"
 echo "Enabling kv-v2 secrets engine at path 'secret'..."
-kubectl exec -n vault vault-0 -- /bin/sh -c "export VAULT_TOKEN=$ROOT_TOKEN; vault secrets enable -address=https://127.0.0.1:8200 -tls-skip-verify -path=secret kv-v2"
+kubectl exec -n vault vault-app-0 -- /bin/sh -c "export VAULT_TOKEN=$ROOT_TOKEN; vault secrets enable -address=http://127.0.0.1:8200 -tls-skip-verify -path=secret kv-v2"
 
 # seed secrets for tailscale auth
 if [ -z "$TS_CLIENT_ID" ] || [ -z "$TS_CLIENT_SECRET" ]; then
@@ -145,7 +145,7 @@ if [ -z "$TS_CLIENT_ID" ] || [ -z "$TS_CLIENT_SECRET" ]; then
     echo ""
 fi
 
-kubectl exec -n vault vault-0 -- /bin/sh -c "export VAULT_TOKEN=$ROOT_TOKEN; vault kv put -address=https://127.0.0.1:8200 -tls-skip-verify secret/tailscale/auth client_id=$TS_CLIENT_ID client_secret=$TS_CLIENT_SECRET"
+kubectl exec -n vault vault-app-0 -- /bin/sh -c "export VAULT_TOKEN=$ROOT_TOKEN; vault kv put -address=http://127.0.0.1:8200 secret/tailscale/auth client_id=$TS_CLIENT_ID client_secret=$TS_CLIENT_SECRET"
 
 
 # Deploy ArgoCD via its own Application manifest (GitOps style)
@@ -168,4 +168,4 @@ echo "Root Token (Login token): $ROOT_TOKEN"
 
 # enter to UI
 echo "Run: kubectl port-forward svc/vault -n vault 8200:8200"
-echo "You should now config secrets, before executing init argoCD, check doc/secrets-structure.md for more info"
+echo "Check doc/secrets-structure.md for more info, you maybe need configure more secrets"
