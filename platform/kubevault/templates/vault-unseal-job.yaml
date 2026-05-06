@@ -29,7 +29,7 @@ spec:
           image: hashicorp/vault:1.21.4
           env:
             - name: VAULT_ADDR
-              value: "https://vault:8200"
+              value: "https://vault-app:8200"
             - name: VAULT_CACERT
               value: "/vault/userconfig/vault-tls/ca.crt"
             - name: UNSEAL_KEY_1

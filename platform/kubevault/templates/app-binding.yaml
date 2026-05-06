@@ -8,7 +8,7 @@ metadata:
 spec:
   clientConfig:
     service:
-      name: vault
+      name: vault-app
       port: 8200
       scheme: HTTPS
     caProvider:
