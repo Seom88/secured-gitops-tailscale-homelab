@@ -20,6 +20,52 @@ vault:
 
   server:
     enabled: true
+
+    # Auto-unseal sidecar
+    extraContainers:
+      - name: vault-unsealer
+        image: hashicorp/vault:1.21.4
+        imagePullPolicy: IfNotPresent
+        env:
+          - name: VAULT_ADDR
+            value: "https://localhost:8200"
+          - name: VAULT_SKIP_VERIFY
+            value: "true"
+          - name: UNSEAL_KEY_1
+            valueFrom:
+              secretKeyRef:
+                name: vault-unseal-keys
+                key: key1
+          - name: UNSEAL_KEY_2
+            valueFrom:
+              secretKeyRef:
+                name: vault-unseal-keys
+                key: key2
+          - name: UNSEAL_KEY_3
+            valueFrom:
+              secretKeyRef:
+                name: vault-unseal-keys
+                key: key3
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            echo "Starting Vault Unsealer loop..."
+            while true; do
+              vault status > /dev/null 2>&1
+              STATUS=$?
+              if [ $STATUS -eq 2 ]; then
+                echo "$(date): Vault is sealed. Unsealing..."
+                vault operator unseal $UNSEAL_KEY_1
+                vault operator unseal $UNSEAL_KEY_2
+                vault operator unseal $UNSEAL_KEY_3
+              elif [ $STATUS -eq 0 ]; then
+                # Already unsealed
+                true
+              else
+                echo "$(date): Waiting for Vault to be ready..."
+              fi
+              sleep 30
+            done
     
     # Mount certificates TLS
     extraVolumes:

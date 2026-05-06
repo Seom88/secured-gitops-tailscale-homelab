@@ -1,6 +1,3 @@
 # Default values for sealed-secret.
 global:
   fullnameOverride: argocd
-
-tailscale:
-  enabled: true
