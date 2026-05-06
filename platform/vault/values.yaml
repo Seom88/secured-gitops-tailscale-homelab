@@ -1,81 +1,90 @@
-# vault-production-values.yaml - HashiCorp Vault with TLS enabled
-# Production secure config based on OneUptime guide
+# vault-production-values.yaml - HashiCorp Vault Helm Chart
+# Production config with TLS from OneUptime guide
 
-global:
-  enabled: true
+vault:
+  global:
+    enabled: true
+    tlsDisable: false
 
-server:
-  standalone:
+  injector:
     enabled: true
     replicas: 1
     
-    # TLS enabled listener for secure communication
-    config: |-
-      ui = true
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
+
+  server:
+    enabled: true
+    
+    # Mount certificates TLS
+    extraVolumes:
+      - type: secret
+        name: vault-tls
+    
+    resources:
+      requests:
+        cpu: 500m
+        memory: 256Mi
+      limits:
+        cpu: 2000m
+        memory: 1Gi
+
+    # Standalone mode with file storage
+    standalone:
+      enabled: true
+      replicas: 1
       
-      listener "tcp" {
-        tls_disable = 0
-        address = "[::]:8200"
-        cluster_address = "[::]:8201"
-        tls_cert_file = "/vault/userconfig/vault-tls/tls.crt"
-        tls_key_file = "/vault/userconfig/vault-tls/tls.key"
-        tls_client_ca_file = "/vault/userconfig/vault-tls/ca.crt"
-      }
-      
-      storage "file" {
-        path = "/vault/data"
-      }
-      
-      disable_mlock = true
+      config: |
+        ui = true
+        
+        listener "tcp" {
+          tls_disable = 0
+          address = "[::]:8200"
+          cluster_address = "[::]:8201"
+          tls_cert_file = "/vault/userconfig/vault-tls/tls.crt"
+          tls_key_file = "/vault/userconfig/vault-tls/tls.key"
+          tls_client_ca_file = "/vault/userconfig/vault-tls/ca.crt"
+        }
+        
+        storage "file" {
+          path = "/vault/data"
+        }
+        
+        disable_mlock = true
 
-  # TLS certificates must be mounted
-  extraVolumes:
-    - name: vault-tls
-      type: secret
-      secretName: vault-tls
+    # Custom health endpoint for kubernetes probes
+    readinessProbe:
+      enabled: true
+      path: "/v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204"
 
-  # HTTP health endpoint for kubernetes probes (uses port 8200)
-  readinessProbe:
+    livenessProbe:
+      enabled: true
+      path: "/v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204"
+
+    # Persistent storage
+    dataStorage:
+      enabled: true
+      size: 10Gi
+      storageClass: standard
+
+    # Audit log storage
+    auditStorage:
+      enabled: true
+      size: 10Gi
+      storageClass: standard
+
+  ui:
     enabled: true
-    path: "/v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204"
+    serviceType: LoadBalancer
 
-  livenessProbe:
-    enabled: true
-    path: "/v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204"
-
-  dataStorage:
-    enabled: true
-    size: 10Gi
-    storageClass: standard
-
-  auditStorage:
-    enabled: true
-    size: 10Gi
-    storageClass: standard
-
-  resources:
-    requests:
-      cpu: 500m
-      memory: 256Mi
-    limits:
-      cpu: 2000m
-      memory: 1Gi
-
-injector:
-  enabled: true
-  replicas: 1
-  
-  resources:
-    requests:
-      cpu: 50m
-      memory: 64Mi
-    limits:
-      cpu: 250m
-      memory: 256Mi
-
-ui:
-  enabled: true
-  serviceType: LoadBalancer
-
+# Custom templates values
 tailscale:
+  enabled: true
+
+certificates:
   enabled: true
