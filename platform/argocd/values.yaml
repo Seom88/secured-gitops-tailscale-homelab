@@ -1,3 +1,15 @@
-# Default values for sealed-secret.
+# ArgoCD Helm values
+# Used by both the bootstrap script (helm upgrade --install)
+# and the ArgoCD self-managed Application (argocd-app.yaml).
+
 global:
-  fullnameOverride: argocd
+  domain: argocd.local
+
+server:
+  service:
+    type: ClusterIP
+
+configs:
+  params:
+    # Disable TLS on the server (TLS is terminated at the ingress/proxy level)
+    server.insecure: true

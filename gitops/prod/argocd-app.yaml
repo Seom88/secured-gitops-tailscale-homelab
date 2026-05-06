@@ -3,18 +3,24 @@ kind: Application
 metadata:
   name: argocd-app
   namespace: argocd
+  annotations:
+    # Allows ArgoCD to adopt resources originally installed by Helm (bootstrap).
+    # Without this, ArgoCD cannot take ownership of its own resources.
+    argocd.argoproj.io/sync-options: "Replace=true"
 spec:
   project: default
   sources:
-  - repoURL: https://argoproj.github.io/argo-helm
-    chart: argo-cd
-    targetRevision: 9.5.11
-    helm:
-      valueFiles:
-      - $values/platform/argocd/values.yaml
-  - repoURL: https://github.com/Seom1177/argocd-gitops-homelab.git
-    targetRevision: HEAD
-    ref: values
+    # Source 1: upstream Helm chart
+    - repoURL: https://argoproj.github.io/argo-helm
+      chart: argo-cd
+      targetRevision: 9.5.11
+      helm:
+        valueFiles:
+          - $values/platform/argocd/values.yaml
+    # Source 2: our repo — provides $values reference for the values file above
+    - repoURL: https://github.com/Seom1177/argocd-gitops-homelab.git
+      targetRevision: HEAD
+      ref: values
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
@@ -23,7 +29,7 @@ spec:
       prune: true
       selfHeal: true
     syncOptions:
-    - CreateNamespace=true
-    - Replace=true
-    - ServerSideApply=true
-    - Retry=true
+      - CreateNamespace=true
+      - Replace=true
+      - ServerSideApply=true
+      - Retry=true
