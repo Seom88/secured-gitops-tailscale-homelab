@@ -22,6 +22,9 @@ spec:
   - vault
   - vault.vault.svc
   - vault.vault.svc.cluster.local
+  - vault-app
+  - vault-app.vault.svc
+  - vault-app.vault.svc.cluster.local
   - vault-internal
   - vault-internal.vault.svc
   - vault-internal.vault.svc.cluster.local
