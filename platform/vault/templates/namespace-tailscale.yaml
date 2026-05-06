@@ -7,4 +7,6 @@ metadata:
   name: tailscale
   labels:
     name: tailscale
+  annotations:
+    argocd.argoproj.io/sync-wave: "-5"
 {{- end }}

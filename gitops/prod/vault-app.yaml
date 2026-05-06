@@ -4,7 +4,7 @@ metadata:
   name: vault-app
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "-5"
+    argocd.argoproj.io/sync-wave: "-6"
 spec:
   project: default
   source:
@@ -22,6 +22,6 @@ spec:
       prune: true
       selfHeal: true
     syncOptions:
-    - CreateNamespace=true
-    - ServerSideApply=true
-    - Retry=true
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - Retry=true
