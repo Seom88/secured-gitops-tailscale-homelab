@@ -1,17 +1,19 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: grade-submission
+  name: eso-sync
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
 spec:
   project: default
   source:
     repoURL: https://github.com/Seom1177/argocd-gitops-homelab.git
     targetRevision: HEAD
-    path: gitops/apps
+    path: platform/external-secret
   destination:
     server: https://kubernetes.default.svc
-    namespace: argocd
+    namespace: external-secrets
   syncPolicy:
     automated:
       prune: true

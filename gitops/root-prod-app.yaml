@@ -1,19 +1,14 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: argocd
+  name: grade-submission
   namespace: argocd
 spec:
   project: default
   source:
-    chart: argo-cd
-    repoURL: https://argoproj.github.io/argo-helm
-    targetRevision: 9.5.11
-    helm:
-      releaseName: argocd
-      values: |
-        global:
-          fullnameOverride: argocd
+    repoURL: https://github.com/Seom1177/argocd-gitops-homelab.git
+    targetRevision: HEAD
+    path: gitops/prod
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

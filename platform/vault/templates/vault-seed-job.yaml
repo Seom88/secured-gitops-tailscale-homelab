@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vault-seed-job
+  namespace: vault
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vault-seed-job
+  namespace: vault
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  template:
+    spec:
+      serviceAccountName: vault-seed-job
+      restartPolicy: OnFailure
+      volumes:
+        - name: vault-tls
+          secret:
+          secretName: vault-tls
+      containers:
+        - name: seed
+          image: hashicorp/vault:1.21.4
+          env:
+            - name: VAULT_ADDR
+              value: "https://vault:8200"
+            - name: VAULT_CACERT
+              value: "/vault/userconfig/vault-tls/ca.crt"
+            - name: VAULT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vault-unseal-keys
+                  key: root-token
+          volumeMounts:
+            - name: vault-tls
+              mountPath: /vault/userconfig/vault-tls
+              readOnly: true
+          command:
+            - /bin/sh
+            - -c
+            - |
+              # Check if already unsealed
+              until vault status 2>/dev/null | grep -q "Sealed.*false"; do
+                echo "Waiting for Vault (TLS)..."
+                sleep 5
+              done
+
+              # create a secret if it doesn't exist
+              seed_secret() {
+                  local path=$1
+                  local data=$2
+                  echo "Checking $path..."
+                  # kv get devuelve error si no existe
+                  if vault kv get "$path" > /dev/null 2>&1; then
+                      echo "  -> Already exists. Skipping."
+                  else
+                      echo "  -> Creating..."
+                      vault kv put "$path" "$data"
+                  fi
+              }
+
+              # Enable KV secrets engine at "secret/" if not already enabled
+              vault secrets enable -path=secret kv-v2 || true
+
+              seed_secret "secret/tailscale/auth" "client_id=ChangeMe client_secret=ChangeMe"
+
+              echo "Seeding complete."

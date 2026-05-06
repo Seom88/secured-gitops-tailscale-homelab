@@ -1,0 +1,6 @@
+# Default values for sealed-secret.
+global:
+  fullnameOverride: argocd
+
+argocdingress:
+  enabled: true

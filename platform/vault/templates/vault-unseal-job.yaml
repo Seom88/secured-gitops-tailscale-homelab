@@ -1,0 +1,83 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vault-unseal-job
+  namespace: vault
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vault-unseal-job
+  namespace: vault
+  annotations:
+    argocd.argoproj.io/sync-wave: "-4"
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  template:
+    spec:
+      serviceAccountName: vault-unseal-job
+      restartPolicy: OnFailure
+      volumes:
+        - name: vault-tls
+          secret:
+            secretName: vault-tls
+      containers:
+        - name: unseal
+          image: hashicorp/vault:1.21.4
+          env:
+            - name: VAULT_ADDR
+              value: "https://vault:8200"
+            - name: VAULT_CACERT
+              value: "/vault/userconfig/vault-tls/ca.crt"
+            - name: UNSEAL_KEY_1
+              valueFrom:
+                secretKeyRef:
+                  name: vault-unseal-keys
+                  key: key1
+                  optional: true
+            - name: UNSEAL_KEY_2
+              valueFrom:
+                secretKeyRef:
+                  name: vault-unseal-keys
+                  key: key2
+                  optional: true
+            - name: UNSEAL_KEY_3
+              valueFrom:
+                secretKeyRef:
+                  name: vault-unseal-keys
+                  key: key3
+                  optional: true
+          volumeMounts:
+            - name: vault-tls
+              mountPath: /vault/userconfig/vault-tls
+              readOnly: true
+          command:
+            - /bin/sh
+            - -c
+            - |
+              # Wait for Vault to be ready
+              until vault status >/dev/null 2>&1 || [ $? -ne 1 ]; do
+                echo "Waiting for Vault (TLS)..."
+                sleep 5
+              done
+
+              # Check if already unsealed
+              if vault status 2>/dev/null | grep -q "Sealed.*false"; then
+                echo "Vault is already unsealed, exiting"
+                exit 0
+              fi
+
+              # Check if the Secret exists
+              if [ -z "$UNSEAL_KEY_1" ]; then
+                echo "Secret vault-unseal-keys does not exist. Run bootstrap/vault-init.sh first"
+                exit 0
+              fi
+
+              # Unseal
+              vault operator unseal $UNSEAL_KEY_1
+              vault operator unseal $UNSEAL_KEY_2
+              vault operator unseal $UNSEAL_KEY_3
+              
+              echo "Vault unsealed successfully"
+          
+
