@@ -1,0 +1,6 @@
+dependencies:
+- name: kubevault
+  repository: https://charts.appscode.com/stable/
+  version: v2026.2.27
+digest: sha256:279ece2510157bf9333bbc3ab1110381912eab9e394edc69c06dbbf9bec92a8d
+generated: "2026-05-06T12:28:09.047972931-05:00"

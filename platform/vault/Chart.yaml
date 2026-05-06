@@ -1,6 +1,6 @@
 apiVersion: v2
 name: vault
-description: A Helm chart for Kubernetes
+description: HashiCorp Vault Helm chart
 type: application
 version: 0.1.0
 appVersion: "0.32.0"
@@ -9,8 +9,4 @@ dependencies:
   - name: vault
     version: 0.32.0
     repository: https://helm.releases.hashicorp.com
-    condition: vault.enabled 
-  - name: kubevault
-    version: v2026.2.27
-    repository: https://charts.appscode.com/stable/
     condition: vault.enabled

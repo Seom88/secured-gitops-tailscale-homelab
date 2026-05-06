@@ -13,7 +13,7 @@ spec:
   subjectRef:
     kubernetes:
       serviceAccountNames:
-        - "external-secrets"
+        - "eso-app-external-secrets"
       serviceAccountNamespaces:
         - "external-secrets"
       ttl: "3600"

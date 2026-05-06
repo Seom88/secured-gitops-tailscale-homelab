@@ -2,8 +2,5 @@ dependencies:
 - name: vault
   repository: https://helm.releases.hashicorp.com
   version: 0.32.0
-- name: kubevault
-  repository: https://charts.appscode.com/stable/
-  version: v2026.2.27
-digest: sha256:911f29fc52822bc93207283360212b89228e6841f5aecc107ddd8ba132418eff
-generated: "2026-05-05T22:08:31.146161915-05:00"
+digest: sha256:980a02cda5c9be4f097cc9e275b1a29334adeacac822c6a2d3f0ed595d018084
+generated: "2026-05-06T12:32:23.12036304-05:00"
