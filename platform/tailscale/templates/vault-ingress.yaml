@@ -15,7 +15,7 @@ spec:
               service:
                 name: vault-app
                 port:
-                  number: 8200
+                  name: https
   tls:
   - hosts:
     - vault
