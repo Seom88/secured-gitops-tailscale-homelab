@@ -23,9 +23,9 @@ ArgoCD deploys components in a specific order. Components with lower numbers are
 
 3. **Vault Certs** (`-5`): These are the `Issuer` and `Certificate` resources. cert-manager uses them to generate the `vault-tls` secret, which Vault needs for HTTPS.
 
-4. **ESO Operator** (`-4`): Installs the External Secrets Operator. This needs to happen before we try to create any custom resources like ClusterSecretStores.
+4. **ESO Operator** (`-4`): Installs the External Secrets Operator. ArgoCD automatically waits until the operator is fully operational before moving to the next steps. This ensures that the system is ready to handle secrets before we try to configure them.
 
-5. **ESO Config** (`-3`): Creates the `ClusterSecretStore` (connecting to Vault) and `ExternalSecrets`. This is where the actual syncing of secrets (like Tailscale credentials) starts.
+5. **ESO Config** (`-3`): Configures the connection to Vault and sets up the secret definitions. ArgoCD verifies that the connection to Vault is established and working correctly before proceeding, which prevents potential errors during the setup phase.
 
 6. **Tailscale** (`-1`): Installs the Tailscale operator using the credentials synced by ESO. It also creates the **Ingress** resources that allow secure access to the cluster services.
 
