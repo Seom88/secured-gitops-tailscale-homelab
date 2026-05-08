@@ -8,9 +8,9 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/Seom1177/argocd-gitops-homelab.git
-    targetRevision: HEAD
-    path: platform/external-secret
+    repoURL: https://charts.external-secrets.io
+    chart: external-secrets
+    targetRevision: 0.19.0
   destination:
     server: https://kubernetes.default.svc
     namespace: external-secrets
