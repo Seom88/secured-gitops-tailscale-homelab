@@ -50,7 +50,7 @@ To check the sync status of your applications:
 
 | Action | Command |
 | :--- | :--- |
-| **Get Password** | `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" \| base64 -d && echo ""` |
+| **Get Password** | `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo ""` |
 | **Port Forward** | `kubectl port-forward svc/argocd-server -n argocd 8080:443` |
 
 Access the UI at [localhost:8080](http://localhost:8080) with user `admin`.

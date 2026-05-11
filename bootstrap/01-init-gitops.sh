@@ -5,21 +5,22 @@ chmod +x infra/init-infra.sh
 ./infra/init-infra.sh
 
 # Install ArgoCD Base first (to get CRDs)
-echo "Installing ArgoCD Base..."
+echo "Installing ArgoCD Base (Timeout: 30m)..."
 helm dependency build gitops
 helm upgrade --install argocd gitops \
   --namespace argocd --create-namespace \
   --set platformApps.enabled=false \
+  --timeout 30m \
   -f gitops/values.yaml
 
 echo "Waiting for ArgoCD CRDs..."
 until kubectl get crd applications.argoproj.io > /dev/null 2>&1; do sleep 2; done
 
 # Install full GitOps (including Apps)
-echo "Installing ArgoCD Apps..."
+echo "Installing ArgoCD Apps (Timeout: 30m)..."
 helm upgrade --install argocd gitops \
   --namespace argocd \
-  --set platformApps.enabled=true \
+  --timeout 30m \
   -f gitops/values.yaml
 
 # Wait for Vault Setup Job
@@ -27,7 +28,7 @@ echo "Waiting for Vault namespace and setup Job..."
 until kubectl get ns vault > /dev/null 2>&1; do sleep 5; done
 echo "Namespace 'vault' found. Waiting for job/vault-setup to be created..."
 until kubectl get job/vault-setup -n vault > /dev/null 2>&1; do sleep 5; done
-kubectl wait --for=condition=complete job/vault-setup -n vault --timeout=300s
+kubectl wait --for=condition=complete job/vault-setup -n vault --timeout=1800s
 
 # Seed secrets for Tailscale auth (Interactive)
 echo "Waiting for vault-unseal-keys secret..."

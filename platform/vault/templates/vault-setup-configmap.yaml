@@ -5,7 +5,6 @@ metadata:
   namespace: vault
   annotations:
     argocd.argoproj.io/hook: PreSync
-spec:
-  data:
-    setup-vault.sh: |
-{{ .Files.Get "scripts/setup-vault.sh" | indent 6 }}
+data:
+  setup-vault.sh: |
+{{ .Files.Get "scripts/setup-vault.sh" | indent 4 }}
