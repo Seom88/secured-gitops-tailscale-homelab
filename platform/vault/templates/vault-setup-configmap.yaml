@@ -4,7 +4,8 @@ metadata:
   name: vault-setup-script
   namespace: vault
   annotations:
-    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 data:
   setup-vault.sh: |
 {{ .Files.Get "scripts/setup-vault.sh" | indent 4 }}
