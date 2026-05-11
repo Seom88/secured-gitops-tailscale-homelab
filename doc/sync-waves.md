@@ -1,54 +1,51 @@
 # Sync Waves (Installation Order)
 
-ArgoCD deploys components in a specific order. Components with lower numbers are deployed first. Resources within the same wave are created in parallel.
+ArgoCD deploys components in a specific order using **Sync Waves**. Components with lower numbers are deployed first. Resources within the same wave are created in parallel.
 
-> **Why order matters**: Some components depend on others being ready. For example, you can't connect External Secrets to Vault if Vault hasn't been initialized or if the certificates aren't ready.
+> **Why order matters**: Some components depend on others being ready. For example, you can't connect External Secrets to Vault if Vault hasn't been initialized or if the TLS certificates aren't available.
 
-## Current Order
+## Global Orchestration (App-of-Apps)
+
+The project follows a modular architecture where the `gitops/` chart acts as the Root Application, orchestrating the installation of the platform components.
 
 | Step | Wave | Component | What it does |
 |------|------|-----------|--------------|
-| 1 | `-7` | `cert-manager` | Manages TLS certificates (HTTPS) for Vault and other services |
-| 2 | `-6` | `vault` | Deploys HashiCorp Vault with TLS and Auto-unseal sidecar |
-| 3 | `-5` | `vault-certs` | Creates Issuer and Certificate (managed by cert-manager) for Vault |
-| 4 | `-4` | `eso-operator` | Installs the External Secrets Operator and its CRDs |
-| 5 | `-3` | `eso-config` | Creates ClusterSecretStore and ExternalSecrets (connects to Vault) |
-| 6 | `-1` | `tailscale` | Deploys Tailscale operator and secure Ingresses |
+| 1 | `0` | `cert-manager` | Manages TLS certificates (HTTPS) for Vault and internal services |
+| 2 | `1` | `vault` | Deploys HashiCorp Vault. Includes internal wave `-1` for TLS certs and a `PostSync` hook for auto-configuration |
+| 3 | `2` | `eso-operator` | Installs External Secrets Operator and connects it to Vault via `ClusterSecretStore` |
+| 4 | `3` | `tailscale` | Deploys Tailscale operator and secure Ingresses for the platform |
 
 ## How It Works (Step-by-Step)
 
-1. **cert-manager** (`-7`): Before Vault starts, we need the operator that handles certificates. cert-manager is installed first.
+1. **cert-manager** (`Wave 0`): The foundation for cluster trust. It must be ready before Vault starts to ensure the `Certificate` resources can be fulfilled.
 
-2. **Vault** (`-6`): Installs with TLS enabled. It starts with an **Auto-unseal sidecar** container. This container waits for the `vault-unseal-keys` secret (created during bootstrap) and automatically unseals Vault whenever the pod restarts.
+2. **Vault** (`Wave 1`): 
+   - **TLS First**: Inside the Vault chart, certificates are created in wave `-1` to ensure the `vault-tls` secret exists before the StatefulSet starts.
+   - **Automated Setup**: A `PostSync` Job runs the `setup-vault.sh` script, which handles initialization, unsealing (using keys from a K8s secret), and configuring auth methods/policies.
 
-3. **Vault Certs** (`-5`): These are the `Issuer` and `Certificate` resources. cert-manager uses them to generate the `vault-tls` secret, which Vault needs for HTTPS.
+3. **ESO Operator** (`Wave 2`): 
+   - Installs the operator and its CRDs.
+   - **SecretStore**: The `ClusterSecretStore` (Wave 1 inside the ESO app) connects to Vault using the Kubernetes auth method configured in the previous step.
 
-4. **ESO Operator** (`-4`): Installs the External Secrets Operator. ArgoCD automatically waits until the operator is fully operational before moving to the next steps. This ensures that the system is ready to handle secrets before we try to configure them.
-
-5. **ESO Config** (`-3`): Configures the connection to Vault and sets up the secret definitions. ArgoCD verifies that the connection to Vault is established and working correctly before proceeding, which prevents potential errors during the setup phase.
-
-6. **Tailscale** (`-1`): Installs the Tailscale operator using the credentials synced by ESO. It also creates the **Ingress** resources that allow secure access to the cluster services.
-
-## Ingress Management
-
-To avoid circular dependencies, all Tailscale-managed access is centralized in `platform/tailscale`. This ensures that secure access points are only created once the Tailscale operator is fully ready to handle them.
+4. **Tailscale** (`Wave 3`): 
+   - The final layer. It uses the `ExternalSecret` synced by ESO to authenticate with the Tailscale control plane.
+   - Centralizes all **Ingress** management to avoid circular dependencies and ensure secure access points are created only when the operator is ready.
 
 ## Bootstrap Flow
 
-The `01-init-gitops.sh` script is run **only once** when setting up the cluster for the first time. It performs the following:
+The `01-init-gitops.sh` script initializes the entire system. Since ArgoCD is now a dependency of the GitOps chart, the process is streamlined:
 
 ```bash
-# Initialize the cluster and ArgoCD
+# Initialize the cluster and the Root Application
 ./bootstrap/01-init-gitops.sh
 ```
 
-The script:
-- Installs ArgoCD
-- Installs cert-manager
-- Applies the Vault Application
-- Waits for the TLS certificate to be ready
-- Initializes Vault and saves unseal keys as a Kubernetes Secret
-- Unseals Vault for the first time
-- Configures Vault (auth methods, policies, roles)
-- Seeds initial secrets (Tailscale credentials)
-- Applies the root Application (which manages everything else via GitOps)
+**The script performs the following:**
+1. **Installs ArgoCD**: Deploys the `argo-cd` sub-chart using the base configuration.
+2. **Applies Root App**: Deploys the `gitops` chart itself as an ArgoCD Application, which triggers the global sync waves.
+3. **Waits for Vault**: Monitors the `vault-setup` Job until completion.
+4. **Seeds Secrets**: Extracts the Vault root token and seeds the initial Tailscale credentials directly into Vault's KV store.
+
+## Ingress Management
+
+To maintain a clean separation of concerns, all secure access (ArgoCD UI, Vault UI, etc.) is managed via Tailscale Ingresses located in `platform/tailscale/templates/platform/`. This ensures that public/private access is only enabled once the security stack is fully operational.

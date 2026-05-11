@@ -33,7 +33,7 @@ After initialization, you need to retrieve the root token to access the UI and s
    ```
 2. **Start port-forwarding**:
    ```bash
-   kubectl port-forward svc/vault -n vault 8200:8200
+   kubectl port-forward svc/vault-app -n vault 8200:8200
    ```
 3. **Login**: Go to [localhost:8200](https://localhost:8200) and use the token from step 1.
 
