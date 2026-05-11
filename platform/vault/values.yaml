@@ -37,17 +37,22 @@ vault:
           vault operator unseal -address=https://127.0.0.1:8200 -ca-cert=/vault/userconfig/vault-tls/ca.crt -tls-server-name=vault $(cat /vault/unseal/key3)
         fi
 
-    extraVolumeMounts:
+    volumes:
+      - name: vault-tls
+        secret:
+          secretName: vault-tls
+      - name: vault-unseal-keys
+        secret:
+          secretName: vault-unseal-keys
+          optional: true
+
+    volumeMounts:
+      - name: vault-tls
+        mountPath: /vault/userconfig/vault-tls
+        readOnly: true
       - name: vault-unseal-keys
         mountPath: /vault/unseal
         readOnly: true
-
-    # Mount certificates TLS
-    extraVolumes:
-      - type: secret
-        name: vault-tls
-      - type: secret
-        name: vault-unseal-keys
 
     resources:
       requests:
