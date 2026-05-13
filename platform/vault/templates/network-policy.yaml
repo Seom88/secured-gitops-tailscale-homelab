@@ -1,0 +1,92 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vault-default-deny
+  namespace: vault
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vault-allow-rules
+  namespace: vault
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vault
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # 1. Allow internal traffic between Vault nodes (HA/Raft)
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: vault
+    ports:
+    - protocol: TCP
+      port: 8200
+    - protocol: TCP
+      port: 8201
+  # 2. Allow traffic from Tailscale Ingress Proxies
+  - from:
+    - podSelector:
+        matchLabels:
+          tailscale.com/managed-by: tailscale-operator
+    ports:
+    - protocol: TCP
+      port: 8200
+  # 3. Allow traffic from External Secrets Operator
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: external-secrets
+    ports:
+    - protocol: TCP
+      port: 8200
+  # 4. Allow traffic from ArgoCD (Health Checks)
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: argocd
+    ports:
+    - protocol: TCP
+      port: 8200
+  egress:
+  # 1. Allow traffic to other Vault nodes
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: vault
+    ports:
+    - protocol: TCP
+      port: 8200
+    - protocol: TCP
+      port: 8201
+  # 2. Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  # 3. Allow communication with Kubernetes API Server (HTTPS)
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 6443

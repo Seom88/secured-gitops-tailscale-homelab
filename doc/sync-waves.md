@@ -11,7 +11,7 @@ The project follows a modular architecture where the `gitops/` chart acts as the
 | Step | Wave | Component | What it does |
 |------|------|-----------|--------------|
 | 1 | `0` | `cert-manager` | Manages TLS certificates (HTTPS) for Vault and internal services |
-| 2 | `1` | `vault` | Deploys HashiCorp Vault. Includes internal wave `-1` for TLS certs and a `PostSync` hook for auto-configuration |
+| 2 | `1` | `vault` | Deploys HashiCorp Vault. Includes internal wave `-1` for TLS certs. Configuration is handled by `init-vault.sh` during bootstrap |
 | 3 | `2` | `eso-operator` | Installs External Secrets Operator and connects it to Vault via `ClusterSecretStore` |
 | 4 | `3` | `tailscale` | Deploys Tailscale operator and secure Ingresses for the platform |
 
@@ -21,7 +21,7 @@ The project follows a modular architecture where the `gitops/` chart acts as the
 
 2. **Vault** (`Wave 1`): 
    - **TLS First**: Inside the Vault chart, certificates are created in wave `-1` to ensure the `vault-tls` secret exists before the StatefulSet starts.
-   - **Automated Setup**: A `PostSync` Job runs the `setup-vault.sh` script, which handles initialization, unsealing (using keys from a K8s secret), and configuring auth methods/policies.
+   - **Automated Setup**: The `init-vault.sh` script handles initialization, unsealing (using keys from a K8s secret), and configuring auth methods/policies.
 
 3. **ESO Operator** (`Wave 2`): 
    - Installs the operator and its CRDs.
