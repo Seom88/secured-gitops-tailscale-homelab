@@ -15,7 +15,7 @@ spec:
             chart: {{ .chart }}
             repoURL: {{ .repoURL }}
             version: {{ .version }}
-            values: {{ .values | toJson | quote }}
+            helmValues: {{ .values | toJson | quote }}
           {{- end }}
   template:
     metadata:
@@ -31,8 +31,7 @@ spec:
         targetRevision: '{{ `{{version}}` }}'
         helm:
           releaseName: '{{ `{{name}}` }}'
-          values: |
-            {{ `{{values}}` }}
+          values: '{{ `{{helmValues}}` }}'
       destination:
         server: https://kubernetes.default.svc
         namespace: '{{ `{{namespace}}` }}'
