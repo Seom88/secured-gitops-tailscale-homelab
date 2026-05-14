@@ -1,11 +1,6 @@
 apiVersion: v2
 name: gitops
-description: Helm chart for ArgoCD GitOps
+description: App-of-Apps Helm chart — manages ArgoCD Application resources only
 type: application
 version: 2.0.0
-appVersion: "9.5.13"
-
-dependencies:
-  - name: argo-cd
-    version: 9.5.13
-    repository: https://argoproj.github.io/argo-helm
+appVersion: "2.0.0"
