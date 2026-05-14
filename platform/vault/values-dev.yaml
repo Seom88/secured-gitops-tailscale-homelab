@@ -16,9 +16,7 @@ vault:
         memory: 256Mi
 
   server:
-    dev:
-      enabled: true
-      devRootToken: "root"
+    enabled: true
 
     # Lifecycle hook to unseal Vault on startup (runs once and stops)
     postStart:
