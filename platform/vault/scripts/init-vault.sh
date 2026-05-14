@@ -12,7 +12,9 @@ echo "Vault: Starting configuration..."
 echo "Waiting for Vault pod to be created..."
 until kubectl get pod -n vault -l app.kubernetes.io/name=vault,component=server -o name | grep "pod/"; do sleep 5; done
 VAULT_POD=$(kubectl get pod -n vault -l app.kubernetes.io/name=vault,component=server -o jsonpath="{.items[0].metadata.name}")
-echo "Found Vault pod: $VAULT_POD"
+RELEASE_NAME=$(kubectl get pod $VAULT_POD -n vault -o jsonpath="{.metadata.labels['app\.kubernetes\.io/instance']}")
+SECRET_NAME="$RELEASE_NAME-unseal-keys"
+echo "Found Vault pod: $VAULT_POD (Release: $RELEASE_NAME)"
 kubectl wait --for=condition=Ready pod/$VAULT_POD -n vault --timeout=300s
 
 # Helpers for vault exec
@@ -31,7 +33,7 @@ if echo "$STATUS" | jq -r '.initialized' | grep -q "false"; then
     KEY4=$(echo "$INIT_OUT" | jq -r '.unseal_keys_b64[3]')
     KEY5=$(echo "$INIT_OUT" | jq -r '.unseal_keys_b64[4]')
 
-    kubectl create secret generic vault-unseal-keys -n vault \
+    kubectl create secret generic "$SECRET_NAME" -n vault \
       --from-literal=root-token="$ROOT_TOKEN" \
       --from-literal=key1="$KEY1" \
       --from-literal=key2="$KEY2" \
@@ -40,19 +42,19 @@ if echo "$STATUS" | jq -r '.initialized' | grep -q "false"; then
       --from-literal=key5="$KEY5" \
       --dry-run=client -o yaml | kubectl apply -f -
     
-    echo "Vault initialized and keys saved to secret/vault-unseal-keys"
+    echo "Vault initialized and keys saved to secret/$SECRET_NAME"
 fi
 
 # 3. Unseal
 if $VAULT_EXEC status -format=json -tls-server-name=vault | jq -r '.sealed' | grep -q "true"; then
-    echo "Vault is sealed. Unsealing..."
-    $VAULT_EXEC operator unseal -tls-server-name=vault $(kubectl get secret vault-unseal-keys -n vault -o jsonpath='{.data.key1}' | base64 -d)
-    $VAULT_EXEC operator unseal -tls-server-name=vault $(kubectl get secret vault-unseal-keys -n vault -o jsonpath='{.data.key2}' | base64 -d)
-    $VAULT_EXEC operator unseal -tls-server-name=vault $(kubectl get secret vault-unseal-keys -n vault -o jsonpath='{.data.key3}' | base64 -d)
+    echo "Vault is sealed. Unsealing using $SECRET_NAME..."
+    $VAULT_EXEC operator unseal -tls-server-name=vault $(kubectl get secret "$SECRET_NAME" -n vault -o jsonpath='{.data.key1}' | base64 -d)
+    $VAULT_EXEC operator unseal -tls-server-name=vault $(kubectl get secret "$SECRET_NAME" -n vault -o jsonpath='{.data.key2}' | base64 -d)
+    $VAULT_EXEC operator unseal -tls-server-name=vault $(kubectl get secret "$SECRET_NAME" -n vault -o jsonpath='{.data.key3}' | base64 -d)
 fi
 
 # 4. Configure Vault
-ROOT_TOKEN=$(kubectl get secret vault-unseal-keys -n vault -o jsonpath='{.data.root-token}' | base64 -d)
+ROOT_TOKEN=$(kubectl get secret "$SECRET_NAME" -n vault -o jsonpath='{.data.root-token}' | base64 -d)
 VAULT_EXEC_AUTH="kubectl exec -i -n vault $VAULT_POD -- env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt VAULT_TOKEN=$ROOT_TOKEN vault"
 
 echo "Ensuring KV-v2 engine is enabled at secret/..."
