@@ -27,6 +27,7 @@ spec:
         targetRevision: {{ if .Values.developmentApps.enabled }}dev{{ else }}main{{ end }}
         path: '{{ `{{path}}` }}'
         helm:
+          ignoreMissingValueFiles: true
           valueFiles:
             - values.yaml
             {{- if .Values.developmentApps.enabled }}
