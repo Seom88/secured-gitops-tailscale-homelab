@@ -2,7 +2,7 @@
 repoURL: https://github.com/Seom1177/argocd-gitops-homelab.git
 platformApps:
   enabled: true
-  apps:
+  local:
     - name: vault
       path: platform/vault
       namespace: vault
@@ -15,6 +15,7 @@ platformApps:
       path: platform/tailscale
       namespace: tailscale
       wave: 3
+  helm:
     - name: cert-manager
       namespace: cert-manager
       wave: 0

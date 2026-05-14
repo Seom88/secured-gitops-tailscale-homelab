@@ -8,13 +8,11 @@ spec:
   generators:
     - list:
         elements:
-          {{- range .Values.platformApps.apps }}
-          {{- if .path }}
+          {{- range .Values.platformApps.local }}
           - name: {{ .name }}
             namespace: {{ .namespace }}
             wave: {{ .wave | quote }}
             path: {{ .path }}
-          {{- end }}
           {{- end }}
   template:
     metadata:

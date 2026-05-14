@@ -8,17 +8,14 @@ spec:
   generators:
     - list:
         elements:
-          {{- range .Values.platformApps.apps }}
-          {{- if .chart }}
+          {{- range .Values.platformApps.helm }}
           - name: {{ .name }}
             namespace: {{ .namespace }}
             wave: {{ .wave | quote }}
             chart: {{ .chart }}
             repoURL: {{ .repoURL }}
             version: {{ .version }}
-            values: |
-{{ .values | toYaml | nindent 14 }}
-          {{- end }}
+            values: {{ .values | toJson | quote }}
           {{- end }}
   template:
     metadata:
@@ -35,7 +32,7 @@ spec:
         helm:
           releaseName: '{{ `{{name}}` }}'
           values: |
-{{ `{{values | nindent 12}}` }}
+            {{ `{{values}}` }}
       destination:
         server: https://kubernetes.default.svc
         namespace: '{{ `{{namespace}}` }}'
