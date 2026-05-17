@@ -1,10 +1,9 @@
 #!/bin/bash
 set -e
 
-# Tailscale Auth Configuration (Required for seeding), 
-# IMPORTANT: Do not commit with your credentials!
-TS_CLIENT_ID="ChangeMeSecret"
-TS_CLIENT_SECRET="ChangeMeSecret"
+# Tailscale Auth Configuration (Required for seeding)
+TS_CLIENT_ID="${TS_CLIENT_ID:-ChangeMeSecret}"
+TS_CLIENT_SECRET="${TS_CLIENT_SECRET:-ChangeMeSecret}"
 
 echo "Vault: Starting configuration..."
 

@@ -10,6 +10,18 @@ if [ "$ENV" == "dev" ]; then
   VALUES_FILE="gitops/values-dev.yaml"
 fi
 
+echo "--- Vault secrets ---"
+if [ -z "$TS_CLIENT_ID" ] || [ "$TS_CLIENT_ID" == "ChangeMeSecret" ]; then
+    read -p "Enter Tailscale Client ID: " TS_CLIENT_ID
+    export TS_CLIENT_ID
+fi
+
+if [ -z "$TS_CLIENT_SECRET" ] || [ "$TS_CLIENT_SECRET" == "ChangeMeSecret" ]; then
+    read -sp "Enter Tailscale Client Secret (your input will be hidden): " TS_CLIENT_SECRET
+    echo ""
+    export TS_CLIENT_SECRET
+fi
+
 # --- ArgoCD Version ---
 ARGOCD_VERSION=9.5.13
 
