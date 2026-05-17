@@ -5,6 +5,7 @@ metadata:
   name: nginx
   # annotations:
   #   tailscale.com/funnel: "true"
+  #   tailscale.com/tags: "tag:k8s,tag:nginx"
 spec:
   # defaultBackend:
   #   service:
@@ -24,5 +25,5 @@ spec:
                   number: 80
   tls:
   - hosts:
-    - nginx
+    - nginx{{- if .Values.development.enabled }}-dev{{- end }}
 {{- end }}

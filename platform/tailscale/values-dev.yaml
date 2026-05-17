@@ -1,2 +1,9 @@
+tailscale-operator:
+  operatorConfig:
+    hostname: "tailscale-operator-dev"
+    defaultTags: "tag:k8s-operator-dev"
+  proxyConfig:
+        defaultTags: "tag:k8s-dev"
+
 development:
   enabled: true

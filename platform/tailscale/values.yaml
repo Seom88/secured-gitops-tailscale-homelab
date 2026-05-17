@@ -1,6 +1,11 @@
 # tailscale-operator subchart values
 tailscale-operator:
   enabled: true
+  operatorConfig:
+    hostname: "tailscale-operator"
+    defaultTags: "tag:k8s-operator"
+  proxyConfig:
+        defaultTags: "tag:k8s"
   oauth:
     clientID:
       valueFrom:
