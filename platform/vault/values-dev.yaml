@@ -40,7 +40,7 @@ vault:
           secretName: vault-tls
       - name: vault-unseal-keys
         secret:
-          secretName: vault-app-dev-unseal-keys
+          secretName: vault-dev-unseal-keys
           optional: true
 
     volumeMounts:

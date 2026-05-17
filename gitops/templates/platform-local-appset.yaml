@@ -16,7 +16,7 @@ spec:
           {{- end }}
   template:
     metadata:
-      name: '{{ `{{name}}` }}-app{{- if .Values.developmentApps.enabled }}-dev{{- end }}'
+      name: '{{ `{{name}}` }}{{- if .Values.developmentApps.enabled }}-dev{{- end }}'
       namespace: argocd
       annotations:
         argocd.argoproj.io/sync-wave: '{{ `{{wave}}` }}'

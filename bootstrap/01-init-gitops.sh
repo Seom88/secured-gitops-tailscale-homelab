@@ -67,6 +67,6 @@ echo "ArgoCD URL: http://localhost:8080 (kubectl port-forward svc/argocd-server 
 echo "ArgoCD User: admin"
 echo "ArgoCD Password: $ARGOCD_PASSWORD"
 echo "Warning: Change your secrets in the secrets folder, read doc/secrets-structure.md for info"
-echo "Vault UI: https://localhost:8200 (kubectl port-forward svc/vault-app -n vault 8200:8200)"
+echo "Vault UI: https://localhost:8200 (kubectl port-forward svc/vault -n vault 8200:8200)"
 echo "Vault Root Token: $ROOT_TOKEN"
 echo "---------------------------------------------------"

@@ -82,7 +82,7 @@ EOF
 
 echo "Updating ESO role..."
 $VAULT_EXEC_AUTH write -tls-server-name=vault auth/kubernetes/role/eso-tailscale-role \
-    bound_service_account_names=eso-app-external-secrets,eso-app-dev-external-secrets \
+    bound_service_account_names=eso-external-secrets,eso-dev-external-secrets \
     bound_service_account_namespaces=external-secrets \
     policies=tailscale-policy \
     ttl=24h
