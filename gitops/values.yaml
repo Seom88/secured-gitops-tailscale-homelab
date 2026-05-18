@@ -15,6 +15,10 @@ platformApps:
       path: platform/tailscale
       namespace: tailscale
       wave: 3
+    - name: monitoring
+      path: platform/monitoring
+      namespace: monitoring
+      wave: 4
   helm:
     - name: cert-manager
       namespace: cert-manager

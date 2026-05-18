@@ -1,0 +1,74 @@
+development:
+  enabled: false
+
+# Configuration for the Loki subchart
+loki:
+  # Deployment mode: SingleBinary (simple), SimpleScalable (medium), Distributed (large)
+  deploymentMode: SingleBinary
+
+  # Number of replicas
+  singleBinary:
+    replicas: 1
+
+  # Component replicas
+  write:
+    replicas: 0
+  read:
+    replicas: 0
+  backend:
+    replicas: 0
+
+  # Caching
+  chunksCache:
+    enabled: false
+  resultsCache:
+    enabled: false
+
+  # Helm test
+  test:
+    enabled: false
+
+  # All loki settings combined under one key
+  loki:
+    auth_enabled: false
+    commonConfig:
+      replication_factor: 1
+    storage:
+      type: filesystem
+      filesystem:
+        directory: /var/loki/chunks
+    useTestSchema: true
+
+# Configuration for the Kube-Prometheus-Stack subchart
+kube-prometheus-stack:
+  # Grafana configuration
+  grafana:
+    # Add Loki as a data source
+    additionalDataSources:
+      - name: Loki
+        type: loki
+        url: http://monitoring-loki-gateway.monitoring.svc.cluster.local
+        access: proxy
+        # Even with auth_enabled: false, Loki requires an org ID header
+        # This is a known quirk - the value can be anything since auth is disabled
+        jsonData:
+          httpHeaderName1: "X-Scope-OrgID"
+        secureJsonData:
+          httpHeaderValue1: "fake"
+
+  # Prometheus persistent storage:
+  prometheus:
+    prometheusSpec:
+      retention: 15d
+      storageSpec:
+        volumeClaimTemplate:
+          spec:
+            # storageClassName: standard
+            resources:
+              requests:
+                storage: 10Gi
+
+  # Alertmanager configuration:
+  alertmanager:
+    alertmanagerSpec:
+      replicas: 1
