@@ -17,20 +17,3 @@ kube-prometheus-stack:
           httpHeaderName1: "X-Scope-OrgID"
         secureJsonData:
           httpHeaderValue1: "fake"
-
-    # Override Grafana Ingress host for dev environment
-    ingress:
-      hosts:
-        - grafana-dev
-      tls:
-        - hosts:
-            - dev-grafana
-
-  # Override Prometheus Ingress host for dev environment
-  prometheus:
-    ingress:
-      hosts:
-        - prometheus-dev
-      tls:
-        - hosts:
-            - dev-prometheus

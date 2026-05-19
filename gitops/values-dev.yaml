@@ -11,14 +11,14 @@ platformApps:
       path: platform/external-secrets-operator
       namespace: external-secrets
       wave: 2
-    - name: tailscale
-      path: platform/tailscale
-      namespace: tailscale
-      wave: 3
     - name: monitoring
       path: platform/monitoring
       namespace: monitoring
-      wave: 4
+      wave: 3
+    - name: tailscale
+      path: platform/tailscale
+      namespace: tailscale
+      wave: 100
   helm:
     - name: cert-manager
       namespace: cert-manager

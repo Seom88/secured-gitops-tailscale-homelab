@@ -1,0 +1,22 @@
+{{- if .Values.grafana.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  ingressClassName: tailscale
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ if .Values.development.enabled }}monitoring-dev-kube-promet-prometheus{{- else }}monitoring-kube-prometheus-stack-prometheus{{- end }}
+                port:
+                  name: http-web
+  tls:
+  - hosts:
+    - {{ if .Values.development.enabled }}dev-prometheus{{- else }}prometheus{{- end }}
+{{- end }}

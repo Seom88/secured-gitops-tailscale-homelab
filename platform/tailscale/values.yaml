@@ -30,5 +30,11 @@ argocd:
 vault:
   enabled: true
 
+grafana:
+  enabled: true
+
+prometheus:
+  enabled: true
+
 nginx:
   enabled: false

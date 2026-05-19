@@ -63,7 +63,7 @@ kube-prometheus-stack:
 
     # Native Ingress configuration for Grafana
     ingress:
-      enabled: true
+      enabled: false
       ingressClassName: tailscale
       annotations:
         argocd.argoproj.io/sync-wave: "1"
@@ -87,7 +87,7 @@ kube-prometheus-stack:
 
     # Native Ingress configuration for Prometheus
     ingress:
-      enabled: true
+      enabled: false
       ingressClassName: tailscale
       annotations:
         argocd.argoproj.io/sync-wave: "1"
