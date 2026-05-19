@@ -3,23 +3,8 @@ tailscale-operator:
   enabled: true
   operatorConfig:
     hostname: "tailscale-operator"
-    defaultTags:
-      - "tag:k8s-operator"
-  proxyConfig:
-    defaultTags: "tag:k8s"
-  oauth:
-    clientID:
-      valueFrom:
-        secretKeyRef:
-          name: operator-oauth
-          key: client_id
-    clientSecret:
-      valueFrom:
-        secretKeyRef:
-          name: operator-oauth
-          key: client_secret
 
-development: 
+development:
   enabled: false
 
 # Ingress toggles for services to be exposed via Tailscale

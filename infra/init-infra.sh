@@ -2,17 +2,18 @@
 
 echo "Infra: Applying changes to the cluster..."
 
-# Apply the appropriate storage class based on the detected environment
-echo "Installing storageClass..."
 if kubectl get nodes -o jsonpath='{.items[0].metadata.labels.minikube\.k8s\.io/name}' | grep -q "minikube"; then
     echo "Environment detected: Minikube"
-    # kubectl apply -f infra/storage/storage-minikube.yaml
 elif kubectl get nodes -o jsonpath='{.items[0].metadata.labels.k3s\.io/hostname}' &>/dev/null; then
+    # Follow https://docs.k3s.io/upgrades/automated
     echo "Environment detected: K3s"
-    # kubectl apply -f infra/storage/storage-k3s.yaml
+    echo "Applying system upgrade controller CRDs and controller..."
+    kubectl apply -f https://github.com/rancher/system-upgrade-controller/releases/latest/download/crd.yaml \
+        -f https://github.com/rancher/system-upgrade-controller/releases/latest/download/system-upgrade-controller.yaml
+    echo "Applying update plan..."
+    kubectl apply -f infra/update/plan-update-k3s.yaml
 else
-    echo "Unknown environment. No StorageClass applied."
-    exit 1
+    echo "Unknown environment."
 fi
 
 echo "Infra: Cluster setup complete."

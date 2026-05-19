@@ -1,5 +1,4 @@
 # ArgoCD Helm chart values
-# Used by: helm upgrade --install argocd argo/argo-cd -f bootstrap/values-argocd.yaml
 configs:
   params:
     # Disable TLS on the server (TLS is terminated at the ingress/proxy level)

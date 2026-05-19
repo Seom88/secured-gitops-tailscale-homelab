@@ -24,7 +24,7 @@ kube-prometheus-stack:
         - grafana-dev
       tls:
         - hosts:
-            - grafana-dev
+            - dev-grafana
 
   # Override Prometheus Ingress host for dev environment
   prometheus:
@@ -33,4 +33,4 @@ kube-prometheus-stack:
         - prometheus-dev
       tls:
         - hosts:
-            - prometheus-dev
+            - dev-prometheus

@@ -18,5 +18,5 @@ spec:
                   name: https
   tls:
   - hosts:
-    - vault{{- if .Values.development.enabled }}-dev{{- end }}
+    - {{ if .Values.development.enabled }}dev-vault{{- else }}vault{{- end }}
 {{- end }}
