@@ -10,6 +10,10 @@ vault:
     enabled: true
     replicas: 1
 
+    #Network policies
+    networkPolicy:
+      enabled: true
+
     resources:
       requests:
         cpu: 50m
@@ -20,6 +24,26 @@ vault:
 
   server:
     enabled: true
+
+    #Network policies
+    networkPolicy:
+      enabled: true
+      egress: []
+      ingress:
+        - from:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: tailscale
+          ports:
+            - port: 8200
+              protocol: TCP
+        - from:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: external-secrets
+          ports:
+            - port: 8200
+              protocol: TCP
 
     # Lifecycle hook to unseal Vault on startup (runs once and stops)
     postStart:

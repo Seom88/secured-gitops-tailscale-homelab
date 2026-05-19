@@ -1,23 +1,6 @@
 vault:
-  global:
-    enabled: true
-    tlsDisable: false
-
-  injector:
-    enabled: true
-    replicas: 1
-
-    resources:
-      requests:
-        cpu: 50m
-        memory: 64Mi
-      limits:
-        cpu: 250m
-        memory: 256Mi
 
   server:
-    enabled: true
-
     # Lifecycle hook to unseal Vault on startup (runs once and stops)
     postStart:
       - /bin/sh
@@ -34,63 +17,6 @@ vault:
           vault operator unseal -address=https://127.0.0.1:8200 -ca-cert=/vault/userconfig/vault-tls/ca.crt -tls-server-name=vault $(cat /vault/unseal/key3)
         fi
 
-    volumes:
-      - name: vault-tls
-        secret:
-          secretName: vault-tls
-      - name: vault-unseal-keys
-        secret:
-          secretName: vault-dev-unseal-keys
-          optional: true
-
-    volumeMounts:
-      - name: vault-tls
-        mountPath: /vault/userconfig/vault-tls
-        readOnly: true
-      - name: vault-unseal-keys
-        mountPath: /vault/unseal
-        readOnly: true
-
-    resources:
-      requests:
-        cpu: 500m
-        memory: 256Mi
-      limits:
-        cpu: 2000m
-        memory: 1Gi
-
-    # Standalone mode with file storage
-    standalone:
-      enabled: true
-      replicas: 1
-
-      config: |
-        ui = true
-
-        listener "tcp" {
-          tls_disable = 0
-          address = "[::]:8200"
-          cluster_address = "[::]:8201"
-          tls_cert_file = "/vault/userconfig/vault-tls/tls.crt"
-          tls_key_file = "/vault/userconfig/vault-tls/tls.key"
-          tls_client_ca_file = "/vault/userconfig/vault-tls/ca.crt"
-        }
-
-        storage "file" {
-          path = "/vault/data"
-        }
-
-        disable_mlock = true
-
-    # Custom health endpoint for kubernetes probes
-    readinessProbe:
-      enabled: true
-      path: "/v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204"
-
-    livenessProbe:
-      enabled: true
-      path: "/v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204"
-
     # Persistent storage
     dataStorage:
       enabled: true
@@ -102,7 +28,3 @@ vault:
       enabled: true
       size: 10Gi
       # storageClass: standard
-
-  ui:
-    enabled: true
-    serviceType: ClusterIP
