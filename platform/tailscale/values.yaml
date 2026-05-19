@@ -4,6 +4,21 @@ tailscale-operator:
   oauthSecretName: operator-oauth
   operatorConfig:
     hostname: "tailscale-operator"
+    defaultTags:
+      - "tag:k8s-operator"
+  proxyConfig:
+    defaultTags: "tag:k8s"
+  oauth:
+    clientID:
+      valueFrom:
+        secretKeyRef:
+          name: operator-oauth
+          key: client_id
+    clientSecret:
+      valueFrom:
+        secretKeyRef:
+          name: operator-oauth
+          key: client_secret
 
 development:
   enabled: false

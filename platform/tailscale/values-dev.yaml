@@ -2,7 +2,10 @@ tailscale-operator:
   oauthSecretName: operator-oauth
   operatorConfig:
     hostname: "dev-tailscale-operator"
+    defaultTags:
+      - "tag:k8s-operator-dev"
+  proxyConfig:
+    defaultTags: "tag:k8s-dev"
 
 development:
   enabled: true
-  
