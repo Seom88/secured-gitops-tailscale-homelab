@@ -6,15 +6,38 @@ vault:
     enabled: true
     tlsDisable: false
 
-  injector:
-    enabled: true
-    replicas: 1
-
-    #Network policies
-    networkPolicy:
+    injector:
       enabled: true
+      replicas: 1
 
-    resources:
+      #Network policies
+      networkPolicy:
+        enabled: true
+        egress:
+          # DNS resolution
+          - to:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: kube-system
+            ports:
+              - port: 53
+                protocol: UDP
+              - port: 53
+                protocol: TCP
+          # Vault server
+          - to:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: vault
+                podSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: vault
+                    component: server
+            ports:
+              - port: 8200
+                protocol: TCP
+
+      resources:
       requests:
         cpu: 50m
         memory: 64Mi
@@ -28,7 +51,38 @@ vault:
     #Network policies
     networkPolicy:
       enabled: true
-      egress: []
+      egress:
+        # DNS resolution (CoreDNS in kube-system)
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: kube-system
+          ports:
+            - port: 53
+              protocol: UDP
+            - port: 53
+              protocol: TCP
+        # Kubernetes API Server (TokenReview validation)
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: kube-system
+              podSelector:
+                matchLabels:
+                  component: kube-apiserver
+          ports:
+            - port: 443
+              protocol: TCP
+            - port: 6443
+              protocol: TCP
+        # Tailscale namespace (responses to incoming connections)
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: tailscale
+          ports:
+            - port: 8200
+              protocol: TCP
       ingress:
         - from:
             - namespaceSelector:
