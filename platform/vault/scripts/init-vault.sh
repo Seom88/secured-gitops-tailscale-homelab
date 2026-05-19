@@ -98,10 +98,16 @@ path "secret/data/tailscale/*" {
 }
 EOF
 
+$VAULT_EXEC_AUTH policy write -tls-server-name=vault monitoring-policy - > /dev/null 2>&1 <<EOF
+path "secret/data/grafana/*" {
+  capabilities = ["read"]
+}
+EOF
+
 vault_auth_write auth/kubernetes/role/eso-tailscale-role \
     bound_service_account_names=eso-external-secrets,eso-dev-external-secrets \
     bound_service_account_namespaces=external-secrets \
-    policies=tailscale-policy \
+    policies=tailscale-policy,monitoring-policy \
     ttl=24h
 
 # 5. Seed secrets
@@ -113,19 +119,20 @@ seed_kv_secret() {
     shift
     # Check if secret exists
     if $VAULT_EXEC_AUTH kv get -tls-server-name=vault "$path" > /dev/null 2>&1; then
-        echo -e "${YELLOW}  [Vault] Patching existing secret: $path${NC}"
-        $VAULT_EXEC_AUTH kv patch -tls-server-name=vault "$path" "$@" > /dev/null 2>&1
+        echo -e "${GREEN}  [Vault] Secret already exists at $path, skipping generation.${NC}"
+        # echo -e "${YELLOW}  [Vault] Patching existing secret: $path${NC}"
+        # $VAULT_EXEC_AUTH kv patch -tls-server-name=vault "$path" "$@" > /dev/null 2>&1
     else
         echo -e "${YELLOW}  [Vault] Creating new secret: $path${NC}"
         $VAULT_EXEC_AUTH kv put -tls-server-name=vault "$path" "$@" > /dev/null 2>&1
     fi
 }
 
-# Function to generate a random secret if it doesn't exist
 generate_kv_secret_if_missing() {
     local path=$1
     local key=$2
     local bytes=${3:-24}
+    shift 3
     
     if $VAULT_EXEC_AUTH kv get -tls-server-name=vault "$path" > /dev/null 2>&1; then
         echo -e "${GREEN}  [Vault] Secret already exists at $path, skipping generation.${NC}"
@@ -134,7 +141,7 @@ generate_kv_secret_if_missing() {
         # Use Vault's random generator (write/POST is the correct method for this endpoint)
         local RANDOM_VAL
         RANDOM_VAL=$($VAULT_EXEC_AUTH write -tls-server-name=vault -format=json sys/tools/random bytes=$bytes | jq -r .data.random_bytes)
-        $VAULT_EXEC_AUTH kv put -tls-server-name=vault "$path" "$key"="$RANDOM_VAL" > /dev/null 2>&1
+        $VAULT_EXEC_AUTH kv put -tls-server-name=vault "$path" "$key"="$RANDOM_VAL" "$@" > /dev/null 2>&1
     fi
 }
 
@@ -142,7 +149,7 @@ seed_kv_secret secret/tailscale/auth \
     client_id="$TS_CLIENT_ID" \
     client_secret="$TS_CLIENT_SECRET"
 
-# Example: Generate random password for Grafana
-generate_kv_secret_if_missing secret/grafana/admin password 32
+# Generate random password for Grafana and include default user
+generate_kv_secret_if_missing secret/grafana/admin password 32 "user=admin"
 
 echo -e "${GREEN}  [Vault] Configuration complete!${NC}"

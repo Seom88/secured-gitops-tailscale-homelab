@@ -43,6 +43,11 @@ loki:
 kube-prometheus-stack:
   # Grafana configuration
   grafana:
+    admin:
+      existingSecret: "grafana-admin-credentials"
+      userKey: admin-user
+      passwordKey: admin-password
+
     # Add Loki as a data source
     additionalDataSources:
       - name: Loki
