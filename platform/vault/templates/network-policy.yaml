@@ -38,7 +38,10 @@ spec:
       port: 8201
   # 2. Allow traffic from Tailscale Ingress Proxies
   - from:
-    - podSelector:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: tailscale
+      podSelector:
         matchLabels:
           tailscale.com/managed-by: tailscale-operator
     ports:
