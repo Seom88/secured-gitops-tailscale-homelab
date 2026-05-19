@@ -6,38 +6,50 @@ vault:
     enabled: true
     tlsDisable: false
 
-    injector:
+  injector:
+    enabled: true
+    replicas: 1
+
+    #Network policies
+    networkPolicy:
       enabled: true
-      replicas: 1
+      egress:
+        # DNS resolution
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: kube-system
+          ports:
+            - port: 53
+              protocol: UDP
+            - port: 53
+              protocol: TCP
+        # Vault server
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: vault
+              podSelector:
+                matchLabels:
+                  app.kubernetes.io/name: vault
+                  component: server
+          ports:
+            - port: 8200
+              protocol: TCP
 
-      #Network policies
-      networkPolicy:
-        enabled: true
-        egress:
-          # DNS resolution
-          - to:
-              - namespaceSelector:
-                  matchLabels:
-                    kubernetes.io/metadata.name: kube-system
-            ports:
-              - port: 53
-                protocol: UDP
-              - port: 53
-                protocol: TCP
-          # Vault server
-          - to:
-              - namespaceSelector:
-                  matchLabels:
-                    kubernetes.io/metadata.name: vault
-                podSelector:
-                  matchLabels:
-                    app.kubernetes.io/name: vault
-                    component: server
-            ports:
-              - port: 8200
-                protocol: TCP
+    # Soft anti-affinity: prefer different nodes but allow co-location on single-node clusters
+    affinity: |
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: vault-agent-injector
+                  component: webhook
+              topologyKey: kubernetes.io/hostname
 
-      resources:
+    resources:
       requests:
         cpu: 50m
         memory: 64Mi
