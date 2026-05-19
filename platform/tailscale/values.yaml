@@ -1,6 +1,7 @@
 # tailscale-operator subchart values
 tailscale-operator:
   enabled: true
+  oauthSecretName: operator-oauth
   operatorConfig:
     hostname: "tailscale-operator"
 

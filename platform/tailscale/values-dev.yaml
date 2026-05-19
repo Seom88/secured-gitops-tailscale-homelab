@@ -1,4 +1,5 @@
 tailscale-operator:
+  oauthSecretName: operator-oauth
   operatorConfig:
     hostname: "dev-tailscale-operator"
 

@@ -69,36 +69,17 @@ To ensure K3s uses Tailscale for internal communication and enables encryption, 
 
 ### Create Configuration
 
-Replace `<TAILSCALE_IP>` with the actual Tailscale IP of the node and `<TAILSCALE_HOSTNAME>` with its Tailscale DNS name.
-
 ```bash
-sudo mkdir -p /etc/rancher/k3s
+export NODE_TAILSCALE_IP=$(tailscale ip --4)
 
-sudo tee /etc/rancher/k3s/config.yaml > /dev/null <<EOF
-# Tailscale Networking (Required for mesh connectivity)
-node-ip: "<TAILSCALE_IP>"             # Local identity on the Tailnet
-node-external-ip: "<TAILSCALE_IP>"    # Reported external IP
-advertise-address: "<TAILSCALE_IP>"   # Address used by other nodes to join
-flannel-iface: "tailscale0"           # Force pod traffic through Tailscale tunnel
-
-
-# Security and OS
-selinux: true
-secrets-encryption: true
-
-# Access and Identity
-tls-san:
-  - "<TAILSCALE_IP>"             # Valid for connections via IP
-  - "<TAILSCALE_HOSTNAME>"       # Valid for local tailnet name
-  - "<TAILSCALE_FQDN>"           # Valid for full Tailscale DNS name
-
-
-# Cluster Initialization (Embedded etcd)
-cluster-init: true
-token: "generate-a-secure-token-here"
-EOF
-
-
+curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server \
+  --flannel-iface=tailscale0 \
+  --advertise-address=${NODE_TAILSCALE_IP} \
+  --node-external-ip=${NODE_TAILSCALE_IP} \
+  --node-ip=${NODE_TAILSCALE_IP} \
+  --tls-san=${NODE_TAILSCALE_IP} \
+  --secrets-encryption \
+  --cluster-init" sh -
 ```
 
 ## 3. Installation
@@ -120,14 +101,6 @@ To verify that encryption is active and see the current rotation stage:
 ```bash
 sudo k3s secrets-encrypt status
 ```
-
-### Rotating Keys
-
-If a key rotation is required in the future:
-
-1. **Rotate keys**: `sudo k3s secrets-encrypt rotate-keys`
-2. **Monitor progress**: Wait until the status shows `reencrypt_finished`.
-3. **Restart K3s**: `sudo systemctl restart k3s`
 
 ## 5. Post-Installation
 
