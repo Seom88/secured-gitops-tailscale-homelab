@@ -77,13 +77,15 @@ kube-prometheus-stack:
   prometheus:
     prometheusSpec:
       retention: 15d
+      # Forces kubelet to always chown the PVC to fsGroup even on Talos
+      securityContext:
+        fsGroup: 2000
+        fsGroupChangePolicy: "Always"
+        runAsGroup: 2000
+        runAsNonRoot: true
+        runAsUser: 1000
       storageSpec:
-        volumeClaimTemplate:
-          spec:
-            # storageClassName: standard
-            resources:
-              requests:
-                storage: 10Gi
+        emptyDir: {}
 
     # Native Ingress configuration for Prometheus
     ingress:
