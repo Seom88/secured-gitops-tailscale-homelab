@@ -133,4 +133,4 @@ argocd-gitops-homelab/
 - [ ] **CI/CD Pipeline** — GitHub Actions for lint, test, and preview environments.
 
 ---
-*Created by [Seom88](https://github.com/Seom1177) - Built for learning, security, and automation.*
+*Created by [Seom88](https://github.com/Seom88) - Built for learning, security, and automation.*

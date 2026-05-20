@@ -1,5 +1,5 @@
 # App-of-Apps chart values
-repoURL: https://github.com/Seom1177/secured-gitops-tailscale-homelab.git
+repoURL: https://github.com/Seom88/secured-gitops-tailscale-homelab.git
 platformApps:
   enabled: true
   local:
