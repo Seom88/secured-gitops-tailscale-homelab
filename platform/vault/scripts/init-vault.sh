@@ -40,6 +40,23 @@ SECRET_NAME="$RELEASE_NAME-unseal-keys"
 # Helpers for vault exec
 VAULT_EXEC="kubectl exec -i -n vault $VAULT_POD -- env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault"
 
+# Retry helper
+retry() {
+    local n=1
+    local max=5
+    local delay=2
+    while true; do
+        "$@" && break || {
+            if [[ $n -lt $max ]]; then
+                ((n++))
+                sleep $delay
+            else
+                return 1
+            fi
+        }
+    done
+}
+
 # 2. Initialization
 STATUS=$($VAULT_EXEC status -format=json -tls-server-name=vault 2>/dev/null || echo "{\"initialized\":false}")
 if echo "$STATUS" | jq -r '.initialized' | grep -q "false"; then
@@ -69,12 +86,25 @@ fi
 echo -e "${YELLOW}  [Vault] Checking seal status for all pods...${NC}"
 for POD in $(kubectl get pods -n vault -l app.kubernetes.io/name=vault,component=server -o jsonpath='{.items[*].metadata.name}'); do
     VAULT_EXEC_POD="kubectl exec -i -n vault $POD -- env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault"
-    SEALED=$($VAULT_EXEC_POD status -format=json -tls-server-name=vault 2>/dev/null | jq -r '.sealed' || echo "true")
+    
+    echo -ne "${YELLOW}  [Vault] Waiting for pod $POD to be responsive...${NC}"
+    until $VAULT_EXEC_POD status -format=json -tls-server-name=vault > /dev/null 2>&1; do
+        echo -n "."
+        sleep 2
+    done
+    echo -e " ${GREEN}Responsive!${NC}"
+
+    SEALED=$($VAULT_EXEC_POD status -format=json -tls-server-name=vault | jq -r '.sealed')
+
     if [ "$SEALED" == "true" ]; then
         echo -e "${YELLOW}  [Vault] Unsealing pod $POD...${NC}"
-        $VAULT_EXEC_POD operator unseal -tls-server-name=vault $(kubectl get secret "$SECRET_NAME" -n vault -o jsonpath='{.data.key1}' | base64 -d) > /dev/null 2>&1
-        $VAULT_EXEC_POD operator unseal -tls-server-name=vault $(kubectl get secret "$SECRET_NAME" -n vault -o jsonpath='{.data.key2}' | base64 -d) > /dev/null 2>&1
-        $VAULT_EXEC_POD operator unseal -tls-server-name=vault $(kubectl get secret "$SECRET_NAME" -n vault -o jsonpath='{.data.key3}' | base64 -d) > /dev/null 2>&1
+        KEY1=$(kubectl get secret "$SECRET_NAME" -n vault -o jsonpath='{.data.key1}' | base64 -d)
+        KEY2=$(kubectl get secret "$SECRET_NAME" -n vault -o jsonpath='{.data.key2}' | base64 -d)
+        KEY3=$(kubectl get secret "$SECRET_NAME" -n vault -o jsonpath='{.data.key3}' | base64 -d)
+        
+        $VAULT_EXEC_POD operator unseal -tls-server-name=vault "$KEY1" > /dev/null 2>&1
+        $VAULT_EXEC_POD operator unseal -tls-server-name=vault "$KEY2" > /dev/null 2>&1
+        $VAULT_EXEC_POD operator unseal -tls-server-name=vault "$KEY3" > /dev/null 2>&1
         echo -e "${GREEN}  [Vault] Pod $POD unsealed!${NC}"
     else
         echo -e "${GREEN}  [Vault] Pod $POD is already unsealed.${NC}"
@@ -90,7 +120,7 @@ vault_auth_write() {
     local path=$1
     shift
     echo -e "${YELLOW}  [Vault] Configuring $path...${NC}"
-    $VAULT_EXEC_AUTH write -tls-server-name=vault "$path" "$@" > /dev/null 2>&1
+    retry $VAULT_EXEC_AUTH write -tls-server-name=vault "$path" "$@" > /dev/null 2>&1
 }
 
 echo -e "${BLUE}  [Vault] Configuring engines and auth...${NC}"
@@ -100,8 +130,8 @@ $VAULT_EXEC_AUTH secrets list -tls-server-name=vault | grep -q "secret/" || \
 $VAULT_EXEC_AUTH auth list -tls-server-name=vault | grep -q "kubernetes/" || \
   $VAULT_EXEC_AUTH auth enable -tls-server-name=vault kubernetes > /dev/null 2>&1
 
-K8S_ISSUER=$(kubectl get --raw /.well-known/openid-configuration | jq -r .issuer)
-K8S_CA=$(kubectl exec -n vault $VAULT_POD -- cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt)
+K8S_ISSUER=$(retry kubectl get --raw /.well-known/openid-configuration | jq -r .issuer)
+K8S_CA=$(retry kubectl exec -n vault $VAULT_POD -- cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt)
 
 vault_auth_write auth/kubernetes/config \
     kubernetes_host="https://kubernetes.default.svc" \
