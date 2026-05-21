@@ -30,6 +30,12 @@ spec:
   - {{ .Release.Name }}-internal
   - {{ .Release.Name }}-internal.vault.svc
   - {{ .Release.Name }}-internal.vault.svc.cluster.local
+  {{- range $i := until (.Values.vault.server.ha.replicas | int) }}
+  - {{ $.Release.Name }}-{{ $i }}.{{ $.Release.Name }}-internal
+  - {{ $.Release.Name }}-{{ $i }}.{{ $.Release.Name }}-internal.vault.svc.cluster.local
+  {{- end }}
+  ipAddresses:
+  - 127.0.0.1
   usages:
   - server auth
   - client auth
