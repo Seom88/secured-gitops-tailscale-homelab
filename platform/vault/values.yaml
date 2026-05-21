@@ -1,6 +1,3 @@
-# vault-production-values.yaml - HashiCorp Vault Helm Chart
-# Production config with TLS from OneUptime guide
-
 vault:
   global:
     enabled: true
@@ -10,11 +7,9 @@ vault:
     enabled: true
     replicas: 2
 
-    #Network policies
     networkPolicy:
       enabled: true
       egress:
-        # DNS resolution
         - to:
             - namespaceSelector: {}
               podSelector:
@@ -25,7 +20,6 @@ vault:
               protocol: UDP
             - port: 53
               protocol: TCP
-        # Vault server
         - to:
             - namespaceSelector:
                 matchLabels:
@@ -38,7 +32,6 @@ vault:
             - port: 8200
               protocol: TCP
 
-    # Soft anti-affinity: prefer different nodes but allow co-location on single-node clusters
     affinity: |
       podAntiAffinity:
         preferredDuringSchedulingIgnoredDuringExecution:
@@ -61,7 +54,6 @@ vault:
   server:
     enabled: true
 
-    #Network policies
     networkPolicy:
       enabled: true
       egress:
@@ -72,7 +64,6 @@ vault:
           ports:
             - port: 8200
               protocol: TCP
-        # Tailscale namespace (responses to incoming connections)
         - to:
             - namespaceSelector:
                 matchLabels:
@@ -96,21 +87,10 @@ vault:
             - port: 8200
               protocol: TCP
 
-    # Lifecycle hook to unseal Vault on startup (runs once and stops)
-    # postStart:
-    #   - /bin/sh
-    #   - -c
-    #   - |
-    #     # Wait for Vault to be ready to receive commands
-    #     until vault status -address=https://127.0.0.1:8200 -ca-cert=/vault/userconfig/vault-tls/ca.crt -tls-server-name=vault > /dev/null 2>&1 || [ $? -eq 2 ]; do
-    #       sleep 2
-    #     done
-    #     # Unseal if keys are available
-    #     if [ -f /vault/unseal/key1 ]; then
-    #       vault operator unseal -address=https://127.0.0.1:8200 -ca-cert=/vault/userconfig/vault-tls/ca.crt -tls-server-name=vault $(cat /vault/unseal/key1)
-    #       vault operator unseal -address=https://127.0.0.1:8200 -ca-cert=/vault/userconfig/vault-tls/ca.crt -tls-server-name=vault $(cat /vault/unseal/key2)
-    #       vault operator unseal -address=https://127.0.0.1:8200 -ca-cert=/vault/userconfig/vault-tls/ca.crt -tls-server-name=vault $(cat /vault/unseal/key3)
-    #     fi
+    extraEnvironmentVars:
+      VAULT_CACERT: /vault/userconfig/vault-tls/ca.crt
+      VAULT_TLSCERT: /vault/userconfig/vault-tls/tls.crt
+      VAULT_TLSKEY: /vault/userconfig/vault-tls/tls.key
 
     volumes:
       - name: vault-tls
@@ -140,39 +120,40 @@ vault:
     standalone:
       enabled: false
 
-    # High Availability mode with integrated Raft storage
     ha:
       enabled: true
       replicas: 3
       raft:
         enabled: true
         setNodeId: true
-      config: |
-        ui = true
+        config: |
+          ui = true
 
-        listener "tcp" {
-          tls_disable = 0
-          address = "[::]:8200"
-          cluster_address = "[::]:8201"
-          tls_cert_file = "/vault/userconfig/vault-tls/tls.crt"
-          tls_key_file = "/vault/userconfig/vault-tls/tls.key"
-          tls_client_ca_file = "/vault/userconfig/vault-tls/ca.crt"
-        }
-
-        storage "raft" {
-          path = "/vault/data"
-          {{- range $i := until 3 }}
-          retry_join {
-            leader_api_addr = "https://{{ template "vault.fullname" $ }}-{{ $i }}.{{ template "vault.fullname" $ }}-internal:8200"
-            leader_ca_cert_file = "/vault/userconfig/vault-tls/ca.crt"
-            leader_tls_servername = "vault"
+          listener "tcp" {
+            tls_disable = 0
+            address = "[::]:8200"
+            cluster_address = "[::]:8201"
+            tls_cert_file = "/vault/userconfig/vault-tls/tls.crt"
+            tls_key_file  = "/vault/userconfig/vault-tls/tls.key"
+            tls_client_ca_file = "/vault/userconfig/vault-tls/ca.crt"
           }
-          {{- end }}
-        }
 
-        disable_mlock = true
+          storage "raft" {
+            path = "/vault/data"
+            {{- range $i := until 3 }}
+            retry_join {
+              leader_api_addr = "https://{{ template "vault.fullname" $ }}-{{ $i }}.{{ template "vault.fullname" $ }}-internal:8200"
+              leader_ca_cert_file = "/vault/userconfig/vault-tls/ca.crt"
+              leader_client_cert_file = "/vault/userconfig/vault-tls/tls.crt"
+              leader_client_key_file = "/vault/userconfig/vault-tls/tls.key"
+              leader_tls_servername = "vault"
+            }
+            {{- end }}
+          }
 
-    # Custom health endpoint for kubernetes probes
+          disable_mlock = true
+          service_registration "kubernetes" {}
+
     readinessProbe:
       enabled: true
       path: "/v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204"
@@ -181,17 +162,15 @@ vault:
       enabled: true
       path: "/v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204"
 
-    # Persistent storage
     dataStorage:
       enabled: true
       size: 10Gi
-      # storageClass: local-path
+      storageClass: local-path
 
-    # Audit log storage
     auditStorage:
       enabled: true
       size: 10Gi
-      # storageClass: local-path
+      storageClass: local-path
 
   ui:
     enabled: true
