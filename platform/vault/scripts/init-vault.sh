@@ -15,15 +15,27 @@ TS_CLIENT_SECRET="${TS_CLIENT_SECRET:-ChangeMeSecret}"
 
 echo -e "${BLUE}  [Vault] Starting configuration...${NC}"
 
-# 1. Wait for Vault pod
-echo -ne "${YELLOW}  [Vault] Waiting for pod to be ready...${NC}"
-until kubectl get pod -n vault -l app.kubernetes.io/name=vault,component=server -o name | grep "pod/" > /dev/null 2>&1; do echo -n "."; sleep 5; done
+# 1. Wait for Vault StatefulSet to exist
+echo -ne "${YELLOW}  [Vault] Waiting for StatefulSet to be created...${NC}"
+until kubectl get statefulset -n vault -l app.kubernetes.io/name=vault -o name | grep "statefulset" > /dev/null 2>&1; do
+    echo -n "."
+    sleep 2
+done
+echo -e " ${GREEN}Created!${NC}"
+
+# Wait for all replicas to be ready
+echo -ne "${YELLOW}  [Vault] Waiting for all pods to be ready...${NC}"
+DESIRED_REPLICAS=$(kubectl get statefulset -n vault -l app.kubernetes.io/name=vault -o jsonpath='{.items[0].spec.replicas}' 2>/dev/null || echo "0")
+until [ "$(kubectl get statefulset -n vault -l app.kubernetes.io/name=vault -o jsonpath='{.items[0].status.readyReplicas}' 2>/dev/null)" == "$DESIRED_REPLICAS" ] && [ -n "$DESIRED_REPLICAS" ] && [ "$DESIRED_REPLICAS" != "0" ]; do
+    echo -n "."
+    sleep 5
+    DESIRED_REPLICAS=$(kubectl get statefulset -n vault -l app.kubernetes.io/name=vault -o jsonpath='{.items[0].spec.replicas}' 2>/dev/null || echo "0")
+done
+echo -e " ${GREEN}All $DESIRED_REPLICAS pods ready!${NC}"
+
 VAULT_POD=$(kubectl get pod -n vault -l app.kubernetes.io/name=vault,component=server -o jsonpath="{.items[0].metadata.name}")
 RELEASE_NAME=$(kubectl get pod $VAULT_POD -n vault -o jsonpath="{.metadata.labels['app\.kubernetes\.io/instance']}")
 SECRET_NAME="$RELEASE_NAME-unseal-keys"
-
-kubectl wait --for=condition=Ready pod/$VAULT_POD -n vault --timeout=300s > /dev/null 2>&1
-echo -e " ${GREEN}Ready! ($VAULT_POD)${NC}"
 
 # Helpers for vault exec
 VAULT_EXEC="kubectl exec -i -n vault $VAULT_POD -- env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault"
@@ -53,15 +65,21 @@ if echo "$STATUS" | jq -r '.initialized' | grep -q "false"; then
     echo -e "${GREEN}  [Vault] Initialized and keys saved to $SECRET_NAME${NC}"
 fi
 
-# 3. Unseal
-SEALED=$( $VAULT_EXEC status -format=json -tls-server-name=vault 2>/dev/null | jq -r '.sealed' || echo "true" )
-if [ "$SEALED" == "true" ]; then
-    echo -e "${YELLOW}  [Vault] Unsealing using $SECRET_NAME...${NC}"
-    $VAULT_EXEC operator unseal -tls-server-name=vault $(kubectl get secret "$SECRET_NAME" -n vault -o jsonpath='{.data.key1}' | base64 -d) > /dev/null 2>&1
-    $VAULT_EXEC operator unseal -tls-server-name=vault $(kubectl get secret "$SECRET_NAME" -n vault -o jsonpath='{.data.key2}' | base64 -d) > /dev/null 2>&1
-    $VAULT_EXEC operator unseal -tls-server-name=vault $(kubectl get secret "$SECRET_NAME" -n vault -o jsonpath='{.data.key3}' | base64 -d) > /dev/null 2>&1
-    echo -e "${GREEN}  [Vault] Unsealed!${NC}"
-fi
+# 3. Unseal all pods
+echo -e "${YELLOW}  [Vault] Checking seal status for all pods...${NC}"
+for POD in $(kubectl get pods -n vault -l app.kubernetes.io/name=vault,component=server -o jsonpath='{.items[*].metadata.name}'); do
+    VAULT_EXEC_POD="kubectl exec -i -n vault $POD -- env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault"
+    SEALED=$($VAULT_EXEC_POD status -format=json -tls-server-name=vault 2>/dev/null | jq -r '.sealed' || echo "true")
+    if [ "$SEALED" == "true" ]; then
+        echo -e "${YELLOW}  [Vault] Unsealing pod $POD...${NC}"
+        $VAULT_EXEC_POD operator unseal -tls-server-name=vault $(kubectl get secret "$SECRET_NAME" -n vault -o jsonpath='{.data.key1}' | base64 -d) > /dev/null 2>&1
+        $VAULT_EXEC_POD operator unseal -tls-server-name=vault $(kubectl get secret "$SECRET_NAME" -n vault -o jsonpath='{.data.key2}' | base64 -d) > /dev/null 2>&1
+        $VAULT_EXEC_POD operator unseal -tls-server-name=vault $(kubectl get secret "$SECRET_NAME" -n vault -o jsonpath='{.data.key3}' | base64 -d) > /dev/null 2>&1
+        echo -e "${GREEN}  [Vault] Pod $POD unsealed!${NC}"
+    else
+        echo -e "${GREEN}  [Vault] Pod $POD is already unsealed.${NC}"
+    fi
+done
 
 # 4. Configure Vault
 ROOT_TOKEN=$(kubectl get secret "$SECRET_NAME" -n vault -o jsonpath='{.data.root-token}' | base64 -d)

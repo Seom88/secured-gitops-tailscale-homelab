@@ -8,7 +8,7 @@ vault:
 
   injector:
     enabled: true
-    replicas: 1
+    replicas: 2
 
     #Network policies
     networkPolicy:
@@ -137,11 +137,16 @@ vault:
         cpu: 2000m
         memory: 1Gi
 
-    # Standalone mode with file storage
     standalone:
-      enabled: true
-      replicas: 1
+      enabled: false
 
+    # High Availability mode with integrated Raft storage
+    ha:
+      enabled: true
+      replicas: 3
+      raft:
+        enabled: true
+        setNodeId: true
       config: |
         ui = true
 
@@ -154,8 +159,15 @@ vault:
           tls_client_ca_file = "/vault/userconfig/vault-tls/ca.crt"
         }
 
-        storage "file" {
+        storage "raft" {
           path = "/vault/data"
+          {{- range $i := until 3 }}
+          retry_join {
+            leader_api_addr = "https://{{ template "vault.fullname" $ }}-{{ $i }}.{{ template "vault.fullname" $ }}-internal:8200"
+            leader_ca_cert_file = "/vault/userconfig/vault-tls/ca.crt"
+            leader_tls_servername = "vault"
+          }
+          {{- end }}
         }
 
         disable_mlock = true
