@@ -38,7 +38,7 @@ RELEASE_NAME=$(kubectl get pod $VAULT_POD -n vault -o jsonpath="{.metadata.label
 SECRET_NAME="$RELEASE_NAME-unseal-keys"
 
 # Helpers for vault exec
-VAULT_EXEC="kubectl exec -i -n vault $VAULT_POD -- env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault"
+VAULT_EXEC_BASE="kubectl exec -i -n vault"
 
 # Retry helper
 retry() {
@@ -57,11 +57,26 @@ retry() {
     done
 }
 
+# Silent status check that handles exit code 2 (sealed) without kubectl noise
+vault_status() {
+    local pod=$1
+    $VAULT_EXEC_BASE "$pod" -- /bin/sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault status -format=json -tls-server-name=vault || true" 2>/dev/null
+}
+
+# General vault exec that silences kubectl "command terminated" noise on stderr
+# Usage: vault_exec <pod> <full_command_string>
+vault_exec() {
+    local pod=$1
+    local cmd=$2
+    $VAULT_EXEC_BASE "$pod" -- /bin/sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt $cmd" 2>/dev/null
+}
+
 # 2. Initialization
-STATUS=$($VAULT_EXEC status -format=json -tls-server-name=vault 2>/dev/null || echo "{\"initialized\":false}")
-if echo "$STATUS" | jq -r '.initialized' | grep -q "false"; then
+STATUS=$(vault_status "$VAULT_POD")
+if echo "$STATUS" | jq -e '.initialized == false' >/dev/null 2>&1; then
     echo -e "${BLUE}  [Vault] Initializing...${NC}"
-    INIT_OUT=$($VAULT_EXEC operator init -format=json -tls-server-name=vault)
+    # For init we don't silence stderr to see real errors if they happen
+    INIT_OUT=$($VAULT_EXEC_BASE "$VAULT_POD" -- /bin/sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault operator init -format=json -tls-server-name=vault")
     
     ROOT_TOKEN=$(echo "$INIT_OUT" | jq -r '.root_token')
     KEY1=$(echo "$INIT_OUT" | jq -r '.unseal_keys_b64[0]')
@@ -85,16 +100,15 @@ fi
 # 3. Unseal all pods
 echo -e "${YELLOW}  [Vault] Checking seal status for all pods...${NC}"
 for POD in $(kubectl get pods -n vault -l app.kubernetes.io/name=vault,component=server -o jsonpath='{.items[*].metadata.name}'); do
-    VAULT_EXEC_POD="kubectl exec -i -n vault $POD -- env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault"
-    
     echo -ne "${YELLOW}  [Vault] Waiting for pod $POD to be responsive...${NC}"
-    until $VAULT_EXEC_POD status -format=json -tls-server-name=vault > /dev/null 2>&1; do
+    until vault_status "$POD" | jq -e '.version' >/dev/null 2>&1; do
         echo -n "."
         sleep 2
     done
     echo -e " ${GREEN}Responsive!${NC}"
 
-    SEALED=$($VAULT_EXEC_POD status -format=json -tls-server-name=vault | jq -r '.sealed')
+    STATUS=$(vault_status "$POD")
+    SEALED=$(echo "$STATUS" | jq -r '.sealed')
 
     if [ "$SEALED" == "true" ]; then
         echo -e "${YELLOW}  [Vault] Unsealing pod $POD...${NC}"
@@ -102,9 +116,9 @@ for POD in $(kubectl get pods -n vault -l app.kubernetes.io/name=vault,component
         KEY2=$(kubectl get secret "$SECRET_NAME" -n vault -o jsonpath='{.data.key2}' | base64 -d)
         KEY3=$(kubectl get secret "$SECRET_NAME" -n vault -o jsonpath='{.data.key3}' | base64 -d)
         
-        $VAULT_EXEC_POD operator unseal -tls-server-name=vault "$KEY1" > /dev/null 2>&1
-        $VAULT_EXEC_POD operator unseal -tls-server-name=vault "$KEY2" > /dev/null 2>&1
-        $VAULT_EXEC_POD operator unseal -tls-server-name=vault "$KEY3" > /dev/null 2>&1
+        vault_exec "$POD" "vault operator unseal -tls-server-name=vault $KEY1" > /dev/null 2>&1
+        vault_exec "$POD" "vault operator unseal -tls-server-name=vault $KEY2" > /dev/null 2>&1
+        vault_exec "$POD" "vault operator unseal -tls-server-name=vault $KEY3" > /dev/null 2>&1
         echo -e "${GREEN}  [Vault] Pod $POD unsealed!${NC}"
     else
         echo -e "${GREEN}  [Vault] Pod $POD is already unsealed.${NC}"
@@ -113,25 +127,24 @@ done
 
 # 4. Configure Vault
 ROOT_TOKEN=$(kubectl get secret "$SECRET_NAME" -n vault -o jsonpath='{.data.root-token}' | base64 -d)
-VAULT_EXEC_AUTH="kubectl exec -i -n vault $VAULT_POD -- env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt VAULT_TOKEN=$ROOT_TOKEN vault"
 
 # Helper for idempotency
 vault_auth_write() {
     local path=$1
     shift
     echo -e "${YELLOW}  [Vault] Configuring $path...${NC}"
-    retry $VAULT_EXEC_AUTH write -tls-server-name=vault "$path" "$@" > /dev/null 2>&1
+    retry $VAULT_EXEC_BASE "$VAULT_POD" -- /bin/sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt VAULT_TOKEN=$ROOT_TOKEN vault write -tls-server-name=vault $path $*" > /dev/null 2>&1
 }
 
 echo -e "${BLUE}  [Vault] Configuring engines and auth...${NC}"
-$VAULT_EXEC_AUTH secrets list -tls-server-name=vault | grep -q "secret/" || \
-  $VAULT_EXEC_AUTH secrets enable -path=secret -tls-server-name=vault kv-v2 > /dev/null 2>&1
+vault_exec "$VAULT_POD" "VAULT_TOKEN=$ROOT_TOKEN vault secrets list -tls-server-name=vault" | grep -q "secret/" || \
+  vault_exec "$VAULT_POD" "VAULT_TOKEN=$ROOT_TOKEN vault secrets enable -path=secret -tls-server-name=vault kv-v2" > /dev/null 2>&1
 
-$VAULT_EXEC_AUTH auth list -tls-server-name=vault | grep -q "kubernetes/" || \
-  $VAULT_EXEC_AUTH auth enable -tls-server-name=vault kubernetes > /dev/null 2>&1
+vault_exec "$VAULT_POD" "VAULT_TOKEN=$ROOT_TOKEN vault auth list -tls-server-name=vault" | grep -q "kubernetes/" || \
+  vault_exec "$VAULT_POD" "VAULT_TOKEN=$ROOT_TOKEN vault auth enable -tls-server-name=vault kubernetes" > /dev/null 2>&1
 
 K8S_ISSUER=$(retry kubectl get --raw /.well-known/openid-configuration | jq -r .issuer)
-K8S_CA=$(retry kubectl exec -n vault $VAULT_POD -- cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt)
+K8S_CA=$(retry kubectl exec -n vault "$VAULT_POD" -- cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt)
 
 vault_auth_write auth/kubernetes/config \
     kubernetes_host="https://kubernetes.default.svc" \
@@ -140,13 +153,13 @@ vault_auth_write auth/kubernetes/config \
 
 # Policies and Roles
 echo -e "${YELLOW}  [Vault] Writing policies...${NC}"
-$VAULT_EXEC_AUTH policy write -tls-server-name=vault tailscale-policy - > /dev/null 2>&1 <<EOF
+$VAULT_EXEC_BASE "$VAULT_POD" -- /bin/sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt VAULT_TOKEN=$ROOT_TOKEN vault policy write -tls-server-name=vault tailscale-policy -" > /dev/null 2>&1 <<EOF
 path "secret/data/tailscale/*" {
   capabilities = ["read"]
 }
 EOF
 
-$VAULT_EXEC_AUTH policy write -tls-server-name=vault monitoring-policy - > /dev/null 2>&1 <<EOF
+$VAULT_EXEC_BASE "$VAULT_POD" -- /bin/sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt VAULT_TOKEN=$ROOT_TOKEN vault policy write -tls-server-name=vault monitoring-policy -" > /dev/null 2>&1 <<EOF
 path "secret/data/grafana/*" {
   capabilities = ["read"]
 }
@@ -166,13 +179,11 @@ seed_kv_secret() {
     local path=$1
     shift
     # Check if secret exists
-    if $VAULT_EXEC_AUTH kv get -tls-server-name=vault "$path" > /dev/null 2>&1; then
+    if vault_exec "$VAULT_POD" "VAULT_TOKEN=$ROOT_TOKEN vault kv get -tls-server-name=vault $path" > /dev/null 2>&1; then
         echo -e "${GREEN}  [Vault] Secret already exists at $path, skipping generation.${NC}"
-        # echo -e "${YELLOW}  [Vault] Patching existing secret: $path${NC}"
-        # $VAULT_EXEC_AUTH kv patch -tls-server-name=vault "$path" "$@" > /dev/null 2>&1
     else
         echo -e "${YELLOW}  [Vault] Creating new secret: $path${NC}"
-        $VAULT_EXEC_AUTH kv put -tls-server-name=vault "$path" "$@" > /dev/null 2>&1
+        vault_exec "$VAULT_POD" "VAULT_TOKEN=$ROOT_TOKEN vault kv put -tls-server-name=vault $path $*" > /dev/null 2>&1
     fi
 }
 
@@ -182,14 +193,14 @@ generate_kv_secret_if_missing() {
     local bytes=${3:-24}
     shift 3
     
-    if $VAULT_EXEC_AUTH kv get -tls-server-name=vault "$path" > /dev/null 2>&1; then
+    if vault_exec "$VAULT_POD" "VAULT_TOKEN=$ROOT_TOKEN vault kv get -tls-server-name=vault $path" > /dev/null 2>&1; then
         echo -e "${GREEN}  [Vault] Secret already exists at $path, skipping generation.${NC}"
     else
         echo -e "${YELLOW}  [Vault] Generating random value for $path ($key)...${NC}"
-        # Use Vault's random generator (write/POST is the correct method for this endpoint)
+        # Use Vault's random generator
         local RANDOM_VAL
-        RANDOM_VAL=$($VAULT_EXEC_AUTH write -tls-server-name=vault -format=json sys/tools/random bytes=$bytes | jq -r .data.random_bytes)
-        $VAULT_EXEC_AUTH kv put -tls-server-name=vault "$path" "$key"="$RANDOM_VAL" "$@" > /dev/null 2>&1
+        RANDOM_VAL=$(vault_exec "$VAULT_POD" "VAULT_TOKEN=$ROOT_TOKEN vault write -tls-server-name=vault -format=json sys/tools/random bytes=$bytes" | jq -r .data.random_bytes)
+        vault_exec "$VAULT_POD" "VAULT_TOKEN=$ROOT_TOKEN vault kv put -tls-server-name=vault $path $key=$RANDOM_VAL $*" > /dev/null 2>&1
     fi
 }
 

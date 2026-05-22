@@ -146,7 +146,6 @@ vault:
               leader_ca_cert_file = "/vault/userconfig/vault-tls/ca.crt"
               leader_client_cert_file = "/vault/userconfig/vault-tls/tls.crt"
               leader_client_key_file = "/vault/userconfig/vault-tls/tls.key"
-              leader_tls_servername = "vault"
             }
             {{- end }}
           }
