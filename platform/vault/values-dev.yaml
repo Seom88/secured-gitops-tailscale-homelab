@@ -1,22 +1,8 @@
+development:
+  enabled: true
+
 vault:
-
   server:
-    # Lifecycle hook to unseal Vault on startup (runs once and stops)
-    # postStart:
-    #   - /bin/sh
-    #   - -c
-    #   - |
-    #     # Wait for Vault to be ready to receive commands
-    #     until vault status -address=https://127.0.0.1:8200 -ca-cert=/vault/userconfig/vault-tls/ca.crt -tls-server-name=vault > /dev/null 2>&1 || [ $? -eq 2 ]; do
-    #       sleep 2
-    #     done
-    #     # Unseal if keys are available
-    #     if [ -f /vault/unseal/key1 ]; then
-    #       vault operator unseal -address=https://127.0.0.1:8200 -ca-cert=/vault/userconfig/vault-tls/ca.crt -tls-server-name=vault $(cat /vault/unseal/key1)
-    #       vault operator unseal -address=https://127.0.0.1:8200 -ca-cert=/vault/userconfig/vault-tls/ca.crt -tls-server-name=vault $(cat /vault/unseal/key2)
-    #       vault operator unseal -address=https://127.0.0.1:8200 -ca-cert=/vault/userconfig/vault-tls/ca.crt -tls-server-name=vault $(cat /vault/unseal/key3)
-    #     fi
-
     # Persistent storage
     dataStorage:
       enabled: true

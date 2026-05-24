@@ -1,3 +1,6 @@
+development:
+  enabled: false
+
 vault:
   global:
     enabled: true
@@ -119,17 +122,10 @@ vault:
       - name: vault-tls
         secret:
           secretName: vault-tls
-      - name: vault-unseal-keys
-        secret:
-          secretName: vault-unseal-keys
-          optional: true
 
     volumeMounts:
       - name: vault-tls
         mountPath: /vault/userconfig/vault-tls
-        readOnly: true
-      - name: vault-unseal-keys
-        mountPath: /vault/unseal
         readOnly: true
 
     resources:
