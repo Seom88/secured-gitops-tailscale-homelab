@@ -39,8 +39,6 @@ spec:
               env:
                 - name: VAULT_NAMESPACE
                   value: "vault"
-                - name: UNSEAL_SECRET_NAME
-                  value: "vault-unseal-keys"
                 - name: VAULT_TLS_SERVER_NAME
                   value: "vault"
  

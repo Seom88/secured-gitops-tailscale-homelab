@@ -11,57 +11,70 @@ data:
     #!/bin/sh
     set -e
 
-    SECRET_NAME="${UNSEAL_SECRET_NAME:-vault-unseal-keys}"
     NAMESPACE="${VAULT_NAMESPACE:-vault}"
     TLS_SERVER_NAME="${VAULT_TLS_SERVER_NAME:-vault}"
 
-    echo "[autounseal] Iniciando revisión de pods en namespace: $NAMESPACE"
+    echo "[autounseal] Starting pod review in namespace: $NAMESPACE"
 
-    # Obtener lista de pods del servidor de Vault
+    # Get Vault server pod list
     PODS=$(kubectl get pods -n "$NAMESPACE" \
       -l app.kubernetes.io/name=vault,component=server \
       -o jsonpath='{.items[*].metadata.name}')
 
     if [ -z "$PODS" ]; then
-      echo "[autounseal] ERROR: No se encontraron pods de Vault."
+      echo "[autounseal] ERROR: No Vault pods found."
       exit 1
     fi
 
-    # Leer las claves de desbloqueo UNA SOLA VEZ (no se loggean, no se imprimen)
+    # Derive the secret name from the Helm release label on the first pod.
+    # init-vault.sh creates it as "{release-name}-unseal-keys", so we do the same.
+    FIRST_POD=$(echo "$PODS" | awk '{print $1}')
+    RELEASE_NAME=$(kubectl get pod "$FIRST_POD" -n "$NAMESPACE" \
+      -o jsonpath='{.metadata.labels.app\.kubernetes\.io/instance}' 2>/dev/null)
+
+    if [ -z "$RELEASE_NAME" ]; then
+      echo "[autounseal] ERROR: Could not determine Helm release name from pod labels."
+      exit 1
+    fi
+
+    SECRET_NAME="${RELEASE_NAME}-unseal-keys"
+    echo "[autounseal] Using secret: $SECRET_NAME"
+
+    # Read unseal keys ONCE (never printed in logs)
     KEY1=$(kubectl get secret "$SECRET_NAME" -n "$NAMESPACE" \
-      -o jsonpath='{.data.key1}' | base64 -d)
+      -o jsonpath='{.data.key1}' 2>/dev/null | base64 -d)
     KEY2=$(kubectl get secret "$SECRET_NAME" -n "$NAMESPACE" \
-      -o jsonpath='{.data.key2}' | base64 -d)
+      -o jsonpath='{.data.key2}' 2>/dev/null | base64 -d)
     KEY3=$(kubectl get secret "$SECRET_NAME" -n "$NAMESPACE" \
-      -o jsonpath='{.data.key3}' | base64 -d)
+      -o jsonpath='{.data.key3}' 2>/dev/null | base64 -d)
 
     if [ -z "$KEY1" ] || [ -z "$KEY2" ] || [ -z "$KEY3" ]; then
-      echo "[autounseal] ERROR: No se pudieron leer las claves de desbloqueo del Secret '$SECRET_NAME'."
-      exit 1
+      echo "[autounseal] Secret '$SECRET_NAME' not found or keys are empty — Vault may not be initialized yet. Skipping."
+      exit 0
     fi
 
     for POD in $PODS; do
-      echo "[autounseal] Verificando pod: $POD"
+      echo "[autounseal] Checking pod: $POD"
 
-      # Verificar que el pod esté en fase Running.
-      # No se usa containerStatuses.ready porque los pods sellados fallan la
-      # readinessProbe y nunca alcanzan ready=true — lo que impediría unselearlos.
+      # Check pod phase, not container readiness.
+      # Sealed pods fail the readinessProbe and never reach ready=true,
+      # so using ready=true as a gate would prevent unsealing entirely.
       PHASE=$(kubectl get pod "$POD" -n "$NAMESPACE" \
         -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
 
       if [ "$PHASE" != "Running" ]; then
-        echo "[autounseal] Pod $POD no está en fase Running ($PHASE), saltando."
+        echo "[autounseal] Pod $POD is not in Running phase ($PHASE), skipping."
         continue
       fi
 
-      # Obtener estado actual del pod (ignoramos exit code 2 = sellado)
+      # Get current seal status (exit code 2 when sealed is expected — suppress it)
       STATUS=$(kubectl exec -n "$NAMESPACE" "$POD" -- \
         sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt \
                vault status -format=json -tls-server-name=$TLS_SERVER_NAME || true" \
         2>/dev/null)
 
       if [ -z "$STATUS" ]; then
-        echo "[autounseal] Pod $POD no respondió, saltando."
+        echo "[autounseal] Pod $POD did not respond, skipping."
         continue
       fi
 
@@ -69,14 +82,14 @@ data:
       INITIALIZED=$(echo "$STATUS" | grep -o '"initialized":[^,}]*' | grep -o 'true\|false')
 
       if [ "$INITIALIZED" != "true" ]; then
-        echo "[autounseal] Pod $POD no está inicializado, saltando."
+        echo "[autounseal] Pod $POD is not initialized yet, skipping."
         continue
       fi
 
       if [ "$SEALED" = "true" ]; then
-        echo "[autounseal] Pod $POD está SELLADO. Realizando desbloqueo..."
+        echo "[autounseal] Pod $POD is SEALED. Unsealing..."
 
-        # Desbloqueo: las claves nunca se imprimen en logs
+        # Unseal keys are never printed in logs
         kubectl exec -n "$NAMESPACE" "$POD" -- \
           sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt \
                  vault operator unseal -tls-server-name=$TLS_SERVER_NAME '$KEY1'" \
@@ -92,7 +105,7 @@ data:
                  vault operator unseal -tls-server-name=$TLS_SERVER_NAME '$KEY3'" \
           > /dev/null 2>&1
 
-        # Verificar que el unseal haya sido efectivo antes de reportar éxito
+        # Verify unseal was effective before reporting success
         NEW_STATUS=$(kubectl exec -n "$NAMESPACE" "$POD" -- \
           sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt \
                  vault status -format=json -tls-server-name=$TLS_SERVER_NAME || true" \
@@ -100,14 +113,14 @@ data:
         NEW_SEALED=$(echo "$NEW_STATUS" | grep -o '"sealed":[^,}]*' | grep -o 'true\|false')
 
         if [ "$NEW_SEALED" = "false" ]; then
-          echo "[autounseal] Pod $POD desbloqueado exitosamente."
+          echo "[autounseal] Pod $POD unsealed successfully."
         else
-          echo "[autounseal] ERROR: Pod $POD sigue sellado tras el intento de desbloqueo."
+          echo "[autounseal] ERROR: Pod $POD is still sealed after unseal attempt."
           exit 1
         fi
       else
-        echo "[autounseal] Pod $POD ya está desbloqueado."
+        echo "[autounseal] Pod $POD is already unsealed."
       fi
     done
 
-    echo "[autounseal] Revisión completa."
+    echo "[autounseal] Review complete."
