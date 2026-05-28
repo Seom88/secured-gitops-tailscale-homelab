@@ -10,7 +10,7 @@ loki:
   singleBinary:
     replicas: 1
 
-  # Component replicas
+  # Component replicas (set to 0 for Monolithic mode)
   write:
     replicas: 0
   read:
@@ -28,16 +28,38 @@ loki:
   test:
     enabled: false
 
-  # All loki settings combined under one key
+  # Loki application configuration
   loki:
     auth_enabled: false
     commonConfig:
       replication_factor: 1
     storage:
       type: filesystem
+    
+    schemaConfig:
+      configs:
+        - from: "2024-04-01"
+          store: tsdb
+          object_store: filesystem
+          schema: v13
+          index:
+            prefix: loki_index_
+            period: 24h
+    
+    # Disable test schema to use our custom schemaConfig
+    useTestSchema: false
+
+    storage_config:
       filesystem:
-        directory: /var/loki/chunks
-    useTestSchema: true
+        chunks_directory: /var/loki/chunks
+        rules_directory: /var/loki/rules
+
+  # Enable gateway (default is true, but we ensure it)
+  gateway:
+    enabled: true
+    service:
+      port: 80
+      type: ClusterIP
 
 # Configuration for the Kube-Prometheus-Stack subchart
 kube-prometheus-stack:
