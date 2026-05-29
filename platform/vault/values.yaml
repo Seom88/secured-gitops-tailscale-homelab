@@ -171,9 +171,10 @@ vault:
 
           storage "raft" {
             path = "/vault/data"
+            {{- $namespace := .Release.Namespace }}
             {{- range $i := until 3 }}
             retry_join {
-              leader_api_addr = "https://{{ template "vault.fullname" $ }}-{{ $i }}.{{ template "vault.fullname" $ }}-internal:8200"
+              leader_api_addr = "https://{{ template "vault.fullname" $ }}-{{ $i }}.{{ template "vault.fullname" $ }}-internal.{{ $namespace }}.svc.cluster.local:8200"
               leader_ca_cert_file = "/vault/userconfig/vault-tls/ca.crt"
               leader_client_cert_file = "/vault/userconfig/vault-tls/tls.crt"
               leader_client_key_file = "/vault/userconfig/vault-tls/tls.key"
