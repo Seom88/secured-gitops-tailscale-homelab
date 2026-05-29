@@ -95,6 +95,10 @@ vault:
           protocol: UDP
         - port: 53
           protocol: TCP
+      # Kubernetes API server (for service_registration, autounseal, etc.)
+      - ports:
+          - port: 443
+            protocol: TCP
       ingress:
       - from:
         - namespaceSelector:
@@ -183,7 +187,6 @@ vault:
           }
 
           disable_mlock = true
-          service_registration "kubernetes" {}
 
     readinessProbe:
       enabled: true
