@@ -18,7 +18,7 @@ spec:
       auth:
         kubernetes:
           mountPath: "kubernetes"
-          role: "eso-tailscale-role"
+          role: "eso-role"
           serviceAccountRef:
               name: "{{ .Release.Name }}-external-secrets"
               namespace: "external-secrets"
