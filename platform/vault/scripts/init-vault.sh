@@ -1,5 +1,5 @@
 #!/bin/bash
-set -ex
+set -e
 
 # Colors
 BLUE='\033[0;34m'
