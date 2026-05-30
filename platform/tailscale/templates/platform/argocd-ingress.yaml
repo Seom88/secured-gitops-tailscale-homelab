@@ -15,7 +15,7 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  name: http
+                  name: https
   tls:
   - hosts:
     - {{ if .Values.development.enabled }}dev-argocd{{- else }}argocd{{- end }}
