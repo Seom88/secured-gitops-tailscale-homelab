@@ -19,7 +19,7 @@ By default, the `prod` environment targets the `main` branch, while the `dev` en
 
 This homelab integrates with Tailscale for secure networking. The bootstrap script simplifies the setup:
 
-1.  **Auth Credentials**: When running `./bootstrap/01-init-gitops.sh`, it will prompt for a **Tailscale Client ID** and **Secret**. These are used to provision the Tailscale Operator.
+1.  **Auth Credentials**: When running `just init-prod` (or `just init-dev`), it will prompt for a **Tailscale Client ID** and **Secret**. These are used to provision the Tailscale Operator.
 2.  **K3s Config**: If you are using K3s, follow the [K3s Install Guide](k3s-install.md) to ensure nodes are correctly identified in your Tailnet.
 3.  **Operator**: The Tailscale Operator is managed as a platform app. You can find its configuration in `platform/tailscale/`.
 

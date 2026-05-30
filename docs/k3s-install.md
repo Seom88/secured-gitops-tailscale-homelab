@@ -164,3 +164,6 @@ Verify the cluster status:
 kubectl get nodes -o wide
 ```
 
+> [!TIP]
+> Once `just` is installed, you can use `just status` for a compact overview of nodes and platform pods, and `just check` to verify all required CLI tools are available.
+

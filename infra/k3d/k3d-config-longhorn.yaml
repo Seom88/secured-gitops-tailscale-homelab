@@ -1,0 +1,23 @@
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: dev-cluster
+servers: 1
+agents: 3
+volumes:
+- volume: $HOME/k3d-longhorn:/var/lib/longhorn:shared
+  nodeFilters:
+  - all
+- volume: /usr/sbin/iscsiadm:/usr/sbin/iscsiadm
+  nodeFilters:
+  - all
+- volume: /etc/iscsi:/etc/iscsi
+  nodeFilters:
+  - all
+- volume: /lib/modules:/lib/modules
+  nodeFilters:
+  - all
+options:
+  k3d:
+    wait: true
+    timeout: "360s"

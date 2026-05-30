@@ -9,18 +9,22 @@ This guide provides the steps to initialize the Homelab GitOps environment, incl
 - `kubectl` configured to point to your cluster.
 - `helm` installed locally.
 - `jq` installed locally.
+- [`just`](https://github.com/casey/just) installed locally (command runner — all common operations are available as recipes).
 
 ## 1. Bootstrap the Environment
 
-Run the initialization script to configure the foundation of your GitOps flow (Storage, Vault, External Secrets, and ArgoCD). You can choose between `prod` (default) and `dev` environments.
+Run the initialization script to configure the foundation of your GitOps flow (Storage, Vault, External Secrets, and ArgoCD). You can choose between `prod` (default) and `dev` environments using the `just` recipes:
 
 ```bash
 # For production (default)
-./bootstrap/01-init-gitops.sh
+just init-prod
 
 # For development
-./bootstrap/01-init-gitops.sh dev
+just init-dev
 ```
+
+> [!TIP]
+> The raw scripts are also available at `./bootstrap/01-init-gitops.sh [prod|dev]` if you prefer running them directly.
 
 > [!IMPORTANT]
 > - The script will prompt for your **Tailscale Client ID** and **Secret** if they are not already set as environment variables (`TS_CLIENT_ID` and `TS_CLIENT_SECRET`).
@@ -33,14 +37,15 @@ The bootstrap script automatically initializes Vault and configures the necessar
 ### Access Vault UI
 
 1. **Get the root token**:
-   The script prints the root token at the end, but you can always retrieve it manually. Note that the secret name depends on the environment (`vault-unseal-keys` for prod, `vault-dev-unseal-keys` for dev):
+   The script prints the root token at the end, but you can always retrieve it with a `just` recipe:
    ```bash
-   # Replace 'vault-unseal-keys' if using dev mode
-   kubectl -n vault get secret vault-unseal-keys -o jsonpath="{.data.root-token}" | base64 -d && echo ""
+   just vault-token
    ```
+   > [!NOTE]
+   > This automatically finds the Vault unseal secret regardless of environment (prod/dev). The underlying command is `kubectl -n vault get secret <name> -o jsonpath="{.data.root-token}" | base64 -d`.
 2. **Start port-forwarding**:
    ```bash
-   kubectl port-forward svc/vault -n vault 8200:8200
+   just pf-vault
    ```
 3. **Login**: Go to [https://localhost:8200](https://localhost:8200) and use the token from step 1.
 
@@ -58,8 +63,8 @@ To check the sync status of your applications:
 
 | Action | Command |
 | :--- | :--- |
-| **Get Password** | `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo ""` |
-| **Port Forward** | `kubectl port-forward svc/argocd-server -n argocd 8080:443` |
+| **Get Password** | `just argocd-password` |
+| **Port Forward** | `just pf-argocd` |
 
 Access the UI at [localhost:8080](http://localhost:8080) with user `admin`.
 
