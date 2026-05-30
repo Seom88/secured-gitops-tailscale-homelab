@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/name: vault-autounseal
     app.kubernetes.io/component: operations
 spec:
-  schedule: "*/1 * * * *"
+  schedule: "*/15 * * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
