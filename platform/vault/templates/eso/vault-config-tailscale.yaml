@@ -41,7 +41,7 @@ spec:
 
           # Create/update Kubernetes auth role for eso-tailscale
           echo "Configuring auth/kubernetes/role/eso-tailscale..."
-          kubectl exec -n vault "$VAULT_POD" -- /bin/sh -c "VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt VAULT_TOKEN=$ROOT_TOKEN vault write -tls-server-name=vault auth/kubernetes/role/eso-tailscale bound_service_account_names=vault-external-secrets,vault-dev-external-secrets bound_service_account_namespaces=external-secrets policies=tailscale-policy ttl=24h" > /dev/null 2>&1
+          kubectl exec -n vault "$VAULT_POD" -- /bin/sh -c "VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt VAULT_TOKEN=$ROOT_TOKEN vault write -tls-server-name=vault auth/kubernetes/role/eso-tailscale bound_service_account_names=vault-external-secrets,vault-dev-external-secrets,external-secrets bound_service_account_namespaces=external-secrets policies=tailscale-policy ttl=24h" > /dev/null 2>&1
 
           # Seed tailscale auth secret
           echo "Seeding secret/tailscale/auth..."
