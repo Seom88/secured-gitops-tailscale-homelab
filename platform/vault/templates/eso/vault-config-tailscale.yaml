@@ -5,9 +5,8 @@ metadata:
   namespace: vault
   annotations:
     argocd.argoproj.io/sync-wave: "1"
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
 spec:
+  ttlSecondsAfterFinished: 3600
   template:
     spec:
       serviceAccountName: vault-config
