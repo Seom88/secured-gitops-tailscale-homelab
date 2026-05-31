@@ -19,7 +19,7 @@ cluster-dev-longhorn:
     k3d cluster create --config infra/k3d/k3d-config-longhorn.yaml
 
 # Destroy dev cluster
-cluster-destroy-dev:
+cluster-dev-delete:
     k3d cluster delete dev-cluster
 
 # ── Bootstrap ─────────────────────────────────
