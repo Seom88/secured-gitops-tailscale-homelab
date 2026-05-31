@@ -5,7 +5,7 @@ metadata:
   namespace: vault
   annotations:
     argocd.argoproj.io/sync-wave: "1"
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: PreSync
     argocd.argoproj.io/hook-delete-policy: HookSucceeded
 spec:
   template:
@@ -20,6 +20,14 @@ spec:
         - -ec
         - |
           set -e
+
+          # Wait for Vault to be unsealed and responsive
+          echo "Waiting for Vault to be ready..."
+          until kubectl exec -n vault "$(kubectl get pod -n vault -l app.kubernetes.io/name=vault,component=server -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)" -- /bin/sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault status -tls-server-name=vault 2>/dev/null | grep -q 'Sealed.*false'" 2>/dev/null; do
+            echo "Vault not ready yet, retrying in 5s..."
+            sleep 5
+          done
+          echo "Vault is ready!"
 
           VAULT_POD=$(kubectl get pod -n vault -l app.kubernetes.io/name=vault,component=server -o jsonpath="{.items[0].metadata.name}")
           RELEASE_NAME=$(kubectl get pod $VAULT_POD -n vault -o jsonpath="{.metadata.labels['app\.kubernetes\.io/instance']}")
