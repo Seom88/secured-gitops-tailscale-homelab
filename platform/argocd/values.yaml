@@ -62,3 +62,40 @@ configs:
             end
           end
           return hs
+
+      monitoring.coreos.com/Prometheus:
+        health.lua: |
+          hs = {}
+          if obj.status == nil then
+            hs.status = "Progressing"
+            hs.message = "Prometheus instance initializing"
+            return hs
+          end
+          if obj.status.conditions ~= nil then
+            for i, condition in ipairs(obj.status.conditions) do
+              if condition.type == "Available" then
+                if condition.status == "True" then
+                  hs.status = "Healthy"
+                  hs.message = "Prometheus available"
+                  return hs
+                else
+                  hs.status = "Progressing"
+                  hs.message = condition.message or "Prometheus not yet available"
+                  return hs
+                end
+              end
+              if condition.type == "Reconciled" and condition.status == "False" then
+                hs.status = "Degraded"
+                hs.message = condition.message or "Reconciliation failed"
+                return hs
+              end
+            end
+          end
+          if obj.status.availableReplicas ~= nil and obj.status.availableReplicas > 0 then
+            hs.status = "Healthy"
+            hs.message = obj.status.availableReplicas .. " replica(s) available"
+          else
+            hs.status = "Progressing"
+            hs.message = "Waiting for replicas"
+          end
+          return hs
