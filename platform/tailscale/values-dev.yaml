@@ -10,5 +10,3 @@ tailscale-operator:
 development:
   enabled: true
 
-# vaultAddress points to the Vault service in the dev cluster
-vaultAddress: "https://vault-dev.vault.svc:8200"

@@ -1,8 +1,7 @@
 apiVersion: external-secrets.io/v1
-kind: SecretStore
+kind: ClusterSecretStore
 metadata:
   name: vault-monitoring
-  namespace: monitoring
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 spec:
@@ -20,4 +19,3 @@ spec:
         kubernetes:
           mountPath: "kubernetes"
           role: "eso-monitoring"
-          # No serviceAccountRef — ESO uses its own pod SA for Vault auth

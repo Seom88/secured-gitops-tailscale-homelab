@@ -1,6 +1,9 @@
 development:
   enabled: true
 
+# vaultAddress points to the Vault service in the dev cluster
+vaultAddress: "https://vault-dev.vault.svc:8200"
+
 vault:
   server:
     # Persistent storage
@@ -9,7 +12,7 @@ vault:
       size: 10Gi
       # storageClass: standard
 
-    # Audit log storage
+      # Audit log storage
     auditStorage:
       enabled: true
       size: 10Gi
