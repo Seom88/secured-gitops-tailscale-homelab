@@ -5,7 +5,7 @@ metadata:
 servers: 1
 agents: 3
 volumes:
-- volume: $HOME/k3d-longhorn:/var/lib/longhorn:shared
+- volume: /var/mnt/data/k3d-longhorn:/var/lib/longhorn:shared
   nodeFilters:
   - all
 - volume: /usr/sbin/iscsiadm:/usr/sbin/iscsiadm

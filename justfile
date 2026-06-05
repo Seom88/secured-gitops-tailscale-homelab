@@ -10,13 +10,13 @@ _default:
 
 # Create dev cluster (without Longhorn)
 cluster-dev:
-    k3d cluster create --config infra/k3d/k3d-config.yaml
+    k3d cluster create --config infra/k3s/k3d-config.yaml
 
 # Create dev cluster WITH Longhorn support (needs iscsiadm on host)
 cluster-dev-longhorn:
     #!/usr/bin/env bash
     mkdir -p "$HOME/k3d-longhorn"
-    k3d cluster create --config infra/k3d/k3d-config-longhorn.yaml
+    k3d cluster create --config infra/k3s/k3d-config-longhorn.yaml
 
 # Destroy dev cluster
 cluster-dev-delete:

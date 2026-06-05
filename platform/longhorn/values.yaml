@@ -1,0 +1,30 @@
+longhorn:
+  defaultSettings:
+    defaultReplicaCount: 3
+
+    replicaSoftAntiAffinity: false
+
+    replicaAutoBalance: "least-effort"
+
+    storageMinimalAvailablePercentage: 15
+
+    storageOverProvisioningPercentage: 200
+
+    nodeDownPodDeletionPolicy: delete-both-statefulset-and-deployment-pod
+
+    defaultDataPath: /var/lib/longhorn
+
+    defaultLonghornStaticStorageClass: longhorn-static
+
+  persistence:
+    defaultClass: true
+    defaultClassReplicaCount: 3
+    migratable: true
+    reclaimPolicy: Delete
+
+  ingress:
+    enabled: false
+    ingressClassName: ""
+    host: ""
+    tls: false
+    tlsSecret: ""
