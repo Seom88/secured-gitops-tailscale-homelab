@@ -17,7 +17,7 @@ elif kubectl get nodes -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}' 
     kubectl apply -f https://github.com/rancher/system-upgrade-controller/releases/latest/download/crd.yaml \
         -f https://github.com/rancher/system-upgrade-controller/releases/latest/download/system-upgrade-controller.yaml
     echo "Applying update plan..."
-    kubectl apply -f infra/update/plan-update-k3s.yaml
+    kubectl apply -f infra/k3s/update/plan-update-k3s.yaml
 elif kubectl get nodes -o jsonpath='{.items[0].metadata.labels.minikube\.k8s\.io/name}' | grep -q "minikube"; then
     echo "Environment detected: Minikube"
 else
