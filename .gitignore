@@ -4,3 +4,6 @@ charts/
 *.bak
 *.swp
 .atl
+**/config.yaml
+**/tailscale/state/
+**/*.env

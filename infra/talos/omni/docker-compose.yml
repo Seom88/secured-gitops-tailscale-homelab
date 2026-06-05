@@ -1,0 +1,98 @@
+name: omni-on-prem
+
+services:
+  ts-omni:
+    image: tailscale/tailscale:latest
+    container_name: ts-omni
+    hostname: omni
+    env_file:
+      - omni.env
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_SERVE_CONFIG=/config/serve.json
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=true
+    volumes:
+      - ./tailscale/serve.json:/config/serve.json:ro
+      - ./tailscale/state:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    ports:
+      # SideroLink ports — must be reachable by Talos nodes on LAN
+      - "8090:8090"         # SideroLink gRPC API
+      - "8091:8091"         # Event sink
+      - "8100:8100"         # Kubernetes proxy (in HTTP mode)
+      - "50180:50180/udp"   # SideroLink WireGuard tunnel
+    restart: unless-stopped
+
+  # Optional: Tailscale Identity Provider (tsidp) for Omni OIDC login
+  tsidp:
+    image: ghcr.io/tailscale/tsidp:latest
+    container_name: tsidp
+    environment:
+      - TAILSCALE_USE_WIP_CODE=1
+      - TS_HOSTNAME=tsidp
+      - TS_AUTHKEY=${TS_AUTHKEY}
+    volumes:
+      - tsidp-data:/var/lib/tsidp
+    command:
+      - "--dir=/var/lib/tsidp"
+    restart: unless-stopped
+    profiles:
+      - tsidp
+
+  omni:
+    container_name: omni
+    # check: https://github.com/siderolabs/omni/pkgs/container/omni
+    image: ghcr.io/siderolabs/omni:${OMNI_IMG_TAG:-v1.8.1}
+    env_file:
+      - omni.env
+    devices:
+      - /dev/net/tun
+    volumes:
+      - ${ETCD_VOLUME_PATH}:/_out/etcd
+      - ${SQLITE_STORAGE_PATH}:/_out/sqlite
+      - ${ETCD_ENCRYPTION_KEY}:/omni.asc
+    network_mode: "service:ts-omni"
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      - ts-omni
+    restart: unless-stopped
+    command: >
+      --account-id=${OMNI_ACCOUNT_UUID}
+      --name=${NAME}
+      --private-key-source=file:///omni.asc
+      --event-sink-port=${EVENT_SINK_PORT}
+      --bind-addr=0.0.0.0:4443
+      --machine-api-bind-addr=${MACHINE_API_BIND_ADDR}
+      --k8s-proxy-bind-addr=${K8S_PROXY_BIND_ADDR}
+      --advertised-api-url=${ADVERTISED_API_URL}
+      --advertised-kubernetes-proxy-url=${ADVERTISED_K8S_PROXY_URL}
+      --siderolink-api-advertised-url=${SIDEROLINK_ADVERTISED_API_URL}
+      --siderolink-wireguard-advertised-addr=${SIDEROLINK_WIREGUARD_ADVERTISED_ADDR}
+      --initial-users=${INITIAL_USER_EMAILS}
+      --sqlite-storage-path=/_out/sqlite/omni.db
+      ${AUTH}
+
+  omni-infra-provider-proxmox:
+    image: ghcr.io/siderolabs/omni-infra-provider-proxmox:v0.1.0-1-gade698e
+    container_name: omni-infra-provider-proxmox
+    env_file:
+      - omni.env
+    volumes:
+      - ./config.yaml:/config.yaml:ro
+    command: >
+      --config-file /config.yaml
+      --omni-api-endpoint http://127.0.0.1:4443/
+      --omni-service-account-key ${OMNI_INFRA_PROVIDER_KEY}
+    network_mode: "service:ts-omni"
+    restart: unless-stopped
+    depends_on:
+      - omni
+
+volumes:
+  tsidp-data:
+
