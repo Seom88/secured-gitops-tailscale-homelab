@@ -5,5 +5,8 @@ charts/
 *.swp
 .atl
 **/config.yaml
-**/tailscale/state/
 **/*.env
+secrets/
+*asc
+
+!infra/talos/omni/dex/config.yaml
