@@ -10,6 +10,8 @@ defaultSettings:
 
   replicaAutoBalance: "least-effort"
 
+  storageReservedPercentageForDefaultDisk: 5
+
   storageMinimalAvailablePercentage: 15
 
   storageOverProvisioningPercentage: 200
