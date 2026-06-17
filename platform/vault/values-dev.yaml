@@ -10,10 +10,9 @@ vault:
     dataStorage:
       enabled: true
       size: 10Gi
-      # storageClass: standard
+      storageClass: ""
 
-      # Audit log storage
     auditStorage:
       enabled: true
       size: 10Gi
-      # storageClass: standard
+      storageClass: ""

@@ -208,12 +208,12 @@ vault:
     dataStorage:
       enabled: true
       size: 10Gi
-      storageClass: local-path
+      storageClass: ""
 
     auditStorage:
       enabled: true
       size: 10Gi
-      storageClass: local-path
+      storageClass: ""
 
   ui:
     enabled: true
