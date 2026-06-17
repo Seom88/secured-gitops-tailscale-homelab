@@ -4,6 +4,10 @@
 [![GitOps](https://img.shields.io/badge/GitOps-ArgoCD-orange?style=for-the-badge&logo=argo)](https://argoproj.github.io/cd/)
 [![Security](https://img.shields.io/badge/Security-HashiCorp_Vault-blue?style=for-the-badge&logo=vault)](https://www.vaultproject.io/)
 [![Network](https://img.shields.io/badge/Network-Tailscale-234E5C?style=for-the-badge&logo=tailscale)](https://tailscale.com/)
+[![Infra](https://img.shields.io/badge/Infra-Terraform-%23844FBA?style=for-the-badge&logo=terraform)](https://github.com/Seom88/infra-talos-homelab)
+
+> **Companion project:** Cluster provisioning (Talos + Terraform) at  
+> [`github.com/Seom88/infra-talos-homelab`](https://github.com/Seom88/infra-talos-homelab)
 
 Enterprise-grade DevSecOps homelab with GitOps, zero-trust networking, and secrets management — running on Talos (production) and k3d (development).
 
@@ -17,6 +21,16 @@ Dual-environment architecture: **Talos** for production, **k3d** for local devel
 
 ```mermaid
 graph TD
+    subgraph "Cluster Provisioning — homelab-talos-infra"
+        TF[Terraform]
+        TALOS[Talos Linux Nodes]
+        EXT[System Extensions<br/>iscsi-tools, util-linux]
+        PATCH[Machine Config Patches<br/>kubelet extraMounts]
+        TF --> TALOS
+        TALOS --> EXT
+        TALOS --> PATCH
+    end
+
     subgraph "Tailscale Mesh VPN"
         TS[Tailscale Operator]
     end
@@ -28,11 +42,13 @@ graph TD
         ESO[External Secrets<br/>Operator]
         Cert[Cert-Manager]
         Apps[Platform & User Apps]
+        LH[Longhorn<br/>Distributed Storage]
 
         Argo -->|sync waves| Cert
         Argo -->|wave 0| ESO
         Argo -->|wave 1| Vault
         Argo -->|wave 2-3| Apps
+        Argo --> LH
     end
 
     User((Admin)) -->|tailscale| TS
@@ -43,6 +59,7 @@ graph TD
     ESO -->|ClusterSecretStore| Vault
     Vault -.->|auto-unseal CronJob| Vault
     Cert -.->|TLS certificates| Vault
+    LH --> PATCH
 ```
 
 ## 🛡 Key DevSecOps Features
@@ -63,6 +80,7 @@ graph TD
 
 | Category | Tool | Status |
 |----------|------|--------|
+| **Provisioning** | Terraform + Talos (`homelab-talos-infra`) | ✅ Companion repo |
 | **Orchestration** | Talos (prod) / k3d (dev) | ✅ Dual-env |
 | **GitOps** | ArgoCD | ✅ App-of-Apps |
 | **Secrets** | Vault (HA Raft) + ESO | ✅ Per-service stores |
@@ -73,12 +91,14 @@ graph TD
 
 ## 🏁 Getting Started
 
+This is the **GitOps layer** — it assumes a running cluster. Cluster provisioning is in the [infra repo](https://github.com/Seom88/infra-talos-homelab).
+
 If you want to replicate or fork this lab:
 
-1. **Fork the Repo** — Follow the [Customization Guide](docs/customization-guide.md) to update repository references.
-2. **Choose your infra**:
-   - **Production**: Provision Talos nodes ([Talos Guide](https://www.talos.dev/))
-   - **Development**: Use `k3d` with `infra/k3d/k3d-config.yaml`
+1. **Fork both repos** — Update repository references in the [Customization Guide](docs/customization-guide.md).
+2. **Provision the cluster**:
+   - **Production (Talos)**: Use [`infra-talos-homelab`](https://github.com/Seom88/infra-talos-homelab) — Terraform creates VMs, installs Talos, applies system extensions and machine config patches (Longhorn mounts, etc.)
+   - **Development**: Use `k3d` with `infra/k3d/k3d-config.yaml` — no separate infra needed.
 3. **Bootstrap**: Run `bootstrap/01-init-gitops.sh` to deploy ArgoCD → App-of-Apps → Vault → everything.
 
 Bootstrap auto-detects the environment (Talos / K3s / Minikube) and adapts accordingly.
@@ -107,11 +127,12 @@ secured-gitops-tailscale-homelab/
 │   ├── values-dev.yaml          # Dev overrides (branch: dev)
 │   └── templates/               # ApplicationSets & root app
 │
-├── infra/                       # Infrastructure provisioning & configs
+├── infra/                       # Cluster bootstrap configs
 │   ├── init-infra.sh            # Node-level setup (auto-detects Talos/K3s)
-│   ├── talos/                   # Talos schematic + patches
-│   │   ├── schematic.yaml       # System extensions (iscsi, qemu, tailscale)
-│   │   └── patches/             # Node role patches (controlplane / worker)
+│   ├── talos/                   # Talos schematic (system extensions)
+│   │   └── schematic.yaml       # iscsi-tools, util-linux, tailscale, qemu-ga
+│   │                           # 👉 Machine config patches (Longhorn mounts, etc.)
+│   │                           #    live in homelab-talos-infra/patches/
 │   ├── k3d/                     # Local dev cluster configs
 │   │   ├── k3d-config.yaml      # Base config
 │   │   └── k3d-config-longhorn.yaml  # With Longhorn prerequisites
@@ -156,5 +177,12 @@ secured-gitops-tailscale-homelab/
 - [ ] Real application deployment (Immich or similar)
 
 ---
+
+## 🔗 Related Projects
+
+| Repo | Role |
+|------|------|
+| [`homelab-talos-infra`](https://github.com/Seom88/infra-talos-homelab) | Cluster provisioning — Terraform + Talos, machine config patches, system extensions |
+| `secured-gitops-tailscale-homelab` _(this repo)_ | GitOps layer — ArgoCD, Vault, Tailscale, storage, platform apps |
 
 *Built for learning, security, and automation.*

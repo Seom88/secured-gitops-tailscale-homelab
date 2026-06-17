@@ -2,6 +2,8 @@
 
 This guide will walk you through the steps required to personalize this homelab after forking the repository. Since GitOps relies on declarative state, you need to update several references to point to your own infrastructure and repository.
 
+> **Two-repo setup:** This project is the GitOps layer. Cluster provisioning (Terraform + Talos) lives in a separate [infra repo](https://github.com/Seom88/infra-talos-homelab) — update its references too if you fork both.
+
 ## 1. Update Repository References
 
 ArgoCD needs to know where its source of truth is. This project uses an **App-of-Apps** pattern driven by Helm values.
