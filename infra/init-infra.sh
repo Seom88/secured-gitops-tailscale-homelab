@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 USE_LONGHORN=${USE_LONGHORN:-false}
 
@@ -6,18 +7,35 @@ echo "Infra: Applying changes to the cluster..."
 
 # --- Storage ---
 if [ "$USE_LONGHORN" = "true" ]; then
+    echo "Pre-creating longhorn-system namespace with PodSecurity labels..."
+    kubectl apply -f infra/longhorn/longhorn-namespace.yaml
+
     echo "Installing Longhorn as default storage..."
-    helm repo add longhorn https://charts.longhorn.io > /dev/null 2>&1
+    helm repo add longhorn https://charts.longhorn.io --force-update > /dev/null 2>&1
     helm repo update > /dev/null 2>&1
     helm upgrade --install longhorn longhorn/longhorn \
       --version 1.12.0 \
-      --namespace longhorn-system --create-namespace \
+      --namespace longhorn-system \
       --values infra/longhorn/longhorn-values.yaml \
       --timeout 30m
 
     echo "Waiting for Longhorn to be ready..."
+
+    # 1. Longhorn Manager DaemonSet (created by the chart)
     kubectl rollout status -n longhorn-system daemonset/longhorn-manager --timeout=10m
-    kubectl rollout status -n longhorn-system daemonset/longhorn-csi-plugin --timeout=5m
+
+    # 2. Driver deployer — creates the CSI plugin DaemonSet dynamically
+    kubectl rollout status -n longhorn-system deployment/longhorn-driver-deployer --timeout=5m
+
+    # 3. CSI plugin — not in chart, created by driver-deployer after it starts
+    echo "Waiting for longhorn-csi-plugin DaemonSet..."
+    for i in $(seq 1 30); do
+      if kubectl get daemonset longhorn-csi-plugin -n longhorn-system &>/dev/null; then
+        kubectl rollout status -n longhorn-system daemonset/longhorn-csi-plugin --timeout=3m
+        break
+      fi
+      sleep 10
+    done
 
     echo "Applying additional Longhorn storage classes..."
     kubectl apply -f infra/longhorn/longhorn-storageclass.yaml
