@@ -20,6 +20,14 @@ echo -e "${BLUE}${BOLD}===================================================${NC}"
 if [ "$ENV" == "dev" ]; then
   echo -e "${YELLOW}⚠️  Dev mode ON - using values-dev.yaml${NC}"
   VALUES_FILE="gitops/values-dev.yaml"
+  read -p "$(echo -e "${YELLOW}❓ Use Longhorn as default storage? [y/N]: ${NC}")" USE_LONGHORN_ANSWER
+  if [[ "$USE_LONGHORN_ANSWER" =~ ^[Yy]$ ]]; then
+    USE_LONGHORN=true
+  else
+    USE_LONGHORN=false
+  fi
+else
+  USE_LONGHORN=true
 fi
 
 # --- ArgoCD Version ---
@@ -28,7 +36,7 @@ ARGOCD_VERSION=9.5.13
 # Init infra
 echo -e "\n${BLUE}🏗️  Initializing infrastructure...${NC}"
 chmod +x infra/init-infra.sh
-./infra/init-infra.sh
+USE_LONGHORN=$USE_LONGHORN ./infra/init-infra.sh
 
 # --- STEP 1: Install ArgoCD ---
 echo -e "\n${BLUE}📦 Installing ArgoCD (v$ARGOCD_VERSION)...${NC}"
@@ -53,7 +61,9 @@ echo -e "\n${BLUE}📂 Installing GitOps App-of-Apps...${NC}"
 helm upgrade --install gitops gitops \
   --namespace argocd \
   --timeout 30m \
-  -f "$VALUES_FILE"
+  -f "$VALUES_FILE" \
+  || echo -e "${YELLOW}⚠️  GitOps helm install failed (likely a server-side apply conflict).${NC}
+${YELLOW}   You can retry with: kubectl delete applicationset -n argocd platform-local-apps${NC}"
 
 # --- STEP 3: Vault configuration ---
 echo -e "\n${BLUE}🔑 Configuring Hashicorp Vault...${NC}"

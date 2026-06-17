@@ -5,7 +5,7 @@ platformApps:
   local:
   - name: longhorn
     namespace: longhorn-system
-    wave: 1
+    wave: -1
     path: platform/longhorn
   - name: vault
     namespace: vault

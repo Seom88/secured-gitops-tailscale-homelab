@@ -1,15 +1,21 @@
 #!/bin/bash
 
+USE_LONGHORN=${USE_LONGHORN:-false}
+
 echo "Infra: Applying changes to the cluster..."
+
+# --- Storage ---
+if [ "$USE_LONGHORN" = "true" ]; then
+    echo "Longhorn enabled — skipping local-path, longhorn will be deployed via GitOps"
+else
+    echo "Installing Local Path Provisioner as default storage..."
+    kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.30/deploy/local-path-storage.yaml
+    kubectl label --overwrite ns local-path-storage pod-security.kubernetes.io/enforce=privileged
+    kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+fi
 
 if kubectl get nodes -o jsonpath='{.items[0].metadata.labels.kubernetes\.io/hostname}' | grep -q "talos"; then
     echo "Environment detected: Talos"
-    echo "Installing Local Path Provisioner..."
-    kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.30/deploy/local-path-storage.yaml
-    echo "Setting privileged security for Local Path Provisioner..."
-    kubectl label --overwrite ns local-path-storage pod-security.kubernetes.io/enforce=privileged
-    echo "Patching Local Path Provisioner to be default..."
-    kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
 elif kubectl get nodes -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}' | grep -q "+k3s"; then
     # Follow https://docs.k3s.io/upgrades/automated
     echo "Environment detected: K3s"

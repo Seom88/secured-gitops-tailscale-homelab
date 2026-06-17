@@ -3,10 +3,10 @@ repoURL: https://github.com/Seom88/secured-gitops-tailscale-homelab.git
 platformApps:
   enabled: true
   local:
-  # - name: longhorn
-  #   namespace: longhorn-system
-  #   wave: 1
-  #   path: platform/longhorn
+  - name: longhorn
+    namespace: longhorn-system
+    wave: -1
+    path: platform/longhorn
   - name: vault
     namespace: vault
     wave: 2
