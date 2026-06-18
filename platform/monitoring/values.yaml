@@ -9,6 +9,9 @@ loki:
   # Number of replicas
   singleBinary:
     replicas: 1
+    persistence:
+      size: 5Gi
+      storageClass: ""
 
   # Component replicas (set to 0 for Monolithic mode)
   write:

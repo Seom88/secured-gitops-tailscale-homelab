@@ -9,10 +9,10 @@ vault:
     # Persistent storage
     dataStorage:
       enabled: true
-      size: 10Gi
+      size: 2Gi
       storageClass: ""
 
     auditStorage:
       enabled: true
-      size: 10Gi
+      size: 1Gi
       storageClass: ""
