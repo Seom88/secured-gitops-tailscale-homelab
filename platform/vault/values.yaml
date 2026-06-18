@@ -197,14 +197,6 @@ vault:
       timeoutSeconds: 5
       failureThreshold: 6
 
-    livenessProbe:
-      enabled: true
-      path: "/v1/sys/health?standbyok=true"
-      initialDelaySeconds: 60
-      periodSeconds: 10
-      timeoutSeconds: 5
-      failureThreshold: 6
-
     dataStorage:
       enabled: true
       size: 10Gi
