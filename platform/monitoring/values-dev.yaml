@@ -1,4 +1,4 @@
-development:
+developmentApp:
   enabled: true
 
 # Configuration for the Kube-Prometheus-Stack subchart

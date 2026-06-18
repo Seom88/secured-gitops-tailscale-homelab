@@ -1,4 +1,4 @@
-development:
+developmentApp:
   enabled: true
 
 # vaultAddress points to the Vault service in the dev cluster

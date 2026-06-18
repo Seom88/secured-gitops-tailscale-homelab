@@ -18,5 +18,5 @@ spec:
                   name: https
   tls:
   - hosts:
-    - {{ if .Values.development.enabled }}dev-argocd{{- else }}argocd{{- end }}
+    - {{ if .Values.developmentApp.enabled }}dev-argocd{{- else }}argocd{{- end }}
 {{- end }}

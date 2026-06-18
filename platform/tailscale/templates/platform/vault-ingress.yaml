@@ -13,10 +13,10 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: vault{{- if .Values.development.enabled }}-dev{{- end }}
+                name: vault{{- if .Values.developmentApp.enabled }}-dev{{- end }}
                 port:
                   name: https
   tls:
   - hosts:
-    - {{ if .Values.development.enabled }}dev-vault{{- else }}vault{{- end }}
+    - {{ if .Values.developmentApp.enabled }}dev-vault{{- else }}vault{{- end }}
 {{- end }}

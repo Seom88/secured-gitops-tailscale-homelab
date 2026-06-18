@@ -13,10 +13,10 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ if .Values.development.enabled }}monitoring-dev-kube-promet-prometheus{{- else }}monitoring-kube-prometheus-stack-prometheus{{- end }}
+                name: {{ if .Values.developmentApp.enabled }}monitoring-dev-kube-promet-prometheus{{- else }}monitoring-kube-prometheus-stack-prometheus{{- end }}
                 port:
                   name: http-web
   tls:
   - hosts:
-    - {{ if .Values.development.enabled }}dev-prometheus{{- else }}prometheus{{- end }}
+    - {{ if .Values.developmentApp.enabled }}dev-prometheus{{- else }}prometheus{{- end }}
 {{- end }}

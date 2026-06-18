@@ -25,5 +25,5 @@ spec:
                   number: 80
   tls:
   - hosts:
-    - nginx{{- if .Values.development.enabled }}-dev{{- end }}
+    - nginx{{- if .Values.developmentApp.enabled }}-dev{{- end }}
 {{- end }}

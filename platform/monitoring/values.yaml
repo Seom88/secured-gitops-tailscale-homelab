@@ -1,4 +1,4 @@
-development:
+developmentApp:
   enabled: false
 
 # Configuration for the Loki subchart

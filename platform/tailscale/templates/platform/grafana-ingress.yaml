@@ -13,10 +13,10 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: monitoring{{- if .Values.development.enabled }}-dev{{- end }}-grafana
+                name: monitoring{{- if .Values.developmentApp.enabled }}-dev{{- end }}-grafana
                 port:
                   name: http-web
   tls:
   - hosts:
-    - {{ if .Values.development.enabled }}dev-grafana{{- else }}grafana{{- end }}
+    - {{ if .Values.developmentApp.enabled }}dev-grafana{{- else }}grafana{{- end }}
 {{- end }}

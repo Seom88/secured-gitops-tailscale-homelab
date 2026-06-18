@@ -7,6 +7,6 @@ tailscale-operator:
   proxyConfig:
     defaultTags: "tag:k8s-dev"
 
-development:
+developmentApp:
   enabled: true
 
