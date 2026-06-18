@@ -85,7 +85,7 @@ ARGOCD_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o js
 echo -e "\n${GREEN}${BOLD}===================================================${NC}"
 echo -e "${GREEN}${BOLD}      ✨ BOOTSTRAP COMPLETE! ✨                    ${NC}"
 echo -e "${GREEN}${BOLD}===================================================${NC}"
-echo -e "${BOLD}ArgoCD UI:${NC}    http://localhost:8080"
+echo -e "${BOLD}ArgoCD UI:${NC}    https://localhost:8080"
 echo -e "${BOLD}ArgoCD User:${NC}  admin"
 echo -e "${BOLD}ArgoCD Pass:${NC}  $ARGOCD_PASSWORD"
 echo -e "\n${BOLD}Vault UI:${NC}     https://localhost:8200"

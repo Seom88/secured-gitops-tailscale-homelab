@@ -13,19 +13,33 @@ data:
 
     NAMESPACE="${VAULT_NAMESPACE:-vault}"
     TLS_SERVER_NAME="${VAULT_TLS_SERVER_NAME:-vault}"
-    KUBECTL="kubectl --request-timeout=10s"
+    KUBECTL="kubectl"
 
     echo "[autounseal] Starting pod review in namespace: $NAMESPACE"
 
-    # Get Vault server pod list
-    PODS=$($KUBECTL get pods -n "$NAMESPACE" \
-      -l app.kubernetes.io/name=vault,component=server \
-      -o jsonpath='{.items[*].metadata.name}')
+    # Get Vault server pod list with retry.
+    echo "[autounseal] Looking for Vault pods..."
+    RETRIES=12
+    SLEEP=5
+    i=1
+    while [ "$i" -le "$RETRIES" ]; do
+      PODS=$($KUBECTL get pods -n "$NAMESPACE" \
+        -l app.kubernetes.io/name=vault,component=server \
+        -o jsonpath='{.items[*].metadata.name}' 2>/dev/null)
+      
+      if [ -n "$PODS" ]; then
+        echo "[autounseal] Found Vault pods: $PODS"
+        break
+      fi
 
-    if [ -z "$PODS" ]; then
-      echo "[autounseal] ERROR: No Vault pods found."
-      exit 1
-    fi
+      if [ "$i" -eq "$RETRIES" ]; then
+        echo "[autounseal] ERROR: No Vault pods found after $((RETRIES * SLEEP)) seconds."
+        exit 1
+      fi
+      echo "[autounseal] No Vault pods yet (attempt $i/$RETRIES), retrying in ${SLEEP}s..."
+      sleep "$SLEEP"
+      i=$((i + 1))
+    done
 
     # Derive the secret name from the Helm release label on the first pod.
     # init-vault.sh creates it as "{release-name}-unseal-keys", so we do the same.
@@ -57,14 +71,21 @@ data:
     for POD in $PODS; do
       echo "[autounseal] Checking pod: $POD"
 
-      # Check pod phase, not container readiness.
-      # Sealed pods fail the readinessProbe and never reach ready=true,
-      # so using ready=true as a gate would prevent unsealing entirely.
+      # Check the pod is in Running phase (not Pending/Succeeded/Failed).
       PHASE=$($KUBECTL get pod "$POD" -n "$NAMESPACE" \
         -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
 
       if [ "$PHASE" != "Running" ]; then
         echo "[autounseal] Pod $POD is not in Running phase ($PHASE), skipping."
+        continue
+      fi
+
+      # Check the container is actually running.
+      CONTAINER=$($KUBECTL get pod "$POD" -n "$NAMESPACE" \
+        -o jsonpath='{.status.containerStatuses[0].state.running}' 2>/dev/null)
+
+      if [ -z "$CONTAINER" ]; then
+        echo "[autounseal] Pod $POD container is not running (CrashLoopBackOff or waiting), skipping."
         continue
       fi
 
