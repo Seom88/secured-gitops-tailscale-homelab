@@ -4,6 +4,11 @@ seaweedfs:
   master:
     enabled: true
     replicas: 1
+    data:
+      type: "existingClaim"
+      claimName: "seaweedfs-master-data"
+    logs:
+      type: "emptyDir"
 
   volume:
     enabled: true
@@ -14,15 +19,26 @@ seaweedfs:
         size: "26Gi"
         storageClass: ""
         maxVolumes: 0
+    logs:
+      type: "emptyDir"
 
   filer:
     enabled: true
     replicas: 1
+    data:
+      type: "persistentVolumeClaim"
+      size: "5Gi"
+      storageClass: ""
+    logs:
+      type: "emptyDir"
 
+  #独立 S3 Deployment (NO usar filer.s3.enabled — bug nil pointer dereference)
   s3:
     enabled: true
     enableAuth: true
     existingConfigSecret: seaweedfs-s3-credentials
+    logs:
+      type: "emptyDir"
 
   allInOne:
     enabled: false
