@@ -168,8 +168,8 @@ secured-gitops-tailscale-homelab/
 - [ ] Renovate bot
 
 ### Phase 3 — Storage & Scale 📋
-- [ ] Longhorn — distributed block storage
-- [ ] SeaweedFS — S3-compatible object storage
+- [X] Longhorn — distributed block storage
+- [X] SeaweedFS — S3-compatible object storage
 - [ ] Velero — cluster backups to SeaweedFS
 
 ### Phase 4 — Hardening & Developer Experience 💡

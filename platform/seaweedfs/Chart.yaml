@@ -1,0 +1,9 @@
+apiVersion: v2
+name: seaweedfs
+description: S3-compatible object storage
+type: application
+version: 1.0.0
+dependencies:
+  - name: seaweedfs
+    version: 4.34.0
+    repository: https://seaweedfs.github.io/seaweedfs/helm

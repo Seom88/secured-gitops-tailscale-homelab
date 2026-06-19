@@ -1,0 +1,31 @@
+# Production values — modular mode (separate StatefulSets)
+
+seaweedfs:
+  master:
+    enabled: true
+    replicas: 1
+
+  volume:
+    enabled: true
+    replicas: 1
+    dataDirs:
+      - name: data1
+        type: "persistentVolumeClaim"
+        size: "26Gi"
+        storageClass: ""
+        maxVolumes: 0
+
+  filer:
+    enabled: true
+    replicas: 1
+
+  s3:
+    enabled: true
+    enableAuth: true
+    existingConfigSecret: seaweedfs-s3-credentials
+
+  allInOne:
+    enabled: false
+
+developmentApp:
+  enabled: false

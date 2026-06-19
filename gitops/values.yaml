@@ -2,19 +2,6 @@
 repoURL: https://github.com/Seom88/secured-gitops-tailscale-homelab.git
 platformApps:
   enabled: true
-  local:
-  - name: vault
-    namespace: vault
-    wave: 2
-    path: platform/vault
-  - name: monitoring
-    path: platform/monitoring
-    namespace: monitoring
-    wave: 2
-  - name: tailscale
-    path: platform/tailscale
-    namespace: tailscale
-    wave: 3
   helm:
   - name: cert-manager
     namespace: cert-manager
@@ -34,6 +21,23 @@ platformApps:
     chart: external-secrets
     repoURL: https://charts.external-secrets.io
     version: 2.4.1
+  local:
+  - name: vault
+    namespace: vault
+    wave: 1
+    path: platform/vault
+  - name: seaweedfs
+    namespace: seaweedfs
+    wave: 2
+    path: platform/seaweedfs
+  - name: monitoring
+    namespace: monitoring
+    wave: 3
+    path: platform/monitoring
+  - name: tailscale
+    namespace: tailscale
+    wave: 4
+    path: platform/tailscale
 
 developmentApps:
   enabled: false

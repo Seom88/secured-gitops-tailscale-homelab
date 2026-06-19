@@ -1,0 +1,21 @@
+# Dev overrides — merges on top of values.yaml (prod)
+
+seaweedfs:
+  volume:
+    dataDirs:
+      - name: data1
+        type: "persistentVolumeClaim"
+        size: "5Gi"
+        storageClass: ""
+        maxVolumes: 0
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+developmentApp:
+  enabled: true
