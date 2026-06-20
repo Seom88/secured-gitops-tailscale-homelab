@@ -12,6 +12,10 @@ loki:
     persistence:
       size: 5Gi
       storageClass: ""
+    # Inject SeaweedFS S3 credentials from Vault via ESO
+    extraEnvFrom:
+      - secretRef:
+          name: loki-s3-credentials
 
   # Component replicas (set to 0 for Monolithic mode)
   write:
@@ -37,24 +41,31 @@ loki:
     commonConfig:
       replication_factor: 1
     storage:
-      type: filesystem
-    
+      type: s3
+      s3:
+        endpoint: http://seaweedfs-s3.seaweedfs.svc:8333
+        region: us-east-1
+        s3ForcePathStyle: true
+        insecure: true
+      bucketNames:
+        chunks: loki-chunks
+        ruler: loki-ruler
+      filesystem:
+        chunks_directory: /var/loki/chunks
+        rules_directory: /var/loki/rules
+
     schemaConfig:
       configs:
         - from: "2024-04-01"
           store: tsdb
-          object_store: filesystem
+          object_store: s3
           schema: v13
           index:
             prefix: loki_index_
             period: 24h
-    
+
     # Disable test schema to use our custom schemaConfig
     useTestSchema: false
-
-    storage_config:
-      filesystem:
-        directory: /var/loki/chunks
 
   # Enable gateway (default is true, but we ensure it)
   gateway:

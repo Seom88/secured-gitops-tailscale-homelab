@@ -1,6 +1,13 @@
 developmentApp:
   enabled: true
 
+# Loki S3 endpoint override for dev (uses seaweedfs-dev release)
+loki:
+  loki:
+    storage:
+      s3:
+        endpoint: http://seaweedfs-dev-s3.seaweedfs.svc:8333
+
 # Configuration for the Kube-Prometheus-Stack subchart
 kube-prometheus-stack:
   # Grafana configuration
@@ -11,8 +18,6 @@ kube-prometheus-stack:
         type: loki
         url: http://monitoring-dev-loki-gateway.monitoring.svc.cluster.local
         access: proxy
-        # Even with auth_enabled: false, Loki requires an org ID header
-        # This is a known quirk - the value can be anything since auth is disabled
         jsonData:
           httpHeaderName1: "X-Scope-OrgID"
         secureJsonData:
