@@ -20,43 +20,13 @@ echo -e "${BLUE}${BOLD}===================================================${NC}"
 if [ "$ENV" == "dev" ]; then
   echo -e "${YELLOW}⚠️  Dev mode ON - using values-dev.yaml${NC}"
   VALUES_FILE="gitops/values-dev.yaml"
-  read -p "$(echo -e "${YELLOW}❓ Use Longhorn as default storage? [y/N]: ${NC}")" USE_LONGHORN_ANSWER
-  if [[ "$USE_LONGHORN_ANSWER" =~ ^[Yy]$ ]]; then
-    USE_LONGHORN=true
-  else
-    USE_LONGHORN=false
-  fi
-else
-  USE_LONGHORN=true
 fi
 
-# --- ArgoCD Version ---
-ARGOCD_VERSION=9.5.13
+# Prerequisites: Longhorn (PVC storage) and ArgoCD must already be installed on
+# the cluster. The companion infra repo (infra-talos-homelab, platform/ layer)
+# provisions both before the GitOps layer is synced.
 
-# Init infra
-echo -e "\n${BLUE}🏗️  Initializing infrastructure...${NC}"
-chmod +x infra/init-infra.sh
-USE_LONGHORN=$USE_LONGHORN ./infra/init-infra.sh
-
-# --- STEP 1: Install ArgoCD ---
-echo -e "\n${BLUE}📦 Installing ArgoCD (v$ARGOCD_VERSION)...${NC}"
-helm repo add argo https://argoproj.github.io/argo-helm > /dev/null 2>&1
-helm repo update > /dev/null 2>&1
-
-helm upgrade --install argocd argo/argo-cd \
-  --version $ARGOCD_VERSION \
-  --namespace argocd --create-namespace \
-  --timeout 30m \
-  -f platform/argocd/values.yaml
-
-echo -ne "${YELLOW}⏳ Waiting for ArgoCD CRDs...${NC}"
-until kubectl get crd applications.argoproj.io > /dev/null 2>&1; do echo -n "."; sleep 2; done
-echo -e " ${GREEN}Done!${NC}"
-
-echo -e "${YELLOW}⏳ Waiting for ArgoCD server rollout...${NC}"
-kubectl rollout status deployment/argocd-server -n argocd --timeout=10m
-
-# --- STEP 2: Install App-of-Apps ---
+# --- STEP 1: Install App-of-Apps ---
 echo -e "\n${BLUE}📂 Installing GitOps App-of-Apps...${NC}"
 helm upgrade --install gitops gitops \
   --namespace argocd \
@@ -65,7 +35,7 @@ helm upgrade --install gitops gitops \
   || echo -e "${YELLOW}⚠️  GitOps helm install failed (likely a server-side apply conflict).${NC}
 ${YELLOW}   You can retry with: kubectl delete applicationset -n argocd platform-local-apps${NC}"
 
-# --- STEP 3: Vault configuration ---
+# --- STEP 2: Vault configuration ---
 echo -e "\n${BLUE}🔑 Configuring Hashicorp Vault...${NC}"
 chmod +x platform/vault/scripts/bootstrap-vault.sh
 ./platform/vault/scripts/bootstrap-vault.sh
@@ -92,6 +62,10 @@ echo -e "\n${BOLD}Vault UI:${NC}     https://localhost:8200"
 echo -e "${BOLD}Vault Token:${NC}  $ROOT_TOKEN"
 echo -e "\n${YELLOW}💡 Port-forward commands:${NC}"
 echo -e "   kubectl port-forward svc/argocd-server -n argocd 8080:443"
-echo -e "   kubectl port-forward svc/vault -n vault 8200:8200"
-echo -e "\n${RED}⚠️  IMPORTANT:${NC} Read doc/secrets-structure.md to update your secrets."
+if [ "$ENV" == "dev" ]; then
+  echo -e "   kubectl port-forward svc/vault-dev -n vault 8200:8200"
+else
+  echo -e "   kubectl port-forward svc/vault -n vault 8200:8200"
+fi
+echo -e "\n${RED}⚠️  IMPORTANT:${NC} Read docs/secrets-structure.md to update your secrets."
 echo -e "${GREEN}${BOLD}===================================================${NC}"

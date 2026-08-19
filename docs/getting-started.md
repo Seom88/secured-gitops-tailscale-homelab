@@ -1,11 +1,10 @@
 # Getting Started
 
-This guide provides the steps to initialize the Homelab GitOps environment, including the setup of HashiCorp Vault for secret management and ArgoCD for continuous delivery.
-
+This guide provides the steps to initialize the Homelab GitOps environment, including the setup of HashiCorp Vault for secret management. **ArgoCD and Longhorn are prerequisites** installed by the companion [infra repo](https://github.com/Seom88/infra-talos-homelab) (`platform/` layer) — they are **NOT** installed here.
 
 ## Prerequisites
 
-- A running Kubernetes cluster (see [k3s-install.md](k3s-install.md) for a reference setup).
+- A running Kubernetes cluster with **Longhorn** (PVC storage) and **ArgoCD** already installed — see the infra repo's [`platform/`](https://github.com/Seom88/infra-talos-homelab) layer for the provisioning order.
 - `kubectl` configured to point to your cluster.
 - `helm` installed locally.
 - `jq` installed locally.
@@ -13,7 +12,7 @@ This guide provides the steps to initialize the Homelab GitOps environment, incl
 
 ## 1. Bootstrap the Environment
 
-Run the initialization script to configure the foundation of your GitOps flow (Storage, Vault, External Secrets, and ArgoCD). You can choose between `prod` (default) and `dev` environments using the `just` recipes:
+Run the initialization script to configure the foundation of your GitOps flow. The script deploys the root **App-of-Apps** (cert-manager, External Secrets Operator and the platform apps sync via ArgoCD) and configures **Vault**. You can choose between `prod` (default) and `dev` environments using the `just` recipes:
 
 ```bash
 # For production (default)
@@ -27,12 +26,11 @@ just init-dev
 > The raw scripts are also available at `./bootstrap/01-init-gitops.sh [prod|dev]` if you prefer running them directly.
 
 > [!IMPORTANT]
-> - The script will prompt for your **Tailscale Client ID** and **Secret** if they are not already set as environment variables (`TS_CLIENT_ID` and `TS_CLIENT_SECRET`).
-> - It also initializes the Vault operator and sets up the root ArgoCD application. Wait for the script to finish before proceeding.
+> The cluster must already have its prerequisites installed **before** running the bootstrap: **Longhorn** (PVC storage) and **ArgoCD**. The companion infra repo's `platform/` layer provisions both (order: nodes ready → Longhorn → CSI ready → `longhorn-prod` StorageClass → ArgoCD). The bootstrap script does not install ArgoCD or any storage component.
 
 ## 2. Configure Vault
 
-The bootstrap script automatically initializes Vault and configures the necessary secrets engines. 
+The bootstrap script automatically initializes Vault and configures the necessary secrets engines.
 
 ### Access Vault UI
 
@@ -51,7 +49,6 @@ The bootstrap script automatically initializes Vault and configures the necessar
 
 > [!TIP]
 > Once inside, follow the [Secret Structure guide](secrets-structure.md) to organize your secrets correctly. The automation already sets up the `secret/` KV engine.
-
 
 ## 3. Access ArgoCD
 
@@ -74,7 +71,3 @@ If you have the Tailscale operator configured, your services will be reachable t
 
 - Verify Tailscale nodes are created in your admin console.
 - Access services using their domain names (e.g., `vault.your-tailnet.ts.net`).
-
----
-**Next Step:** Learn about [Sync Waves](sync-waves.md) to understand how the infrastructure components are ordered during deployment.
-

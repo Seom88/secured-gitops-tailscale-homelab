@@ -2,9 +2,11 @@
 
 This guide will walk you through the steps required to personalize this homelab after forking the repository. Since GitOps relies on declarative state, you need to update several references to point to your own infrastructure and repository.
 
-> **Two-repo setup:** This project is the GitOps layer. Cluster provisioning (Terraform + Talos) lives in a separate [infra repo](https://github.com/Seom88/infra-talos-homelab) — update its references too if you fork both.
+> **Two-repo setup:** This project is the GitOps layer. Cluster provisioning (Terraform + Talos) **and the platform prerequisites (Longhorn + ArgoCD)** live in a separate [infra repo](https://github.com/Seom88/infra-talos-homelab) (`platform/` layer). If you fork both, update the infra repo references too — including its platform Terraform configuration and Helm values.
 
 ## 1. Update Repository References
+
+> **Prerequisites:** Before bootstrapping this repo, your cluster must provide **Longhorn** (PVC storage) and **ArgoCD**. If you fork the infra repo, its `platform/` layer provisions both (`just tf_env=<env> tf-platform-apply` from the infra repo); otherwise, provide them through your own provisioning. The GitOps bootstrap does not install either.
 
 ArgoCD needs to know where its source of truth is. This project uses an **App-of-Apps** pattern driven by Helm values.
 
@@ -19,18 +21,17 @@ By default, the `prod` environment targets the `main` branch, while the `dev` en
 
 ## 2. Tailscale Configuration
 
-This homelab integrates with Tailscale for secure networking. The bootstrap script simplifies the setup:
+This homelab integrates with Tailscale for secure networking:
 
-1.  **Auth Credentials**: When running `just init-prod` (or `just init-dev`), it will prompt for a **Tailscale Client ID** and **Secret**. These are used to provision the Tailscale Operator.
-2.  **K3s Config**: If you are using K3s, follow the [K3s Install Guide](k3s-install.md) to ensure nodes are correctly identified in your Tailnet.
-3.  **Operator**: The Tailscale Operator is managed as a platform app. You can find its configuration in `platform/tailscale/`.
+1.  **Auth Credentials**: Tailscale credentials are seeded into Vault and consumed by the Tailscale Operator — see the [Secrets Structure guide](secrets-structure.md) for the expected secret layout. The bootstrap script does not prompt for them.
+2.  **Operator**: The Tailscale Operator is managed as a platform app. You can find its configuration in `platform/tailscale/`. No distro-specific setup is required here — any cluster that provides the prerequisites (Longhorn + ArgoCD) works.
 
 
 ## 3. Vault & Secrets Management
 
 This lab relies heavily on HashiCorp Vault. The setup is mostly automated:
 
-1.  **Initialization**: Follow the [Getting Started](../doc/getting-started.md) guide. The bootstrap script handles initialization, unsealing, and basic configuration (KV engine and Kubernetes auth).
+1.  **Initialization**: Follow the [Getting Started](getting-started.md) guide. The bootstrap script handles initialization, unsealing, and basic configuration (KV engine and Kubernetes auth).
 2.  **Secrets Structure**: It is **crucial** to follow the [Secrets Structure guide](secrets-structure.md) to understand how to seed your own credentials (Tailscale, Cloudflare, etc.) into Vault.
 3.  **External Secrets Operator (ESO)**: The `ClusterSecretStore` is pre-configured to connect to Vault using the internal Kubernetes service name. No manual updates are required unless you change the Vault deployment namespace or service names.
 

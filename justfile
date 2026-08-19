@@ -6,22 +6,6 @@
 _default:
     @just --list
 
-# ── Development ───────────────────────────────
-
-# Create dev cluster (without Longhorn)
-cluster-dev:
-    k3d cluster create --config infra/k3s/k3d-config.yaml
-
-# Create dev cluster WITH Longhorn support (needs iscsiadm on host)
-cluster-dev-longhorn:
-    #!/usr/bin/env bash
-    mkdir -p "$HOME/k3d-longhorn"
-    k3d cluster create --config infra/k3s/k3d-config-longhorn.yaml
-
-# Destroy dev cluster
-cluster-dev-delete:
-    k3d cluster delete dev-cluster
-
 # ── Bootstrap ─────────────────────────────────
 
 # Full bootstrap (production)
@@ -31,10 +15,6 @@ init-prod:
 # Full bootstrap (development mode)
 init-dev:
     ./bootstrap/01-init-gitops.sh dev
-
-# Initialize node-level infrastructure (storage, system-upgrade-controller)
-init-infra:
-    ./infra/init-infra.sh
 
 # ── Vault ─────────────────────────────────────
 
@@ -116,8 +96,6 @@ check:
     @helm version --short 2>/dev/null && echo "  ✅ helm" || echo "  ❌ helm — not found"
     @git --version 2>/dev/null && echo "  ✅ git" || echo "  ❌ git — not found"
     @jq --version 2>/dev/null && echo "  ✅ jq" || echo "  ❌ jq — not found"
-    @k3d --version 2>/dev/null && echo "  ✅ k3d" || echo "  ❌ k3d — not found"
-    @talosctl version --client 2>/dev/null && echo "  ✅ talosctl" || echo "  ❌ talosctl — not found"
 
 # ── Maintenance ───────────────────────────────
 
