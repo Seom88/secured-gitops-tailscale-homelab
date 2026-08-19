@@ -6,7 +6,7 @@
 
 This homelab exposes several internal services via Tailscale using `Ingress` resources with `ingressClassName: tailscale`. These ingresses were scattered across different Helm charts:
 
-- `platform/tailscale/templates/platform/` — ArgoCD, Vault, Nginx (disabled)
+- `platform/tailscale/templates/platform/` — ArgoCD, Vault
 - `platform/monitoring/templates/` — Grafana, Prometheus
 
 The question was whether all Tailscale ingresses should be centralized in the tailscale chart or remain co-located with their respective application charts.

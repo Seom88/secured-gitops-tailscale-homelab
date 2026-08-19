@@ -35,6 +35,3 @@ grafana:
 
 prometheus:
   enabled: true
-
-nginx:
-  enabled: false

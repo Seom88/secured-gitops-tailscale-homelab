@@ -1,8 +1,15 @@
 apiVersion: v2
 name: tailscale
-description: A Helm chart for Kubernetes
+description: Tailscale Kubernetes operator and platform Tailscale Ingress resources
 type: application
 version: 1.0.0
+appVersion: "1.96.5"
+home: https://tailscale.com
+sources:
+  - https://github.com/tailscale/tailscale
+maintainers:
+  - name: Seom88
+    url: https://github.com/Seom88
 dependencies:
   - name: tailscale-operator
     version: 1.96.5

@@ -8,5 +8,5 @@ charts/
 **/*.env
 secrets/
 *asc
-
-!infra/talos/omni/dex/config.yaml
+*.tfstate*
+kubeconfig

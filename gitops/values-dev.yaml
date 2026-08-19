@@ -39,5 +39,5 @@ platformApps:
     wave: 4
     path: platform/tailscale
 
-developmentApps:
+developmentApp:
   enabled: true

@@ -32,7 +32,7 @@ seaweedfs:
     logs:
       type: "emptyDir"
 
-  #独立 S3 Deployment (NO usar filer.s3.enabled — bug nil pointer dereference)
+  # Standalone S3 Deployment (do NOT use filer.s3.enabled — nil pointer dereference bug)
   s3:
     enabled: true
     enableAuth: true

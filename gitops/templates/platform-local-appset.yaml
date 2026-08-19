@@ -16,7 +16,7 @@ spec:
           {{- end }}
   template:
     metadata:
-      name: '{{ `{{name}}` }}{{- if .Values.developmentApps.enabled }}-dev{{- end }}'
+      name: '{{ `{{name}}` }}{{- if .Values.developmentApp.enabled }}-dev{{- end }}'
       namespace: argocd
       annotations:
         argocd.argoproj.io/sync-wave: '{{ `{{wave}}` }}'
@@ -24,13 +24,13 @@ spec:
       project: default
       source:
         repoURL: {{ .Values.repoURL }}
-        targetRevision: {{ if .Values.developmentApps.enabled }}dev{{ else }}main{{ end }}
+        targetRevision: {{ if .Values.developmentApp.enabled }}dev{{ else }}main{{ end }}
         path: '{{ `{{path}}` }}'
         helm:
           ignoreMissingValueFiles: true
           valueFiles:
             - values.yaml
-            {{- if .Values.developmentApps.enabled }}
+            {{- if .Values.developmentApp.enabled }}
             - values-dev.yaml
             {{- end }}
       destination:

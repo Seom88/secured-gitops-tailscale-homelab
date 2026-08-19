@@ -2,18 +2,18 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: gitops{{- if .Values.developmentApps.enabled }}-dev{{- end }}
+  name: gitops{{- if .Values.developmentApp.enabled }}-dev{{- end }}
   namespace: argocd
 spec:
   project: default
   source:
     repoURL: {{ .Values.repoURL }}
-    targetRevision: {{ if .Values.developmentApps.enabled }}dev{{ else }}main{{ end }}
+    targetRevision: {{ if .Values.developmentApp.enabled }}dev{{ else }}main{{ end }}
     path: gitops
     helm:
       valueFiles:
         - values.yaml
-        {{- if .Values.developmentApps.enabled }}
+        {{- if .Values.developmentApp.enabled }}
         - values-dev.yaml
         {{- end }}
   destination:
