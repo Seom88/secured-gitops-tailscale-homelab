@@ -2,5 +2,5 @@ apiVersion: v2
 name: gitops
 description: App-of-Apps Helm chart — manages ArgoCD Application resources only
 type: application
-version: 2.0.0
-appVersion: "2.0.0"
+version: 1.0.0
+appVersion: "1.0.0"

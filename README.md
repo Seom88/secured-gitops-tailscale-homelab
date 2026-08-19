@@ -88,6 +88,21 @@ graph TD
 | **Certificates** | cert-manager | ✅ Vault TLS |
 | **Monitoring** | Prometheus + Grafana + Loki | ✅ Platform ingresses via Tailscale |
 | **Object storage** | SeaweedFS | ✅ S3 with Vault-injected credentials |
+| **Python tooling** | Typer ops CLI · pytest/testinfra · prometheus_client · Trivy scan | 🚧 Phase 5 (planned) |
+
+## 🐍 Python Tooling
+
+Python powers the **operational layer** around the declarative core: the manifests stay YAML/Helm, while Python carries the automation, validation, and security checks that fragile shell scripts do poorly.
+
+| Area | Stack | Why it matters |
+|------|-------|----------------|
+| **Ops CLI** | `typer` + `kubernetes` + `hvac` | Replaces fragile bootstrap shell scripts with a testable CLI: bootstrap, health checks, port-forward, cluster doctor |
+| **Infrastructure tests** | `pytest` + `testinfra` | Proves cluster state after bootstrap: Vault unsealed, ArgoCD Apps healthy, secrets synced — CI-ready validation |
+| **Observability exporter** | `prometheus_client` | Custom metrics the stack doesn't ship: Vault sealed state, ArgoCD app health/drift — ready for Grafana dashboards |
+| **Maintenance automation** | `hvac` + `kubernetes` | Secret rotation, Longhorn snapshot cleanup, Velero backup health |
+| **Image security validation** | Trivy orchestration | Scans every image referenced in the charts/manifests and gates on critical vulnerabilities — DevSecOps hardening |
+
+All areas are planned (not yet implemented) — see [Phase 5 in the Roadmap](#-roadmap).
 
 ## 🏁 Getting Started
 
@@ -155,6 +170,13 @@ secured-gitops-tailscale-homelab/
 ### Phase 4 — Hardening & Developer Experience 💡
 - [ ] CI/CD Pipeline — GitHub Actions for lint, test, preview
 - [ ] Real application deployment (Immich or similar)
+
+### Phase 5 — Python Automation & Image Security 🚧
+- [ ] Ops CLI: bootstrap, health checks, cluster doctor — replaces fragile bash (`typer` + `kubernetes` + `hvac`)
+- [ ] Infrastructure tests: `pytest` + `testinfra` validation of Vault / ArgoCD / secrets state
+- [ ] Prometheus exporter: Vault sealed state, ArgoCD app health & drift metrics (`prometheus_client`)
+- [ ] Maintenance automation: secret rotation, Longhorn snapshots, Velero backups (`hvac` + `kubernetes`)
+- [ ] Image security scanning: Trivy-based scan of chart images, gate on criticals
 
 ---
 
