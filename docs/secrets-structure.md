@@ -24,6 +24,10 @@ Before creating secrets, ensure the KV v2 secrets engine is enabled at path `sec
 
 **How to Create**:
 
+The `vault-config-tailscale` Job seeds this path with placeholder values during
+the bootstrap. Set the real OAuth credentials through the Vault UI — see
+[ADR-004](adrs/004-tailscale-oauth-seed-strategy.md) for why this is manual:
+
 1. Open Vault UI at your Vault address
 2. Navigate to **Secrets** → **secret/**
 ![Create Secret](secrets-steps/secret-engines.png)
