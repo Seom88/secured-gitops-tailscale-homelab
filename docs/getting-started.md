@@ -1,10 +1,10 @@
 # Getting Started
 
-This guide provides the steps to initialize the Homelab GitOps environment, including the setup of HashiCorp Vault for secret management. **ArgoCD and Longhorn are prerequisites** installed by the companion [infra repo](https://github.com/Seom88/infra-talos-homelab) (`platform/` layer) — they are **NOT** installed here.
+This guide provides the steps to initialize the Homelab GitOps environment, including the setup of HashiCorp Vault for secret management. **ArgoCD is installed by the companion [infra repo](https://github.com/Seom88/infra-talos-homelab)** (`platform/` layer) — it is **NOT** installed here. **Longhorn** is deployed by this repo itself as a wave-0 platform app with a CSI readiness gate, so no storage needs to be pre-installed.
 
 ## Prerequisites
 
-- A running Kubernetes cluster with **Longhorn** (PVC storage) and **ArgoCD** already installed — see the infra repo's [`platform/`](https://github.com/Seom88/infra-talos-homelab) layer for the provisioning order.
+- A running Kubernetes cluster with **ArgoCD** already installed — see the infra repo's [`platform/`](https://github.com/Seom88/infra-talos-homelab) layer for the install flow.
 - `kubectl` configured to point to your cluster.
 - `helm` installed locally.
 - `jq` installed locally.
@@ -26,7 +26,7 @@ just init-dev
 > The raw scripts are also available at `./bootstrap/01-init-gitops.sh [prod|dev]` if you prefer running them directly.
 
 > [!IMPORTANT]
-> The cluster must already have its prerequisites installed **before** running the bootstrap: **Longhorn** (PVC storage) and **ArgoCD**. The companion infra repo's `platform/` layer provisions both (order: nodes ready → Longhorn → CSI ready → `longhorn-prod` StorageClass → ArgoCD). The bootstrap script does not install ArgoCD or any storage component.
+> The cluster must have **ArgoCD** installed **before** running the bootstrap. The companion infra repo's `platform/` layer installs it (order: nodes ready → ArgoCD). Longhorn is deployed by this repo as a wave-0 App-of-Apps app with a CSI readiness gate — the bootstrap script does not install ArgoCD or any storage component.
 
 ## 2. Configure Vault
 

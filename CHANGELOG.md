@@ -4,8 +4,6 @@ All notable changes to this project will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
-
 ### Planned (Roadmap)
 
 - **Renovate bot** — automated dependency updates (Phase 2)
@@ -14,7 +12,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Real application deployment** — Immich or similar (Phase 4)
 - **Phase 5 — Python automation & image security**: ops CLI (Typer), infrastructure tests (pytest/testinfra), Prometheus exporter, maintenance automation, Trivy image scanning
 
-## [1.0.0] - 2026-08-18
+## [1.0.0] - Unreleased
 
 > First version — never been published nor run on a live cluster; tag and GitHub Release pending.
 

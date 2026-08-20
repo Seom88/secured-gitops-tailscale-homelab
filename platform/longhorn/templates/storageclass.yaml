@@ -1,0 +1,18 @@
+# Additional StorageClass for Longhorn volumes
+# Deployed by the App-of-Apps as part of the platform/longhorn chart (wave 0)
+# Longhorn's default StorageClass (created by the Helm chart) handles most cases.
+# This one exists for volumes that need explicit Retain + SSD/NVME diskSelector.
+
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: longhorn-prod
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+reclaimPolicy: Retain
+volumeBindingMode: Immediate
+parameters:
+  numberOfReplicas: "3"
+  staleReplicaTimeout: "30"
+  diskSelector: "ssd,nvme"
+  migratable: "true"

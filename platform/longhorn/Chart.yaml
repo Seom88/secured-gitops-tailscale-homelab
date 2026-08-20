@@ -1,0 +1,16 @@
+apiVersion: v2
+name: longhorn
+description: "Distributed block storage (Longhorn) — provides the default and longhorn-prod StorageClasses"
+type: application
+version: 1.0.0
+home: https://longhorn.io
+icon: https://raw.githubusercontent.com/longhorn/longhorn/master/longhorn.png
+sources:
+  - https://github.com/longhorn/longhorn
+maintainers:
+  - name: Seom88
+    url: https://github.com/Seom88
+dependencies:
+  - name: longhorn
+    version: 1.12.1
+    repository: https://charts.longhorn.io

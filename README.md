@@ -6,27 +6,27 @@
 [![Network](https://img.shields.io/badge/Network-Tailscale-234E5C?style=for-the-badge&logo=tailscale)](https://tailscale.com/)
 [![Infra](https://img.shields.io/badge/Infra-Terraform-%23844FBA?style=for-the-badge&logo=terraform)](https://github.com/Seom88/infra-talos-homelab)
 
-> **Companion project:** Cluster provisioning **and platform prerequisites** (Longhorn storage → ArgoCD GitOps) at
+> **Companion project:** Cluster provisioning + ArgoCD (GitOps engine) + Longhorn node prerequisites at
 > [`github.com/Seom88/infra-talos-homelab`](https://github.com/Seom88/infra-talos-homelab)
 
-Enterprise-grade DevSecOps homelab that runs on **any CNCF-compliant Kubernetes cluster**, with Longhorn (storage) and ArgoCD (GitOps engine) provided as prerequisites by the companion infra repo.
+Enterprise-grade DevSecOps homelab that runs on **any CNCF-compliant Kubernetes cluster**, with ArgoCD (GitOps engine) installed by the companion infra repo and Longhorn (storage) deployed from this repo as a wave-0 platform app.
 
 ## 🚀 Overview
 
 Fully automated Kubernetes environment focused on **GitOps principles**, **Zero-Trust networking** via Tailscale, and **Advanced Secret Management** with Vault + External Secrets Operator.
 
-The companion infra repo installs the platform prerequisites — Longhorn (storage) and ArgoCD (GitOps engine) via its `platform/` Terraform root — **before** this repo is bootstrapped. Everything else — Vault, cert-manager, External Secrets, monitoring, and the platform and user apps — is managed declaratively from this repo through an ArgoCD **App-of-Apps** pattern.
+The companion infra repo installs ArgoCD (GitOps engine) via its `platform/` Terraform root — **before** this repo is bootstrapped. Longhorn (storage) is also managed declaratively from this repo as a wave-0 platform app with a CSI readiness gate. Everything else — Vault, cert-manager, External Secrets, monitoring, and the platform and user apps — is managed declaratively from this repo through an ArgoCD **App-of-Apps** pattern.
 
 ## 🏗 Architecture
 
 ```mermaid
 graph TD
-    subgraph "Infra Repo — provisioning & platform prerequisites"
+    subgraph "Infra Repo — provisioning & ArgoCD"
         TF[Terraform]
         TALOS[Talos Linux Nodes]
         EXT[System Extensions<br/>iscsi-tools, util-linux]
         PATCH[Machine Config Patches<br/>kubelet extraMounts]
-        PLATFORM[Platform Layer<br/>Longhorn storage → ArgoCD GitOps]
+        PLATFORM[Platform Layer<br/>ArgoCD GitOps engine]
         TF --> TALOS
         TALOS --> EXT
         TALOS --> PATCH
@@ -40,12 +40,14 @@ graph TD
     subgraph "Kubernetes Cluster (distro-agnostic)"
         direction TB
         ROOT[ArgoCD root<br/>App-of-Apps]
+        LH[Longhorn<br/>wave-0 storage app<br/>CSI-gated]
         Vault[HashiCorp Vault<br/>3-node Raft]
         ESO[External Secrets<br/>Operator]
         Cert[Cert-Manager]
         Apps[Platform & User Apps]
 
         ROOT -->|sync waves| Cert
+        ROOT -->|wave 0| LH
         ROOT -->|wave 0| ESO
         ROOT -->|wave 1| Vault
         ROOT -->|wave 2-4| Apps
@@ -64,7 +66,7 @@ graph TD
 ## 🛡 Key DevSecOps Features
 
 - **GitOps Flow**: ArgoCD (installed by the infra platform layer) manages everything declaratively via App-of-Apps. The bootstrap script deploys the root app and configures Vault.
-- **Cluster-Agnostic**: The GitOps layer runs on any Kubernetes distro — Talos in the companion repo, or any other CNCF-compliant distribution. Longhorn is required **before** ArgoCD because ArgoCD's HA `redis-ha` queue needs PVCs, and a bare cluster has no provisioner.
+- **Cluster-Agnostic**: The GitOps layer runs on any Kubernetes distro — Talos in the companion repo, or any other CNCF-compliant distribution. ArgoCD, and the storage→apps ordering is expressed as declarative sync waves plus the Longhorn CSI readiness gate.
 - **Zero-Trust Networking**: Tailscale operator provides secure ingress without exposing ports — every service gets a `.tailnet` domain.
 - **Secrets Management**:
   - HashiCorp Vault (HA, 3-node Raft) with auto-unseal via CronJob
@@ -82,7 +84,7 @@ graph TD
 | **Provisioning** | Terraform + Talos (`infra-talos-homelab`) | ✅ Companion repo (cluster + platform) |
 | **Orchestration** | Kubernetes (distro-agnostic) | ✅ Prerequisites via infra |
 | **GitOps** | ArgoCD | ✅ Prerequisite (installed by infra platform layer) |
-| **Storage** | Longhorn | ✅ Prerequisite (default StorageClass + `longhorn-prod`) |
+| **Storage** | Longhorn | ✅ Managed by this repo (wave-0 app) |
 | **Secrets** | Vault (HA Raft) + ESO | ✅ Per-service stores |
 | **Networking** | Tailscale Operator | ✅ Platform ingress templates |
 | **Certificates** | cert-manager | ✅ Vault TLS |
@@ -106,13 +108,13 @@ All areas are planned (not yet implemented) — see [Phase 5 in the Roadmap](#-r
 
 ## 🏁 Getting Started
 
-This is the **GitOps layer** — it assumes a running cluster with Longhorn and ArgoCD already installed. Cluster provisioning and platform prerequisites are in the [infra repo](https://github.com/Seom88/infra-talos-homelab).
+This is the **GitOps layer** — it assumes a running cluster with ArgoCD already installed via the infra repo's platform layer. Storage is not a prerequisite anymore: this repo deploys Longhorn as a wave-0 platform app.
 
 If you want to replicate or fork this lab:
 
-1. **Ensure prerequisites**: Use a running Kubernetes cluster with **Longhorn** and **ArgoCD** pre-installed. The infra repo's `platform/` Terraform root provisions them in order (nodes ready → Longhorn → CSI ready → `longhorn-prod` StorageClass → ArgoCD) — run `just tf-platform-apply` there.
+1. **Ensure prerequisites**: Use a running Kubernetes cluster with **ArgoCD** installed. The infra repo's `platform/` Terraform root provisions it (nodes ready → ArgoCD) — run `just tf-platform-apply` there. Longhorn is deployed by this repo as wave 0 during bootstrap.
 2. **Fork both repos** — Update repository references (including the infra repo's platform layer) in the [Customization Guide](docs/customization-guide.md).
-3. **Bootstrap**: Run `just init-prod` or `just init-dev` (or `./bootstrap/01-init-gitops.sh [prod|dev]`), which deploys the root App-of-Apps and configures Vault. It no longer installs ArgoCD or any storage component.
+3. **Bootstrap**: Run `just init-prod` or `just init-dev` (or `./bootstrap/01-init-gitops.sh [prod|dev]`), which deploys the root App-of-Apps — including Longhorn as wave 0 — and configures Vault. It does not install ArgoCD or any storage component.
 
 ## 📂 Project Structure
 
@@ -154,7 +156,7 @@ secured-gitops-tailscale-homelab/
 - [X] Cert-Manager for automated TLS
 - [X] External Secrets Operator with per-service ClusterSecretStores
 - [X] Tailscale operator with platform ingress templates
-- [X] Longhorn + ArgoCD moved to infra repo platform layer (prerequisites)
+- [X] ArgoCD moved to infra repo platform layer; Longhorn back as a wave-0 GitOps app (ADR-005)
 - [X] Architecture Decision Records
 
 ### Phase 2 — Automation & Observability 🚧
@@ -163,7 +165,7 @@ secured-gitops-tailscale-homelab/
 - [ ] Renovate bot
 
 ### Phase 3 — Storage & Scale 📋
-- [X] Longhorn — distributed block storage (prerequisite, from the infra repo)
+- [X] Longhorn — distributed block storage (app, deployed by this repo)
 - [X] SeaweedFS — S3-compatible object storage
 - [ ] Velero — cluster backups to SeaweedFS
 
@@ -184,7 +186,7 @@ secured-gitops-tailscale-homelab/
 
 | Repo | Role |
 |------|------|
-| [`infra-talos-homelab`](https://github.com/Seom88/infra-talos-homelab) | Cluster provisioning + platform prerequisites (Longhorn, ArgoCD) — Terraform + Talos |
-| `secured-gitops-tailscale-homelab` _(this repo)_ | GitOps layer — Vault, Tailscale, storage apps (consumes Longhorn + ArgoCD from infra) |
+| [`infra-talos-homelab`](https://github.com/Seom88/infra-talos-homelab) | Cluster provisioning + ArgoCD engine — Terraform + Talos (Longhorn node prerequisites stay here) |
+| `secured-gitops-tailscale-homelab` _(this repo)_ | GitOps layer — Vault, Tailscale, storage apps (deploys Longhorn as a wave-0 app) |
 
 *Built for learning, security, and automation.*
