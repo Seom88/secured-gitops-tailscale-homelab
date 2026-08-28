@@ -8,13 +8,21 @@ _default:
 
 # ── Bootstrap ─────────────────────────────────
 
-# Full bootstrap (production)
+# Full bootstrap (production) — idempotent; rerun for status check, --force to reapply
 init-prod:
-    ./bootstrap/01-init-gitops.sh prod
+    ./bootstrap/init-gitops.sh prod
 
-# Full bootstrap (development mode)
+# Force reapply App-of-Apps (production)
+init-prod-force:
+    ./bootstrap/init-gitops.sh prod --force
+
+# Full bootstrap (development mode) — idempotent; rerun for status check, --force to reapply
 init-dev:
-    ./bootstrap/01-init-gitops.sh dev
+    ./bootstrap/init-gitops.sh dev
+
+# Force reapply App-of-Apps (development)
+init-dev-force:
+    ./bootstrap/init-gitops.sh dev --force
 
 # ── Vault ─────────────────────────────────────
 
@@ -67,6 +75,119 @@ status:
     kubectl get pods -n argocd -o name && \
     kubectl get pods -n vault -o name 2>/dev/null && \
     kubectl get pods -n monitoring -o name 2>/dev/null
+
+# ── Validate (local — mirrors CI validate job) ──────
+
+# Run all local validations (gitops + platform + scripts + yaml)
+validate:
+    @echo "==> validate: running all checks (gitops + platform + scripts + yaml)"
+    @just validate-gitops
+    @just validate-platform
+    @just validate-scripts
+    @just validate-yaml
+    @echo "✅ validate: all checks passed"
+
+# Validate GitOps App-of-Apps chart (lint + render prod/dev)
+validate-gitops:
+    #!/usr/bin/env bash
+    set -e
+    echo "==> helm dependency build (gitops)"
+    helm dependency build gitops 2>&1 || echo "no dependencies for gitops chart"
+    echo "==> helm lint (prod)"
+    helm lint gitops -f gitops/values.yaml
+    echo "==> helm lint (dev)"
+    helm lint gitops -f gitops/values-dev.yaml
+    echo "==> helm template (prod) — empty check"
+    helm template gitops gitops -f gitops/values.yaml > /tmp/gitops-prod.yaml
+    test -s /tmp/gitops-prod.yaml || (echo "❌ helm template rendered empty (prod)" && exit 1)
+    echo "   prod render: $(wc -l < /tmp/gitops-prod.yaml) lines, $(grep -c '^---' /tmp/gitops-prod.yaml || true) documents"
+    echo "==> helm template (dev) — empty check"
+    helm template gitops gitops -f gitops/values-dev.yaml > /tmp/gitops-dev.yaml
+    test -s /tmp/gitops-dev.yaml || (echo "❌ helm template rendered empty (dev)" && exit 1)
+    echo "   dev render: $(wc -l < /tmp/gitops-dev.yaml) lines"
+    echo "✅ validate-gitops: OK"
+
+# Lint all platform charts (vault, monitoring, seaweedfs, tailscale, longhorn)
+validate-platform:
+    #!/usr/bin/env bash
+    set -e
+    # Ensure Helm repos exist for dependency resolution (idempotent)
+    helm repo add longhorn https://charts.longhorn.io >/dev/null 2>&1 || true
+    helm repo add grafana https://grafana.github.io/helm-charts >/dev/null 2>&1 || true
+    helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null 2>&1 || true
+    helm repo add seaweedfs https://seaweedfs.github.io/seaweedfs/helm >/dev/null 2>&1 || true
+    helm repo add tailscale https://pkgs.tailscale.com/helmcharts >/dev/null 2>&1 || true
+    helm repo add hashicorp https://helm.releases.hashicorp.com >/dev/null 2>&1 || true
+    helm repo update >/dev/null 2>&1 || true
+    failed=0
+    for dir in platform/*/; do
+      if [ -f "${dir}Chart.yaml" ]; then
+        echo "==> helm dependency build $dir"
+        # Use update to handle out-of-sync Chart.lock (e.g. vault)
+        helm dependency update "$dir" 2>&1 || helm dependency build "$dir" 2>&1 || echo "   no deps / already built for $dir"
+        echo "==> helm lint $dir"
+        if ! helm lint "$dir"; then
+          echo "❌ helm lint failed for $dir"
+          failed=1
+        fi
+      fi
+    done
+    test "$failed" = "0" || exit 1
+    echo "✅ validate-platform: OK"
+
+# ShellCheck bootstrap scripts (soft-fail if not installed)
+validate-scripts:
+    #!/usr/bin/env bash
+    set -e
+    if ! command -v shellcheck >/dev/null 2>&1; then
+      echo "⚠️  shellcheck not found — skipping (install with: sudo apt install shellcheck / brew install shellcheck)"
+      echo "   CI will still run shellcheck; local check is non-blocking"
+      exit 0
+    fi
+    echo "==> shellcheck bootstrap/init-gitops.sh"
+    shellcheck bootstrap/init-gitops.sh
+    echo "==> shellcheck platform/vault/scripts/bootstrap-vault.sh"
+    shellcheck platform/vault/scripts/bootstrap-vault.sh
+    echo "✅ validate-scripts: OK"
+
+# YAML syntax sanity (PyYAML) — skip Helm templates
+validate-yaml:
+    #!/usr/bin/env bash
+    set -e
+    echo "==> YAML sanity (python yaml)"
+    python3 - << 'PY'
+    import glob, sys
+    try:
+        import yaml
+    except ImportError:
+        print("PyYAML not available — skipping")
+        sys.exit(0)
+    errors = 0
+    for f in glob.glob("**/*.yaml", recursive=True) + glob.glob("**/*.yml", recursive=True):
+        # skip Helm templates and vendored charts
+        if "/templates/" in f or "/charts/" in f or f.startswith("platform/longhorn/charts/"):
+            continue
+        with open(f) as fh:
+            content = fh.read()
+        # skip files with Go templating
+        if chr(123)*2 in content or chr(123)+"%" in content:
+            continue
+        try:
+            list(yaml.safe_load_all(content))
+        except Exception as e:
+            print(f"❌ YAML parse error in {f}: {e}")
+            errors += 1
+    if errors:
+        sys.exit(1)
+    print("   YAML sanity: OK")
+    PY
+    if command -v yamllint >/dev/null 2>&1; then
+      echo "==> yamllint gitops/ platform/ bootstrap/"
+      yamllint gitops/ platform/ bootstrap/ 2>&1 || echo "⚠️ yamllint reported issues (non-blocking)"
+    else
+      echo "   yamllint not installed — skipping (pip install yamllint)"
+    fi
+    echo "✅ validate-yaml: OK"
 
 # ── GitOps ────────────────────────────────────
 

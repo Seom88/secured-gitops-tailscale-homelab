@@ -10,13 +10,14 @@ NC='\033[0m' # No Color
 BOLD='\033[1m'
 
 # Helper functions
+vault_kubectl() { kubectl exec -i -n vault "$@"; }
 
 # Helper for idempotency
 vault_auth_write() {
     local path=$1
     shift
     echo -e "${YELLOW}  [Vault] Configuring $path...${NC}"
-    retry $VAULT_EXEC_BASE "$VAULT_POD" -- env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt VAULT_TOKEN="$ROOT_TOKEN" vault write -tls-server-name=vault "$path" "$@" > /dev/null 2>&1
+    retry vault_kubectl "$VAULT_POD" -- env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt VAULT_TOKEN="$ROOT_TOKEN" vault write -tls-server-name=vault "$path" "$@" > /dev/null 2>&1
 }
 
 # Retry helper
@@ -25,21 +26,22 @@ retry() {
     local max=5
     local delay=2
     while true; do
-        "$@" && break || {
-            if [[ $n -lt $max ]]; then
-                ((n++))
-                sleep $delay
-            else
-                return 1
-            fi
-        }
+        if "$@"; then
+            break
+        fi
+        if [[ $n -lt $max ]]; then
+            ((n++))
+            sleep $delay
+        else
+            return 1
+        fi
     done
 }
 
 # Silent status check that handles exit code 2 (sealed) without kubectl noise
 vault_status() {
     local pod=$1
-    $VAULT_EXEC_BASE "$pod" -- /bin/sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault status -format=json -tls-server-name=vault || true" 2>/dev/null
+    vault_kubectl "$pod" -- /bin/sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault status -format=json -tls-server-name=vault || true" 2>/dev/null
 }
 
 # General vault exec that silences kubectl "command terminated" noise on stderr
@@ -47,10 +49,10 @@ vault_status() {
 vault_exec() {
     local pod=$1
     local cmd=$2
-    $VAULT_EXEC_BASE "$pod" -- /bin/sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt $cmd" 2>/dev/null
+    vault_kubectl "$pod" -- /bin/sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt $cmd" 2>/dev/null
 }
 
-echo -e "${BLUE}  [Vault] Starting bootstrap...${NC}"
+echo -e "${BOLD}${BLUE}  [Vault] Starting bootstrap...${NC}"
 
 # 1. Wait for Vault StatefulSet to exist
 echo -ne "${YELLOW}  [Vault] Waiting for StatefulSet to be created...${NC}"
@@ -88,18 +90,15 @@ done
 echo -e " ${GREEN}All $DESIRED_REPLICAS pods running!${NC}"
 
 VAULT_POD=$(kubectl get pod -n vault -l app.kubernetes.io/name=vault,component=server -o jsonpath="{.items[0].metadata.name}")
-RELEASE_NAME=$(kubectl get pod $VAULT_POD -n vault -o jsonpath="{.metadata.labels['app\.kubernetes\.io/instance']}")
+RELEASE_NAME=$(kubectl get pod "$VAULT_POD" -n vault -o jsonpath="{.metadata.labels['app\.kubernetes\.io/instance']}")
 SECRET_NAME="$RELEASE_NAME-unseal-keys"
-
-# Helpers for vault exec
-VAULT_EXEC_BASE="kubectl exec -i -n vault"
 
 # 2. Initialization
 STATUS=$(vault_status "$VAULT_POD")
 if echo "$STATUS" | jq -e '.initialized == false' >/dev/null 2>&1; then
-    echo -e "${BLUE}  [Vault] Initializing...${NC}"
+    echo -e "${BOLD}${BLUE}  [Vault] Initializing...${NC}"
     # For init we don't silence stderr to see real errors if they happen
-    INIT_OUT=$($VAULT_EXEC_BASE "$VAULT_POD" -- /bin/sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault operator init -format=json -tls-server-name=vault")
+    INIT_OUT=$(vault_kubectl "$VAULT_POD" -- /bin/sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault operator init -format=json -tls-server-name=vault")
     
     ROOT_TOKEN=$(echo "$INIT_OUT" | jq -r '.root_token')
     KEY1=$(echo "$INIT_OUT" | jq -r '.unseal_keys_b64[0]')
@@ -151,7 +150,7 @@ done
 # 4. Configure Vault
 ROOT_TOKEN=$(kubectl get secret "$SECRET_NAME" -n vault -o jsonpath='{.data.root-token}' | base64 -d)
 
-echo -e "${BLUE}  [Vault] Configuring engines and auth...${NC}"
+echo -e "${BOLD}${BLUE}  [Vault] Configuring engines and auth...${NC}"
 vault_exec "$VAULT_POD" "VAULT_TOKEN=$ROOT_TOKEN vault secrets list -tls-server-name=vault" | grep -q "secret/" || \
   vault_exec "$VAULT_POD" "VAULT_TOKEN=$ROOT_TOKEN vault secrets enable -path=secret -tls-server-name=vault kv-v2" > /dev/null 2>&1
 
@@ -159,7 +158,7 @@ vault_exec "$VAULT_POD" "VAULT_TOKEN=$ROOT_TOKEN vault auth list -tls-server-nam
   vault_exec "$VAULT_POD" "VAULT_TOKEN=$ROOT_TOKEN vault auth enable -tls-server-name=vault kubernetes" > /dev/null 2>&1
 
 K8S_ISSUER=$(retry kubectl get --raw /.well-known/openid-configuration | jq -r .issuer)
-K8S_CA=$(retry kubectl exec -n vault "$VAULT_POD" -- cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt)
+K8S_CA=$(retry vault_kubectl "$VAULT_POD" -- cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt)
 
 vault_auth_write auth/kubernetes/config \
     kubernetes_host="https://kubernetes.default.svc" \

@@ -1,0 +1,145 @@
+# Validate — fast feedback, no cluster
+name: Validate
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  HELM_VERSION: v3.18.4
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Helm (${{ env.HELM_VERSION }})
+        uses: azure/setup-helm@v5
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Helm dependency build (gitops)
+        run: helm dependency build gitops 2>&1 || echo "no dependencies to build for gitops chart"
+
+      - name: Helm dependency build (platform charts)
+        run: |
+          helm repo add longhorn https://charts.longhorn.io >/dev/null 2>&1 || true
+          helm repo add grafana https://grafana.github.io/helm-charts >/dev/null 2>&1 || true
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null 2>&1 || true
+          helm repo add seaweedfs https://seaweedfs.github.io/seaweedfs/helm >/dev/null 2>&1 || true
+          helm repo add tailscale https://pkgs.tailscale.com/helmcharts >/dev/null 2>&1 || true
+          helm repo add hashicorp https://helm.releases.hashicorp.com >/dev/null 2>&1 || true
+          helm repo update >/dev/null 2>&1 || true
+          for dir in platform/*/; do
+            if [ -f "${dir}Chart.yaml" ]; then
+              echo "::group::helm dependency build $dir"
+              helm dependency update "$dir" 2>&1 || helm dependency build "$dir" 2>&1 || echo "no deps / already built for $dir"
+              echo "::endgroup::"
+            fi
+          done
+
+      - name: Lint gitops chart (prod values)
+        run: helm lint gitops -f gitops/values.yaml
+
+      - name: Lint gitops chart (dev values)
+        run: helm lint gitops -f gitops/values-dev.yaml
+
+      - name: Render gitops chart (prod) — empty check
+        run: |
+          echo "Rendering gitops with prod values..."
+          helm template gitops gitops -f gitops/values.yaml > /tmp/gitops-prod.yaml
+          if [ ! -s /tmp/gitops-prod.yaml ]; then
+            echo "::error::helm template rendered empty output for prod values"
+            exit 1
+          fi
+          echo "Prod render: $(wc -l < /tmp/gitops-prod.yaml) lines, $(grep -c '^---' /tmp/gitops-prod.yaml || true) documents"
+          cat /tmp/gitops-prod.yaml | head -n 80
+
+      - name: Render gitops chart (dev) — empty check
+        run: |
+          echo "Rendering gitops with dev values..."
+          helm template gitops gitops -f gitops/values-dev.yaml > /tmp/gitops-dev.yaml
+          if [ ! -s /tmp/gitops-dev.yaml ]; then
+            echo "::error::helm template rendered empty output for dev values"
+            exit 1
+          fi
+          echo "Dev render: $(wc -l < /tmp/gitops-dev.yaml) lines"
+
+      - name: Lint platform charts
+        run: |
+          set -e
+          failed=0
+          for dir in platform/*/; do
+            if [ -f "${dir}Chart.yaml" ]; then
+              echo "::group::helm lint $dir"
+              if ! helm lint "$dir"; then
+                echo "::error::helm lint failed for $dir"
+                failed=1
+              fi
+              echo "::endgroup::"
+            fi
+          done
+          exit $failed
+
+      - name: ShellCheck bootstrap scripts
+        run: |
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            echo "Installing shellcheck..."
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq shellcheck
+          fi
+          shellcheck --version
+          echo "Linting bootstrap/init-gitops.sh ..."
+          shellcheck bootstrap/init-gitops.sh
+          echo "Linting platform/vault/scripts/bootstrap-vault.sh ..."
+          shellcheck platform/vault/scripts/bootstrap-vault.sh
+
+      - name: YAML sanity (python yaml)
+        run: |
+          python3 - << 'PY'
+          import glob, sys
+          try:
+              import yaml
+          except ImportError:
+              print("PyYAML not available, skipping")
+              sys.exit(0)
+          errors = 0
+          for f in glob.glob("**/*.yaml", recursive=True) + glob.glob("**/*.yml", recursive=True):
+              # skip Helm templates and vendored charts
+              if "/templates/" in f or "/charts/" in f or f.startswith("platform/longhorn/charts/"):
+                  continue
+              with open(f) as fh:
+                  content = fh.read()
+              if "{{" in content or "{%" in content:
+                  continue
+              try:
+                  list(yaml.safe_load_all(content))
+              except Exception as e:
+                  print(f"::error file={f}::YAML parse error: {e}")
+                  errors += 1
+          if errors:
+              sys.exit(1)
+          print("YAML sanity: OK")
+          PY
+
+      - name: yamllint (bonus)
+        continue-on-error: true
+        run: |
+          pip install --quiet yamllint 2>/dev/null || true
+          if command -v yamllint >/dev/null 2>&1; then
+            yamllint gitops/ platform/ bootstrap/ 2>&1 || echo "::warning::yamllint reported issues (non-blocking)"
+          else
+            echo "yamllint not available — skipping"
+          fi

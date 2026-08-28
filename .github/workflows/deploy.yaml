@@ -1,0 +1,156 @@
+# Deploy GitOps — fetches kubeconfig from infra state, runs bootstrap/init-gitops.sh
+name: Deploy GitOps
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        options: [prod, dev]
+        default: prod
+      force_reapply:
+        description: Force reapply even if App-of-Apps already exists
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  HELM_VERSION: v3.18.4
+  S3_ENDPOINT: https://rustfs.lonk-mirfak.ts.net
+  S3_BUCKET: terraform-homelab
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: ${{ inputs.environment || 'prod' }}
+
+    steps:
+      - name: Checkout secure repo
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Checkout infra repo (for kubeconfig)
+        uses: actions/checkout@v7
+        with:
+          repository: Seom88/infra-talos-homelab
+          path: infra
+          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          persist-credentials: false
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v5
+
+      - name: Setup Helm (${{ env.HELM_VERSION }})
+        uses: azure/setup-helm@v5
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Install jq / yq (if needed)
+        run: |
+          jq --version
+          if ! command -v yq >/dev/null 2>&1; then
+            echo "Installing yq..."
+            sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+            sudo chmod +x /usr/local/bin/yq
+          fi
+          yq --version
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:terraform
+          use-cache: 'true'
+
+      - name: Restore kubeconfig from infra state
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          set -e
+          ENV="${{ inputs.environment || 'prod' }}"
+          echo "Target environment: $ENV"
+          TF_DIR="infra/environments/proxmox/${ENV}"
+
+          if [ ! -d "$TF_DIR" ]; then
+            echo "::error::Terraform env dir not found: $TF_DIR"
+            ls -R infra/environments 2>&1 | head -n 80
+            exit 1
+          fi
+
+          echo "→ terraform init -reconfigure ($TF_DIR)"
+          terraform -chdir="$TF_DIR" init -reconfigure -input=false
+
+          echo "→ terraform output -raw kubeconfig"
+          if terraform -chdir="$TF_DIR" output -raw kubeconfig > /tmp/kubeconfig.yaml 2>/dev/null; then
+            echo "kubeconfig obtained via terraform output"
+          else
+            echo "::warning::terraform output failed — trying S3 fallback"
+            if command -v aws >/dev/null 2>&1; then
+              echo "Attempting aws s3api fallback..."
+              aws s3api get-object \
+                --bucket ${{ env.S3_BUCKET }} \
+                --key "proxmox/${ENV}/terraform.tfstate" \
+                --endpoint-url ${{ env.S3_ENDPOINT }} \
+                /tmp/tfstate.json 2>&1 || echo "S3 get-object failed"
+              if [ -f /tmp/tfstate.json ]; then
+                jq -r '.outputs.kubeconfig.value // empty' /tmp/tfstate.json > /tmp/kubeconfig.yaml 2>/dev/null || true
+                rm -f /tmp/tfstate.json
+              fi
+            else
+              echo "aws cli not available for fallback"
+            fi
+          fi
+
+          if [ ! -s /tmp/kubeconfig.yaml ]; then
+            echo "::error::kubeconfig is missing or empty after all methods (/tmp/kubeconfig.yaml)"
+            ls -l /tmp/kubeconfig.yaml 2>&1 || true
+            exit 1
+          fi
+
+          chmod 600 /tmp/kubeconfig.yaml
+          echo "KUBECONFIG=/tmp/kubeconfig.yaml"
+          echo "KUBECONFIG=/tmp/kubeconfig.yaml" >> "$GITHUB_ENV"
+
+          echo "→ kubectl cluster-info"
+          KUBECONFIG=/tmp/kubeconfig.yaml kubectl cluster-info --request-timeout=10s
+          KUBECONFIG=/tmp/kubeconfig.yaml kubectl get nodes --request-timeout=10s || echo "::warning::kubectl get nodes failed — cluster may still be initializing"
+
+      - name: Bootstrap (delegates to init-gitops.sh — single source of truth)
+        env:
+          KUBECONFIG: /tmp/kubeconfig.yaml
+        run: |
+          set -e
+          ENV="${{ inputs.environment || 'prod' }}"
+          FORCE=""
+          if [ "${{ inputs.force_reapply || false }}" = "true" ]; then
+            FORCE="--force"
+            echo "force_reapply=true → will pass --force to init-gitops.sh"
+          fi
+
+          chmod +x bootstrap/init-gitops.sh
+          chmod +x platform/vault/scripts/bootstrap-vault.sh
+          ./bootstrap/init-gitops.sh "$ENV" $FORCE
+
+      - name: Cleanup kubeconfig
+        if: always()
+        run: |
+          shred -u /tmp/kubeconfig.yaml 2>/dev/null || rm -f /tmp/kubeconfig.yaml /tmp/tfstate.json 2>/dev/null || true
+          echo "Kubeconfig cleaned"

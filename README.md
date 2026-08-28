@@ -114,14 +114,14 @@ If you want to replicate or fork this lab:
 
 1. **Ensure prerequisites**: Use a running Kubernetes cluster with **ArgoCD** installed. The infra repo's `platform/` Terraform root provisions it (nodes ready → ArgoCD) — run `just tf-platform-apply` there. Longhorn is deployed by this repo as wave 0 during bootstrap.
 2. **Fork both repos** — Update repository references (including the infra repo's platform layer) in the [Customization Guide](docs/customization-guide.md).
-3. **Bootstrap**: Run `just init-prod` or `just init-dev` (or `./bootstrap/01-init-gitops.sh [prod|dev]`), which deploys the root App-of-Apps — including Longhorn as wave 0 — and configures Vault. It does not install ArgoCD or any storage component.
+3. **Bootstrap**: Run `just init-prod` or `just init-dev` (or `./bootstrap/init-gitops.sh [prod|dev]`), which deploys the root App-of-Apps — including Longhorn as wave 0 — and configures Vault. It does not install ArgoCD or any storage component. The script checks if the App-of-Apps already exists and skips reapply (idempotent); a second run acts as a status verifier showing ArgoCD Applications / pods coming up. Use `--force` (`just init-prod-force` / `./bootstrap/init-gitops.sh prod --force`) to reapply.
 
 ## 📂 Project Structure
 
 ```
 secured-gitops-tailscale-homelab/
 ├── bootstrap/                   # One-shot init scripts
-│   └── 01-init-gitops.sh        # Deploys root App-of-Apps & configures Vault
+│   └── init-gitops.sh           # Deploys root App-of-Apps & configures Vault (idempotent, rerun for status)
 │
 ├── platform/                    # Platform-level Helm charts
 │   ├── vault/                   # Vault HA chart + auto-unseal + ESO configs
@@ -170,8 +170,10 @@ secured-gitops-tailscale-homelab/
 - [ ] Velero — cluster backups to SeaweedFS
 
 ### Phase 4 — Hardening & Developer Experience 💡
-- [ ] CI/CD Pipeline — GitHub Actions for lint, test, preview
+- [X] CI/CD Pipeline — GitHub Actions for lint, test, preview (validate + guarded deploy, `just validate` local mirror)
 - [ ] Real application deployment (Immich or similar)
+
+> Phase 4 partially completed — bootstrap guard (`--force`), status verifier, CI workflow (validate + guarded deploy) and local `just validate` mirror.
 
 ### Phase 5 — Python Automation & Image Security 🚧
 - [ ] Ops CLI: bootstrap, health checks, cluster doctor — replaces fragile bash (`typer` + `kubernetes` + `hvac`)
