@@ -1,0 +1,51 @@
+# yamllint — Helm-aware, not Helm-hostile
+# Templates contain Go sprig ({{ }}) which is not YAML. helm lint/template is the validator for them.
+extends: default
+
+yaml-files:
+  - '*.yaml'
+  - '*.yml'
+
+ignore: |
+  # Helm templates — validated by helm lint/template, not yamllint
+  gitops/templates/
+  platform/*/templates/
+  platform/*/templates/**/*
+  **/templates/**
+  **/charts/**
+  platform/longhorn/charts/
+  # rendered / cached output
+  /tmp/*
+
+rules:
+  # k8s manifests rarely use explicit document start
+  document-start: disable
+
+  # 80 is too tight for k8s/Helm (Go templates, image names); 180 keeps hygiene without templating noise
+  line-length:
+    max: 180
+    level: warning
+    allow-non-breakable-words: true
+    allow-non-breakable-inline-mappings: true
+
+  # Helm values use true/false without quotes; k8s also uses on/off in some places
+  truthy:
+    allowed-values: ['true', 'false']
+    check-keys: false
+
+  # Inside `|` literal blocks (vault raft config, affinity) we embed HCL + {{ template }}
+  # Don't police braces/brackets spacing there — helm lint owns it
+  braces: disable
+  brackets: disable
+
+  indentation:
+    spaces: consistent
+    indent-sequences: consistent
+    check-multi-line-strings: false
+    level: warning
+
+  # keep useful hygiene
+  trailing-spaces: enable
+  new-line-at-end-of-file: enable
+  empty-lines:
+    max-end: 1

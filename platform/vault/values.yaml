@@ -95,11 +95,11 @@ vault:
           protocol: UDP
         - port: 53
           protocol: TCP
-      - ports:
-          - port: 443
-            protocol: TCP
-          - port: 6443
-            protocol: TCP
+      - ports:  # yamllint: ports list at egress root
+        - port: 443
+          protocol: TCP
+        - port: 6443
+          protocol: TCP
       ingress:
       - from:
         - namespaceSelector:

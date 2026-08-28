@@ -181,11 +181,14 @@ validate-yaml:
         sys.exit(1)
     print("   YAML sanity: OK")
     PY
-    if command -v yamllint >/dev/null 2>&1; then
-      echo "==> yamllint gitops/ platform/ bootstrap/"
-      yamllint gitops/ platform/ bootstrap/ 2>&1 || echo "⚠️ yamllint reported issues (non-blocking)"
+    # resolve yamllint (brew/pip binary or python module)
+    YAMLLINT=""
+    if command -v yamllint >/dev/null 2>&1; then YAMLLINT="yamllint"; elif python3 -m yamllint --help >/dev/null 2>&1; then YAMLLINT="python3 -m yamllint"; fi
+    if [ -n "$YAMLLINT" ]; then
+      echo "==> yamllint gitops/ platform/ bootstrap/ (.yamllint.yaml)"
+      $YAMLLINT -c .yamllint.yaml gitops/ platform/ bootstrap/ 2>&1 || echo "⚠️ yamllint reported issues (non-blocking)"
     else
-      echo "   yamllint not installed — skipping (pip install yamllint)"
+      echo "   yamllint not installed — skipping (pip install yamllint / brew install yamllint)"
     fi
     echo "✅ validate-yaml: OK"
 

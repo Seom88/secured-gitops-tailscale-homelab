@@ -134,12 +134,9 @@ jobs:
           print("YAML sanity: OK")
           PY
 
-      - name: yamllint (bonus)
+      - name: yamllint (bonus, Helm-aware via .yamllint.yaml)
         continue-on-error: true
         run: |
           pip install --quiet yamllint 2>/dev/null || true
-          if command -v yamllint >/dev/null 2>&1; then
-            yamllint gitops/ platform/ bootstrap/ 2>&1 || echo "::warning::yamllint reported issues (non-blocking)"
-          else
-            echo "yamllint not available — skipping"
-          fi
+          yamllint -c .yamllint.yaml gitops/ platform/ bootstrap/ 2>&1 || echo "::warning::yamllint reported issues (non-blocking)"
+          echo "yamllint with .yamllint.yaml: done (templates ignored, helm lint owns them)"
