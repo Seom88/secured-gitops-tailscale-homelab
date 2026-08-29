@@ -9,6 +9,14 @@ longhorn:
     nodeDownPodDeletionPolicy: delete-both-statefulset-and-deployment-pod
     defaultDataPath: /var/mnt/data # must match UserVolumeConfig name=data -> /var/mnt/data
     defaultLonghornStaticStorageClass: longhorn-static
+  preUpgradeChecker:
+    # ArgoCD/GitOps: disable pre-upgrade hook Job (requires CRDs + ClusterRole that are
+    # not yet synced when helm.sh/hook: pre-upgrade runs — deadlock: SA exists but
+    # ClusterRole/CRDs are Sync-phase, so GET settings.longhorn.io/current-longhorn-version
+    # fails with Forbidden and pod exits 1s -> BackoffLimitExceeded). Chart docs:
+    # "Disable this setting when installing Longhorn using Argo CD or other GitOps solutions."
+    jobEnabled: false
+    upgradeVersionCheck: false
   persistence:
     defaultClass: true
     defaultClassReplicaCount: 3
