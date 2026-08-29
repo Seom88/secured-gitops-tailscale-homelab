@@ -14,8 +14,8 @@ maintainers:
 
 dependencies:
   - name: loki
-    version: 7.0.0
+    version: 7.3.0
     repository: https://grafana.github.io/helm-charts
   - name: kube-prometheus-stack
-    version: 86.0.0
+    version: 86.3.2
     repository: https://prometheus-community.github.io/helm-charts

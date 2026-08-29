@@ -12,6 +12,6 @@ maintainers:
     url: https://github.com/Seom88
 dependencies:
   - name: tailscale-operator
-    version: 1.96.5
+    version: 1.102.3
     condition: tailscale-operator
     repository: https://pkgs.tailscale.com/helmcharts
