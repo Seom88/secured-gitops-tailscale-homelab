@@ -58,13 +58,39 @@ argocd-password:
 # Show Vault root token
 vault-token:
     #!/usr/bin/env bash
-    secret=$(kubectl get secret -n vault -l app.kubernetes.io/instance=vault \
-      -o jsonpath="{.items[0].metadata.name}" 2>/dev/null || echo "")
-    if [ -z "$secret" ]; then
-      echo "No Vault unseal secret found"
+    set -euo pipefail
+    # Derive secret name exactly like platform/vault/scripts/bootstrap-vault.sh
+    # (RELEASE_NAME from pod label app.kubernetes.io/instance -> <release>-unseal-keys)
+    pod=$(kubectl get pod -n vault -l app.kubernetes.io/name=vault,component=server -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+    if [ -n "$pod" ]; then
+      release=$(kubectl get pod "$pod" -n vault -o jsonpath="{.metadata.labels['app\.kubernetes\.io/instance']}" 2>/dev/null || echo "vault")
     else
-      kubectl get secret "$secret" -n vault -o jsonpath='{.data.root-token}' | base64 -d; echo
+      release="vault"
     fi
+    # Try derived name first, then both known names as fallback
+    candidates=("$release-unseal-keys" "vault-unseal-keys" "vault-dev-unseal-keys")
+    secret=""
+    for c in "${candidates[@]}"; do
+      if kubectl get secret "$c" -n vault >/dev/null 2>&1; then
+        secret="$c"
+        break
+      fi
+    done
+    if [ -z "$secret" ]; then
+      echo "No Vault unseal secret found (tried: ${candidates[*]} in namespace vault)" >&2
+      echo "Secrets in vault namespace:" >&2
+      kubectl get secrets -n vault -o name 2>/dev/null | sed 's/^/  /' >&2 || true
+      echo "Debug: kubectl get secret -n vault -l app.kubernetes.io/instance=vault returns:" >&2
+      kubectl get secret -n vault -l app.kubernetes.io/instance=vault -o name 2>&1 | sed 's/^/  /' >&2 || true
+      exit 1
+    fi
+    token=$(kubectl get secret "$secret" -n vault -o jsonpath='{.data.root-token}' | base64 -d || true)
+    if [ -z "$token" ]; then
+      echo "Secret $secret found but .data.root-token is empty/blank" >&2
+      kubectl get secret "$secret" -n vault -o jsonpath='{.data}' 2>&1 | sed 's/^/  /' >&2 || true
+      exit 1
+    fi
+    echo "$token"
 
 # Show cluster nodes and versions
 status:
