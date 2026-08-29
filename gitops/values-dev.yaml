@@ -1,47 +1,7 @@
-# App-of-Apps chart values
+# App-of-Apps chart values — ordered core is plain Applications in templates/apps/ (see ADR-006)
 repoURL: https://github.com/Seom88/secured-gitops-tailscale-homelab.git
 platformApps:
   enabled: true
-  helm:
-  - name: cert-manager
-    namespace: cert-manager
-    wave: 0
-    chart: cert-manager
-    repoURL: https://charts.jetstack.io
-    version: v1.17.2
-    values:
-      crds:
-        enabled: true
-      global:
-        leaderElection:
-          namespace: cert-manager
-  - name: external-secrets
-    namespace: external-secrets
-    wave: 0
-    chart: external-secrets
-    repoURL: https://charts.external-secrets.io
-    version: 2.4.1
-  local:
-  - name: longhorn
-    namespace: longhorn-system
-    wave: 0
-    path: platform/longhorn
-  - name: vault
-    namespace: vault
-    wave: 1
-    path: platform/vault
-  - name: seaweedfs
-    namespace: seaweedfs
-    wave: 2
-    path: platform/seaweedfs
-  - name: monitoring
-    namespace: monitoring
-    wave: 3
-    path: platform/monitoring
-  - name: tailscale
-    namespace: tailscale
-    wave: 4
-    path: platform/tailscale
 
 developmentApp:
   enabled: true

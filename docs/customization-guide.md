@@ -12,12 +12,14 @@ ArgoCD needs to know where its source of truth is. This project uses an **App-of
 
 ### Update repoURL
 
-The main entry point is `gitops/templates/root-prod-app.yaml`, which uses the `repoURL` defined in the values files. You **must** update this to point to your fork.
+The main entry point is `gitops/templates/root-prod-app.yaml`, which uses the `repoURL` defined in the values files. Platform apps are plain `Application` resources in `gitops/templates/apps/00-*.yaml` (not ApplicationSets), each with `argocd.argoproj.io/sync-wave` and `wave-policy`. You **must** update `repoURL` to point to your fork.
 
 1.  **Production**: Update `repoURL` in `gitops/values.yaml`.
 2.  **Development**: Update `repoURL` in `gitops/values-dev.yaml`.
 
-By default, the `prod` environment targets the `main` branch, while the `dev` environment targets the `dev` branch. You can change this behavior in `gitops/templates/root-prod-app.yaml` and `gitops/templates/platform-local-appset.yaml`.
+By default, the `prod` environment targets the `main` branch, while the `dev` environment targets the `dev` branch. You can change this behavior in `gitops/templates/root-prod-app.yaml` and in each `gitops/templates/apps/00-*.yaml` (via `targetRevision`).
+
+To add a new ordered app, create a new `gitops/templates/apps/0N-name.yaml` as a plain `Application` with the correct `argocd.argoproj.io/sync-wave` annotation and `wave-policy` label (`healthy` to block the next wave until `Synced + Healthy`, `sync-only` to require only `Synced`). Use the existing `00-*.yaml` → `04-*.yaml` files as templates: waves `0` cert-manager/external-secrets/longhorn → `1` vault → `2` seaweedfs → `3` monitoring (`sync-only`) → `4` tailscale (`sync-only`, always last).
 
 ## 2. Tailscale Configuration
 

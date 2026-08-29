@@ -28,6 +28,9 @@ just init-dev
 > [!IMPORTANT]
 > The cluster must have **ArgoCD** installed **before** running the bootstrap. The companion infra repo's `platform/` layer installs it (order: nodes ready → ArgoCD). Longhorn is deployed by this repo as a wave-0 App-of-Apps app with a CSI readiness gate — the bootstrap script does not install ArgoCD or any storage component.
 
+> [!NOTE]
+> **Wave ordering and idempotency:** Platform apps are plain `Application` resources in `gitops/templates/apps/` ordered by `argocd.argoproj.io/sync-wave`: `00` cert-manager/external-secrets/longhorn (wave 0) → `01` vault (wave 1) → `02` seaweedfs (wave 2) → `03` monitoring (wave 3, `sync-only`) → `04` tailscale (wave 4, `sync-only`, always last). The default `wave-policy: healthy` makes each wave wait for `Synced + Healthy` (custom Application health Lua in the infra repo's `modules/platform/values/argocd/values.yaml`), matching Flux `dependsOn` semantics; `sync-only` leaves need only `Synced`. Bootstrap is idempotent — if the root `Application` already exists the script skips reapply and acts as a status verifier. Because `monitoring` and `tailscale` are `sync-only` leaves, Tailscale still exposes other apps even if monitoring is degraded.
+
 ## 2. Configure Vault
 
 The bootstrap script automatically initializes Vault and configures the necessary secrets engines.

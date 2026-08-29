@@ -15,7 +15,7 @@ Enterprise-grade DevSecOps homelab that runs on **any CNCF-compliant Kubernetes 
 
 Fully automated Kubernetes environment focused on **GitOps principles**, **Zero-Trust networking** via Tailscale, and **Advanced Secret Management** with Vault + External Secrets Operator.
 
-The companion infra repo installs ArgoCD (GitOps engine) via its `platform/` Terraform root — **before** this repo is bootstrapped. Longhorn (storage) is also managed declaratively from this repo as a wave-0 platform app with a CSI readiness gate. Everything else — Vault, cert-manager, External Secrets, monitoring, and the platform and user apps — is managed declaratively from this repo through an ArgoCD **App-of-Apps** pattern.
+The companion infra repo installs ArgoCD (GitOps engine) via its `platform/` Terraform root — **before** this repo is bootstrapped. Longhorn (storage) is also managed declaratively from this repo as a wave-0 platform app with a CSI readiness gate. Everything else — Vault, cert-manager, External Secrets, monitoring, and the platform and user apps — is managed declaratively from this repo through an ArgoCD **App-of-Apps** pattern. Platform apps are plain `Application` resources in `gitops/templates/apps/` with a `00-` prefix and `argocd.argoproj.io/sync-wave` annotations (not ApplicationSets), ordered deterministically via a custom Application health check.
 
 ## 🏗 Architecture
 
@@ -40,17 +40,19 @@ graph TD
     subgraph "Kubernetes Cluster (distro-agnostic)"
         direction TB
         ROOT[ArgoCD root<br/>App-of-Apps]
-        LH[Longhorn<br/>wave-0 storage app<br/>CSI-gated]
-        Vault[HashiCorp Vault<br/>3-node Raft]
-        ESO[External Secrets<br/>Operator]
-        Cert[Cert-Manager]
-        Apps[Platform & User Apps]
+        W0A[00 cert-manager<br/>wave 0 healthy]
+        W0B[00 external-secrets<br/>wave 0 healthy]
+        W0C[00 longhorn<br/>wave 0 healthy<br/>CSI-gated]
+        W1[01 vault<br/>wave 1 healthy<br/>3-node Raft]
+        W2[02 seaweedfs<br/>wave 2 healthy]
+        W3[03 monitoring<br/>wave 3 sync-only]
+        W4[04 tailscale<br/>wave 4 sync-only<br/>always last]
 
-        ROOT -->|sync waves| Cert
-        ROOT -->|wave 0| LH
-        ROOT -->|wave 0| ESO
-        ROOT -->|wave 1| Vault
-        ROOT -->|wave 2-4| Apps
+        ROOT --> W0A & W0B & W0C
+        W0A & W0B & W0C --> W1
+        W1 --> W2
+        W2 --> W3
+        W3 --> W4
     end
 
     User((Admin)) -->|tailscale| TS
@@ -136,7 +138,16 @@ secured-gitops-tailscale-homelab/
 │   ├── Chart.yaml               # Meta-chart orchestrating everything
 │   ├── values.yaml              # Production values
 │   ├── values-dev.yaml          # Dev overrides (branch: dev)
-│   └── templates/               # ApplicationSets & root app
+│   └── templates/
+│       ├── root-prod-app.yaml   # Root App-of-Apps (points at ./gitops)
+│       └── apps/                # Plain Applications ordered by sync-wave
+│           ├── 00-cert-manager.yaml      # wave 0 (healthy)
+│           ├── 00-external-secrets.yaml  # wave 0 (healthy)
+│           ├── 00-longhorn.yaml          # wave 0 (healthy, CSI-gated)
+│           ├── 01-vault.yaml             # wave 1 (healthy)
+│           ├── 02-seaweedfs.yaml         # wave 2 (healthy)
+│           ├── 03-monitoring.yaml        # wave 3 (sync-only leaf)
+│           └── 04-tailscale.yaml         # wave 4 (sync-only, always last)
 │
 ├── docs/                        # Documentation & ADRs
 │   ├── getting-started.md       # Full walkthrough

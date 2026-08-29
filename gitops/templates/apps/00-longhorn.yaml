@@ -1,0 +1,35 @@
+{{- if .Values.platformApps.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: longhorn{{- if .Values.developmentApp.enabled }}-dev{{- end }}
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  labels:
+    wave-policy: healthy
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL }}
+    targetRevision: {{ if .Values.developmentApp.enabled }}dev{{ else }}main{{ end }}
+    path: platform/longhorn
+    helm:
+      ignoreMissingValueFiles: true
+      valueFiles:
+        - values.yaml
+        {{- if .Values.developmentApp.enabled }}
+        - values-dev.yaml
+        {{- end }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: longhorn-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - Retry=true
+{{- end }}

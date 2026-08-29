@@ -158,17 +158,14 @@ else
     SECRET_NAME="vault-unseal-keys"
 fi
 
-ROOT_TOKEN=$(kubectl get secret "$SECRET_NAME" -n vault -o jsonpath='{.data.root-token}' | base64 -d 2>/dev/null || echo "N/A")
-ARGOCD_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d 2>/dev/null || echo "N/A")
-
 echo -e "\n${GREEN}${BOLD}===================================================${NC}"
 echo -e "${GREEN}${BOLD}      ✨ BOOTSTRAP COMPLETE! ✨                    ${NC}"
 echo -e "${GREEN}${BOLD}===================================================${NC}"
-echo -e "${BOLD}ArgoCD UI:${NC}    https://localhost:8080"
+echo -e "${BOLD}ArgoCD UI:${NC}    just pf-argocd -> https://localhost:8080"
 echo -e "${BOLD}ArgoCD User:${NC}  admin"
-echo -e "${BOLD}ArgoCD Pass:${NC}  $ARGOCD_PASSWORD"
-echo -e "\n${BOLD}Vault UI:${NC}     https://localhost:8200"
-echo -e "${BOLD}Vault Token:${NC}  $ROOT_TOKEN"
+echo -e "${BOLD}ArgoCD Pass:${NC}  just argocd-password"
+echo -e "\n${BOLD}Vault UI:${NC}   just pf-vault -> https://localhost:8200"
+echo -e "${BOLD}Vault Token:${NC}  just vault-token"
 echo -e "\n${YELLOW}💡 Port-forward commands:${NC}"
 echo -e "   kubectl port-forward svc/argocd-server -n argocd 8080:443"
 if [ "$ENV" == "dev" ]; then
