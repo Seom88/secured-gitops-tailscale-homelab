@@ -7,7 +7,7 @@ longhorn:
     storageMinimalAvailablePercentage: 15
     storageOverProvisioningPercentage: 200
     nodeDownPodDeletionPolicy: delete-both-statefulset-and-deployment-pod
-    defaultDataPath: /var/lib/longhorn
+    defaultDataPath: /var/mnt/data # must match UserVolumeConfig name=data -> /var/mnt/data
     defaultLonghornStaticStorageClass: longhorn-static
   persistence:
     defaultClass: true

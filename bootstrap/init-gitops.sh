@@ -55,6 +55,78 @@ else
 ${YELLOW}   You can retry with: kubectl delete applicationset -n argocd platform-local-apps${NC}"
 fi
 
+# --- STEP 1.5: Wait for Longhorn Storage (wave 0) ---
+echo -e "\n${BLUE}💾 Waiting for Longhorn storage (wave 0)...${NC}"
+
+# Only watch if longhorn is part of the App-of-Apps (gitops/values.yaml contains it)
+if kubectl get application longhorn -n argocd >/dev/null 2>&1; then
+  LONGHORN_TIMEOUT=600
+  LONGHORN_INTERVAL=5
+  LONGHORN_ELAPSED=0
+  echo -ne "${YELLOW}  [Longhorn] Waiting for StorageClasses (longhorn/longhorn-prod) and CSI to be ready...${NC}"
+  while [ $LONGHORN_ELAPSED -lt $LONGHORN_TIMEOUT ]; do
+    SC_READY="false"
+    if kubectl get sc longhorn >/dev/null 2>&1 || kubectl get sc longhorn-prod >/dev/null 2>&1; then
+      SC_READY="true"
+    fi
+
+    APP_HEALTH=$(kubectl get application longhorn -n argocd -o jsonpath='{.status.health.status}' 2>/dev/null || echo "Unknown")
+    APP_SYNC=$(kubectl get application longhorn -n argocd -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "Unknown")
+
+    # CSI gate: driver-deployer rollout + csi-plugin DaemonSet (created dynamically by driver-deployer)
+    CSI_READY="false"
+    if kubectl rollout status deployment/longhorn-driver-deployer -n longhorn-system --timeout=1s >/dev/null 2>&1; then
+      if kubectl get daemonset longhorn-csi-plugin -n longhorn-system >/dev/null 2>&1; then
+        if kubectl rollout status daemonset/longhorn-csi-plugin -n longhorn-system --timeout=1s >/dev/null 2>&1; then
+          CSI_READY="true"
+        fi
+      else
+        # driver-deployer ready but DaemonSet not yet created — still progressing
+        CSI_READY="false"
+      fi
+    fi
+
+    # Also check the csi-wait Job (wave 1 inside longhorn chart) if it exists
+    CSI_JOB_STATUS=$(kubectl get job longhorn-csi-wait -n longhorn-system -o jsonpath='{.status.conditions[0].type}' 2>/dev/null || echo "")
+
+    if [ "$SC_READY" = "true" ] && [ "$CSI_READY" = "true" ] && [ "$APP_HEALTH" = "Healthy" ] && [ "$APP_SYNC" = "Synced" ]; then
+      echo -e " ${GREEN}Ready! (SC + CSI + ArgoCD Healthy/Synced)${NC}"
+      break
+    fi
+
+    # Show richer status every 30s so the watch is not mute like Vault's "....."
+    if [ $((LONGHORN_ELAPSED % 30)) -eq 0 ] && [ $LONGHORN_ELAPSED -ne 0 ]; then
+      echo ""
+      echo -e "${YELLOW}  [Longhorn] elapsed ${LONGHORN_ELAPSED}s — SC_READY=$SC_READY CSI_READY=$CSI_READY APP=$APP_SYNC/$APP_HEALTH CSI_JOB=$CSI_JOB_STATUS${NC}"
+      kubectl get application longhorn -n argocd 2>/dev/null | sed 's/^/    /' || true
+      kubectl get sc 2>/dev/null | sed 's/^/    /' || echo "    (no StorageClass yet)"
+      kubectl get pods -n longhorn-system 2>/dev/null | sed 's/^/    /' || echo "    (no pods in longhorn-system yet)"
+      echo -ne "${YELLOW}  [Longhorn] Waiting...${NC}"
+    else
+      echo -n "."
+    fi
+
+    sleep $LONGHORN_INTERVAL
+    LONGHORN_ELAPSED=$((LONGHORN_ELAPSED + LONGHORN_INTERVAL))
+  done
+
+  if [ $LONGHORN_ELAPSED -ge $LONGHORN_TIMEOUT ]; then
+    echo -e "\n${RED}  [Longhorn] Timeout after ${LONGHORN_TIMEOUT}s — SC or CSI not ready yet.${NC}"
+    echo -e "${YELLOW}  [Longhorn] Current state (will continue to Vault, but PVCs may stay Pending):${NC}"
+    kubectl get application longhorn -n argocd 2>/dev/null | sed 's/^/    /' || echo "    (no ArgoCD Application longhorn)"
+    kubectl get sc 2>/dev/null | sed 's/^/    /' || echo "    (no StorageClass)"
+    kubectl get pods -n longhorn-system 2>/dev/null | sed 's/^/    /' || echo "    (no pods)"
+    kubectl get jobs -n longhorn-system 2>/dev/null | sed 's/^/    /' || true
+    echo -e "${YELLOW}  💡 Check: kubectl describe application longhorn -n argocd | kubectl logs -n longhorn-system -l app.kubernetes.io/name=longhorn${NC}"
+  else
+    echo -e "${GREEN}  [Longhorn] Storage is ready — Vault PVCs can now bind.${NC}"
+    kubectl get sc | sed 's/^/    /' || true
+  fi
+else
+  echo -e "${YELLOW}  [Longhorn] Application 'longhorn' not found in ArgoCD — skipping wait (older git revision without wave 0).${NC}"
+  echo -e "${YELLOW}  💡 If you expect Longhorn, push gitops/values.yaml with longhorn to origin/main and re-run.${NC}"
+fi
+
 # --- STEP 2: Vault configuration ---
 echo -e "\n${BLUE}🔑 Configuring Hashicorp Vault...${NC}"
 chmod +x platform/vault/scripts/bootstrap-vault.sh

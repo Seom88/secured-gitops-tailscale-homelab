@@ -14,5 +14,5 @@ volumeBindingMode: Immediate
 parameters:
   numberOfReplicas: "3"
   staleReplicaTimeout: "30"
-  diskSelector: "ssd,nvme"
+  diskSelector: "" # virtio homelab: no ssd/nvme tags, selector cleared
   migratable: "true"
