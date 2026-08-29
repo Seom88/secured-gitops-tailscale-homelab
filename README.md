@@ -173,7 +173,7 @@ secured-gitops-tailscale-homelab/
 ### Phase 2 — Automation & Observability 🚧
 - [X] Monitoring stack — Prometheus + Grafana + Loki deployed
 - [X] Prometheus / Grafana ingresses enabled via Tailscale
-- [ ] Renovate bot
+- [x] Renovate bot — weekly Mondays before 5am Europe/Madrid, grouped Helm + GitHub Actions, manual review for Vault/Longhorn/cert-manager (parity with infra-talos-homelab)
 
 ### Phase 3 — Storage & Scale 📋
 - [X] Longhorn — distributed block storage (app, deployed by this repo)

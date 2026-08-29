@@ -134,6 +134,28 @@ jobs:
           print("YAML sanity: OK")
           PY
 
+      - name: JSON sanity (python -m json.tool)
+        run: |
+          echo "==> JSON sanity (python3 -m json.tool)"
+          errors=0
+          for f in $(find . -type f -name "*.json" -not -path "*/charts/*" -not -path "*/.git/*" -not -path "*/node_modules/*"); do
+            echo "  checking $f..."
+            if ! python3 -m json.tool "$f" > /dev/null; then
+              echo "::error file=$f::JSON parse error"
+              errors=$((errors+1))
+            else
+              echo "  OK  $f"
+            fi
+          done
+          if [ ! -f renovate.json ]; then
+            echo "::warning::renovate.json not found"
+          fi
+          if [ "$errors" != "0" ]; then
+            echo "::error::$errors JSON file(s) failed validation"
+            exit 1
+          fi
+          echo "JSON sanity: OK"
+
       - name: yamllint (bonus, Helm-aware via .yamllint.yaml)
         continue-on-error: true
         run: |

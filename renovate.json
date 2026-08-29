@@ -1,0 +1,46 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "schedule": ["before 5am on monday"],
+  "timezone": "Europe/Madrid",
+  "labels": ["dependencies"],
+  "ignorePaths": ["**/charts/*.tgz"],
+  "packageRules": [
+    {
+      "description": "Vault HA Raft + TLS + auto-unseal — wave 1 healthy — needs manual review",
+      "matchDatasources": ["helm"],
+      "matchPackageNames": ["vault"],
+      "labels": ["manual-review/vault"],
+      "automerge": false
+    },
+    {
+      "description": "Longhorn storage — needs manual validation (CSI-gated wave 0)",
+      "matchDatasources": ["helm"],
+      "matchPackageNames": ["longhorn"],
+      "labels": ["manual-review/longhorn"],
+      "automerge": false
+    },
+    {
+      "description": "cert-manager wave-0 healthy — needs manual review before wave 1",
+      "matchDatasources": ["helm"],
+      "matchPackageNames": ["cert-manager"],
+      "labels": ["manual-review/cert-manager"],
+      "automerge": false
+    },
+    {
+      "description": "Group non-critical Helm charts (loki, kube-prometheus-stack, seaweedfs, tailscale-operator, external-secrets)",
+      "matchDatasources": ["helm"],
+      "excludePackageNames": ["vault", "longhorn", "cert-manager"],
+      "groupName": "helm charts",
+      "groupSlug": "helm-charts",
+      "labels": ["helm"]
+    },
+    {
+      "description": "Group GitHub Actions",
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions",
+      "groupSlug": "github-actions",
+      "labels": ["github-actions"]
+    }
+  ]
+}

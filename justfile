@@ -104,13 +104,14 @@ status:
 
 # ── Validate (local — mirrors CI validate job) ──────
 
-# Run all local validations (gitops + platform + scripts + yaml)
+# Run all local validations (gitops + platform + scripts + yaml + json)
 validate:
-    @echo "==> validate: running all checks (gitops + platform + scripts + yaml)"
+    @echo "==> validate: running all checks (gitops + platform + scripts + yaml + json)"
     @just validate-gitops
     @just validate-platform
     @just validate-scripts
     @just validate-yaml
+    @just validate-json
     @echo "✅ validate: all checks passed"
 
 # Validate GitOps App-of-Apps chart (lint + render prod/dev)
@@ -217,6 +218,30 @@ validate-yaml:
       echo "   yamllint not installed — skipping (pip install yamllint / brew install yamllint)"
     fi
     echo "✅ validate-yaml: OK"
+
+# JSON syntax sanity (python -m json.tool)
+validate-json:
+    #!/usr/bin/env bash
+    set -e
+    echo "==> JSON sanity (python3 -m json.tool)"
+    errors=0
+    for f in $(find . -type f -name "*.json" -not -path "*/charts/*" -not -path "*/.git/*" -not -path "*/node_modules/*"); do
+      echo "  checking $f..."
+      if ! python3 -m json.tool "$f" > /dev/null; then
+        echo "❌ JSON parse error in $f"
+        errors=$((errors+1))
+      else
+        echo "  OK  $f"
+      fi
+    done
+    if [ ! -f renovate.json ]; then
+      echo "⚠️  renovate.json not found"
+    fi
+    if [ "$errors" != "0" ]; then
+      echo "❌ $errors JSON file(s) failed validation"
+      exit 1
+    fi
+    echo "✅ validate-json: OK"
 
 # ── GitOps ────────────────────────────────────
 
