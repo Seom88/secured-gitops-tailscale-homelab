@@ -4,6 +4,8 @@ kind: Application
 metadata:
   name: gitops{{- if .Values.developmentApp.enabled }}-dev{{- end }}
   namespace: argocd
+  labels:
+    wave-policy: sync-only
 spec:
   project: default
   source:
