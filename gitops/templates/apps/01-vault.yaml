@@ -6,6 +6,7 @@ metadata:
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/tracking-id: gitops:argoproj.io/Application:argocd/vault
   labels:
     wave-policy: healthy
 spec:
