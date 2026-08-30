@@ -1,0 +1,235 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vault-bootstrap
+  namespace: vault
+  labels:
+    app.kubernetes.io/name: vault-bootstrap
+    app.kubernetes.io/component: operations
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vault-bootstrap
+  namespace: vault
+  labels:
+    app.kubernetes.io/name: vault-bootstrap
+    app.kubernetes.io/component: operations
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "create", "update"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vault-bootstrap
+  namespace: vault
+  labels:
+    app.kubernetes.io/name: vault-bootstrap
+    app.kubernetes.io/component: operations
+subjects:
+  - kind: ServiceAccount
+    name: vault-bootstrap
+    namespace: vault
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: vault-bootstrap
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vault-bootstrap
+  namespace: vault
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "0"
+  labels:
+    app.kubernetes.io/name: vault-bootstrap
+    app.kubernetes.io/component: operations
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 1
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vault-bootstrap
+        app.kubernetes.io/component: operations
+    spec:
+      serviceAccountName: vault-bootstrap
+      restartPolicy: Never
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: bootstrap
+          image: bitnami/kubectl:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -ec
+            - |
+              set -e
+
+              VAULT_NAMESPACE="${VAULT_NAMESPACE:-vault}"
+              TLS_SERVER_NAME="${VAULT_TLS_SERVER_NAME:-vault}"
+
+              vault_kubectl() { kubectl exec -i -n "$VAULT_NAMESPACE" "$@"; }
+
+              retry() {
+                local n=1
+                local max=5
+                local delay=2
+                while true; do
+                  if "$@"; then
+                    break
+                  fi
+                  if [[ $n -lt $max ]]; then
+                    ((n++))
+                    sleep $delay
+                  else
+                    return 1
+                  fi
+                done
+              }
+
+              vault_status() {
+                local pod=$1
+                vault_kubectl "$pod" -- /bin/sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault status -format=json -tls-server-name=$TLS_SERVER_NAME || true" 2>/dev/null
+              }
+
+              vault_exec() {
+                local pod=$1
+                local cmd=$2
+                vault_kubectl "$pod" -- /bin/sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt $cmd" 2>/dev/null
+              }
+
+              vault_auth_write() {
+                local path=$1
+                shift
+                echo "  [Vault] Configuring $path..."
+                retry vault_kubectl "$VAULT_POD" -- env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt VAULT_TOKEN="$ROOT_TOKEN" vault write -tls-server-name="$TLS_SERVER_NAME" "$path" "$@" > /dev/null 2>&1
+              }
+
+              echo "  [Vault] Starting bootstrap..."
+
+              # 1. Wait for StatefulSet to exist
+              echo -n "  [Vault] Waiting for StatefulSet to be created..."
+              until kubectl get statefulset -n "$VAULT_NAMESPACE" -l app.kubernetes.io/name=vault -o name | grep -q "statefulset" 2>/dev/null; do
+                echo -n "."
+                sleep 2
+              done
+              echo " Created!"
+
+              # Wait for all pods to be Running (not Ready — sealed pods fail readinessProbe)
+              echo -n "  [Vault] Waiting for all pods to be running..."
+              DESIRED_REPLICAS=$(kubectl get statefulset -n "$VAULT_NAMESPACE" -l app.kubernetes.io/name=vault -o jsonpath='{.items[0].spec.replicas}' 2>/dev/null || echo "0")
+              RETRY_ERRORS=0
+              MAX_ERRORS=3
+              while true; do
+                if ! RUNNING_OUTPUT=$(kubectl get pods -n "$VAULT_NAMESPACE" -l app.kubernetes.io/name=vault,component=server --field-selector=status.phase=Running -o name 2>/dev/null); then
+                  RETRY_ERRORS=$((RETRY_ERRORS + 1))
+                  if [ "$RETRY_ERRORS" -ge "$MAX_ERRORS" ]; then
+                    echo ""
+                    echo "  [Vault] Failed to query pod status after $MAX_ERRORS retries"
+                    exit 1
+                  fi
+                  sleep 2
+                  continue
+                fi
+                RETRY_ERRORS=0
+                RUNNING_COUNT=$(echo "$RUNNING_OUTPUT" | grep -c "pod/" || true)
+                DESIRED_REPLICAS=$(kubectl get statefulset -n "$VAULT_NAMESPACE" -l app.kubernetes.io/name=vault -o jsonpath='{.items[0].spec.replicas}' 2>/dev/null || echo "0")
+                if [ "$RUNNING_COUNT" -eq "$DESIRED_REPLICAS" ] && [ "$DESIRED_REPLICAS" -gt 0 ]; then
+                  break
+                fi
+                echo -n "."
+                sleep 5
+              done
+              echo " All $DESIRED_REPLICAS pods running!"
+
+              VAULT_POD=$(kubectl get pod -n "$VAULT_NAMESPACE" -l app.kubernetes.io/name=vault,component=server -o jsonpath="{.items[0].metadata.name}")
+              RELEASE_NAME=$(kubectl get pod "$VAULT_POD" -n "$VAULT_NAMESPACE" -o jsonpath="{.metadata.labels['app\.kubernetes\.io/instance']}")
+              SECRET_NAME="${RELEASE_NAME}-unseal-keys"
+
+              # 2. Initialization (idempotent)
+              STATUS=$(vault_status "$VAULT_POD")
+              if echo "$STATUS" | jq -e '.initialized == false' >/dev/null 2>&1; then
+                echo "  [Vault] Initializing..."
+                INIT_OUT=$(vault_kubectl "$VAULT_POD" -- /bin/sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault operator init -format=json -key-shares=3 -key-threshold=2 -tls-server-name=$TLS_SERVER_NAME")
+                ROOT_TOKEN=$(echo "$INIT_OUT" | jq -r '.root_token')
+                KEY1=$(echo "$INIT_OUT" | jq -r '.unseal_keys_b64[0]')
+                KEY2=$(echo "$INIT_OUT" | jq -r '.unseal_keys_b64[1]')
+                KEY3=$(echo "$INIT_OUT" | jq -r '.unseal_keys_b64[2]')
+                kubectl create secret generic "$SECRET_NAME" -n "$VAULT_NAMESPACE" \
+                  --from-literal=root-token="$ROOT_TOKEN" \
+                  --from-literal=key1="$KEY1" \
+                  --from-literal=key2="$KEY2" \
+                  --from-literal=key3="$KEY3" \
+                  --dry-run=client -o yaml | kubectl apply -f - > /dev/null 2>&1
+                echo "  [Vault] Initialized and keys saved to $SECRET_NAME"
+              else
+                echo "  [Vault] Already initialized, skipping init."
+              fi
+
+              # 3. Unseal all pods (idempotent)
+              echo "  [Vault] Checking seal status for all pods..."
+              for POD in $(kubectl get pods -n "$VAULT_NAMESPACE" -l app.kubernetes.io/name=vault,component=server -o jsonpath='{.items[*].metadata.name}'); do
+                echo -n "  [Vault] Waiting for pod $POD to be responsive..."
+                until vault_status "$POD" | jq -e '.version' >/dev/null 2>&1; do
+                  echo -n "."
+                  sleep 2
+                done
+                echo " Responsive!"
+                STATUS=$(vault_status "$POD")
+                SEALED=$(echo "$STATUS" | jq -r '.sealed')
+                if [ "$SEALED" == "true" ]; then
+                  echo "  [Vault] Unsealing pod $POD..."
+                  KEY1=$(kubectl get secret "$SECRET_NAME" -n "$VAULT_NAMESPACE" -o jsonpath='{.data.key1}' | base64 -d)
+                  KEY2=$(kubectl get secret "$SECRET_NAME" -n "$VAULT_NAMESPACE" -o jsonpath='{.data.key2}' | base64 -d)
+                  KEY3=$(kubectl get secret "$SECRET_NAME" -n "$VAULT_NAMESPACE" -o jsonpath='{.data.key3}' | base64 -d)
+                  retry vault_exec "$POD" "vault operator unseal -tls-server-name=$TLS_SERVER_NAME $KEY1" > /dev/null 2>&1
+                  retry vault_exec "$POD" "vault operator unseal -tls-server-name=$TLS_SERVER_NAME $KEY2" > /dev/null 2>&1
+                  retry vault_exec "$POD" "vault operator unseal -tls-server-name=$TLS_SERVER_NAME $KEY3" > /dev/null 2>&1
+                  echo "  [Vault] Pod $POD unsealed!"
+                else
+                  echo "  [Vault] Pod $POD is already unsealed."
+                fi
+              done
+
+              # 4. Configure Vault (idempotent — mirrors bootstrap-vault.sh step 4)
+              ROOT_TOKEN=$(kubectl get secret "$SECRET_NAME" -n "$VAULT_NAMESPACE" -o jsonpath='{.data.root-token}' | base64 -d)
+              echo "  [Vault] Configuring engines and auth..."
+              vault_exec "$VAULT_POD" "VAULT_TOKEN=$ROOT_TOKEN vault secrets list -tls-server-name=$TLS_SERVER_NAME" | grep -q "secret/" || \
+                vault_exec "$VAULT_POD" "VAULT_TOKEN=$ROOT_TOKEN vault secrets enable -path=secret -tls-server-name=$TLS_SERVER_NAME kv-v2" > /dev/null 2>&1
+              vault_exec "$VAULT_POD" "VAULT_TOKEN=$ROOT_TOKEN vault auth list -tls-server-name=$TLS_SERVER_NAME" | grep -q "kubernetes/" || \
+                vault_exec "$VAULT_POD" "VAULT_TOKEN=$ROOT_TOKEN vault auth enable -tls-server-name=$TLS_SERVER_NAME kubernetes" > /dev/null 2>&1
+              K8S_ISSUER=$(retry kubectl get --raw /.well-known/openid-configuration | jq -r .issuer)
+              K8S_CA=$(retry vault_kubectl "$VAULT_POD" -- cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt)
+              vault_auth_write auth/kubernetes/config \
+                  kubernetes_host="https://kubernetes.default.svc" \
+                  kubernetes_ca_cert="$K8S_CA" \
+                  issuer="$K8S_ISSUER"
+              echo "  [Vault] Configuration complete!"
+          env:
+            - name: VAULT_NAMESPACE
+              value: "vault"
+            - name: VAULT_TLS_SERVER_NAME
+              value: "vault"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
