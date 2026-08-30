@@ -7,6 +7,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "2"
     argocd.argoproj.io/tracking-id: gitops:argoproj.io/Application:argocd/seaweedfs
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
   labels:
     wave-policy: healthy
 spec:
@@ -28,8 +29,11 @@ spec:
   ignoreDifferences:
   - group: apps
     kind: StatefulSet
-    jsonPointers:
-    - /spec/volumeClaimTemplates
+    jqPathExpressions:
+    - .spec.volumeClaimTemplates[].apiVersion
+    - .spec.volumeClaimTemplates[].kind
+    - .spec.volumeClaimTemplates[].metadata.creationTimestamp
+    - .spec.volumeClaimTemplates[].status
   syncPolicy:
     automated:
       prune: true
@@ -37,5 +41,6 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
+      - RespectIgnoreDifferences=true
       - Retry=true
 {{- end }}
