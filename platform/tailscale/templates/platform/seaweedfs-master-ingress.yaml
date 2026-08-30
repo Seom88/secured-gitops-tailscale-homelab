@@ -13,7 +13,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ if .Values.developmentApp.enabled }}seaweedfs-dev-master{{- else }}seaweedfs-master{{- end }}
+                name: seaweedfs-master-tailscale
                 port:
                   number: 9333
   tls:

@@ -13,7 +13,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ if .Values.developmentApp.enabled }}seaweedfs-dev-filer{{- else }}seaweedfs-filer{{- end }}
+                name: seaweedfs-filer-tailscale
                 port:
                   number: 8888
   tls:
