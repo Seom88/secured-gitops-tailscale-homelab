@@ -1,0 +1,22 @@
+{{- if .Values.seaweedfs.admin.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: seaweedfs-admin
+  namespace: seaweedfs
+spec:
+  ingressClassName: tailscale
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ if .Values.developmentApp.enabled }}seaweedfs-dev-admin{{- else }}seaweedfs-admin{{- end }}
+                port:
+                  number: 23646
+  tls:
+    - hosts:
+        - {{ if .Values.developmentApp.enabled }}dev-seaweedfs-admin{{- else }}seaweedfs-admin{{- end }}
+{{- end }}

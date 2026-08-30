@@ -35,3 +35,16 @@ grafana:
 
 prometheus:
   enabled: true
+
+longhorn:
+  enabled: true
+
+seaweedfs:
+  s3:
+    enabled: true
+  master:
+    enabled: true
+  filer:
+    enabled: true
+  admin:
+    enabled: true

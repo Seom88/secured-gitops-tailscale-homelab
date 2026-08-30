@@ -1,5 +1,15 @@
 # Production values — modular mode (separate StatefulSets)
 
+# Enable SeaweedFS metrics scraping: the chart generates ServiceMonitors for
+# master, filer, volume and S3. The kube-prometheus-stack Prometheus (release
+# "monitoring") selects ServiceMonitors via the "release: monitoring" label.
+global:
+  seaweedfs:
+    monitoring:
+      enabled: true
+      additionalLabels:
+        release: monitoring
+
 seaweedfs:
   master:
     enabled: true
@@ -39,6 +49,20 @@ seaweedfs:
     existingConfigSecret: seaweedfs-s3-credentials
     logs:
       type: "emptyDir"
+
+  # Admin UI (weed admin) — consolidated management console
+  admin:
+    enabled: true
+    secret:
+      # Credentials come from Vault → ESO (see templates/external-secret.yaml)
+      existingSecret: seaweedfs-admin-credentials
+      userKey: adminUser
+      pwKey: adminPassword
+    # Persist maintenance config (vacuum/balance/EC thresholds) across restarts
+    data:
+      type: persistentVolumeClaim
+      size: "1Gi"
+      storageClass: ""
 
   allInOne:
     enabled: false

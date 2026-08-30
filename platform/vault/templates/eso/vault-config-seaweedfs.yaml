@@ -65,4 +65,15 @@ spec:
             kubectl exec -n vault "$VAULT_POD" -- /bin/sh -c "VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt VAULT_TOKEN=$ROOT_TOKEN vault kv put -tls-server-name=vault secret/seaweedfs/s3 s3_config='$S3_CONFIG' admin_access_key=$ADMIN_ACCESS_KEY admin_secret_key=$ADMIN_SECRET_KEY read_access_key=$READ_ACCESS_KEY read_secret_key=$READ_SECRET_KEY" > /dev/null 2>&1
           fi
 
+          # Seed seaweedfs Admin UI credentials
+          echo "Seeding secret/seaweedfs/admin..."
+          if kubectl exec -n vault "$VAULT_POD" -- /bin/sh -c "VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt VAULT_TOKEN=$ROOT_TOKEN vault kv get -tls-server-name=vault secret/seaweedfs/admin" > /dev/null 2>&1; then
+            echo "Secret exists, skipping"
+          else
+            ADMIN_PASSWORD=$(kubectl exec -n vault "$VAULT_POD" -- /bin/sh -c "VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt VAULT_TOKEN=$ROOT_TOKEN vault write -tls-server-name=vault -format=json sys/tools/random bytes=16" | jq -r .data.random_bytes | base64 | tr -d '=/+' | head -c 24)
+
+            # Store in Vault under the same secret/seaweedfs/* path (covered by seaweedfs-policy)
+            kubectl exec -n vault "$VAULT_POD" -- /bin/sh -c "VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt VAULT_TOKEN=$ROOT_TOKEN vault kv put -tls-server-name=vault secret/seaweedfs/admin admin_user=admin admin_password=$ADMIN_PASSWORD" > /dev/null 2>&1
+          fi
+
           echo "Configuration complete!"
