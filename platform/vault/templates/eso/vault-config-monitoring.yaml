@@ -5,16 +5,12 @@ metadata:
   namespace: vault
   annotations:
     argocd.argoproj.io/sync-wave: "1"
-    argocd.argoproj.io/sync-options: Replace=true
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 spec:
   ttlSecondsAfterFinished: 3600
-  selector:
-    matchLabels:
-      job-name: vault-config-monitoring
   template:
-    metadata:
-      labels:
-        job-name: vault-config-monitoring
+    metadata: {}
     spec:
       serviceAccountName: vault-config
       restartPolicy: Never
