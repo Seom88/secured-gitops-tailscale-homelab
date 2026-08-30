@@ -1,21 +1,76 @@
 # Secured GitOps Homelab
 
-[![Kubernetes](https://img.shields.io/badge/Kubernetes-%20(Distro-Agnostic)-blue?style=for-the-badge&logo=kubernetes)](https://kubernetes.io/)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-(Distro--Agnostic)-blue?style=for-the-badge&logo=kubernetes)](https://kubernetes.io/)
 [![GitOps](https://img.shields.io/badge/GitOps-ArgoCD-orange?style=for-the-badge&logo=argo)](https://argoproj.github.io/cd/)
 [![Security](https://img.shields.io/badge/Security-HashiCorp_Vault-blue?style=for-the-badge&logo=vault)](https://www.vaultproject.io/)
 [![Network](https://img.shields.io/badge/Network-Tailscale-234E5C?style=for-the-badge&logo=tailscale)](https://tailscale.com/)
 [![Infra](https://img.shields.io/badge/Infra-Terraform-%23844FBA?style=for-the-badge&logo=terraform)](https://github.com/Seom88/infra-talos-homelab)
 
+[![GitHub Release](https://img.shields.io/badge/Release-v1.0--beta-blue?style=flat-square)](https://github.com/Seom88/secured-gitops-tailscale-homelab/releases)
+[![CI Status](https://img.shields.io/github/actions/workflow/status/Seom88/secured-gitops-tailscale-homelab/validate.yml?style=flat-square&label=CI)](https://github.com/Seom88/secured-gitops-tailscale-homelab/actions)
+[![Last Commit](https://img.shields.io/github/last-commit/Seom88/secured-gitops-tailscale-homelab?style=flat-square)](https://github.com/Seom88/secured-gitops-tailscale-homelab/commits)
+[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+[![Status](https://img.shields.io/badge/Status-Active%20Development-brightgreen?style=flat-square)](#-roadmap)
+
 > **Companion project:** Cluster provisioning + ArgoCD (GitOps engine) + Longhorn node prerequisites at
 > [`github.com/Seom88/infra-talos-homelab`](https://github.com/Seom88/infra-talos-homelab)
 
-Enterprise-grade DevSecOps homelab that runs on **any CNCF-compliant Kubernetes cluster**, with ArgoCD (GitOps engine) installed by the companion infra repo and Longhorn (storage) deployed from this repo as a wave-0 platform app.
+Production-grade **GitOps reference implementation** that demonstrates enterprise DevSecOps patterns on any CNCF-compliant Kubernetes cluster. Combines infrastructure-as-code (companion repo), zero-trust networking (Tailscale), secrets management at scale (Vault HA), and declarative deployments (ArgoCD).
 
-## 🚀 Overview
+## � Quick Navigation
 
-Fully automated Kubernetes environment focused on **GitOps principles**, **Zero-Trust networking** via Tailscale, and **Advanced Secret Management** with Vault + External Secrets Operator.
+- [Why This Matters](#-why-this-matters) — Career relevance for recruiters
+- [Skills Demonstrated](#-skills-demonstrated) — What this proves you can build
+- [Highlights](#-highlights) — Key features at a glance
+- [Architecture](#-architecture) — System design
+- [Quick Start](#-quick-start) — Get up and running
+- [Roadmap](#-roadmap) — Phases and progress
+- [Contributing](#-contributing) — How to participate
+- **Deep Dives:** [Features](./docs/features-deep-dive.md) · [Getting Started](./docs/getting-started.md) · [Customization](./docs/customization-guide.md)
 
-The companion infra repo installs ArgoCD (GitOps engine) via its `platform/` Terraform root — **before** this repo is bootstrapped. Longhorn (storage) is also managed declaratively from this repo as a wave-0 platform app with a CSI readiness gate. Everything else — Vault, cert-manager, External Secrets, monitoring, and the platform and user apps — is managed declaratively from this repo through an ArgoCD **App-of-Apps** pattern. Platform apps are plain `Application` resources in `gitops/templates/apps/` with a `00-` prefix and `argocd.argoproj.io/sync-wave` annotations (not ApplicationSets), ordered deterministically via a custom Application health check.
+---
+
+## 💡 Why This Matters
+
+This is **not just another Kubernetes homelab** — it's a reference implementation that demonstrates:
+
+- **Production-grade architecture** — How real DevSecOps teams build secure, scalable systems
+- **Enterprise patterns** — Vault HA for secrets, ArgoCD for GitOps, zero-trust networking via Tailscale
+- **Hands-on learning** — Understand distributed systems, Kubernetes operations, and infrastructure automation by running real workloads
+- **Career value** — Portfolio that shows you can architect and operate enterprise platforms
+
+**For recruiters:** This demonstrates the ability to design multi-layer systems, understand security fundamentals, and implement industry best practices.
+
+**For your learning:** Fork it, modify it, deploy it — understand production systems by building and troubleshooting them.
+
+---
+
+## 🎓 Skills Demonstrated
+
+| Area | What This Proves | See Also |
+|------|------------------|----------|
+| **Secrets Management** | Vault HA (3-node Raft), auto-unseal, per-service auth | [`platform/vault/`](./platform/vault/), [Docs](./docs/skills-demonstrated.md#-secrets-management--security) |
+| **GitOps & Orchestration** | ArgoCD App-of-Apps, sync-wave ordering, custom health checks | [`gitops/templates/apps/`](./gitops/templates/apps/), [ADR-006](./docs/adrs/006-app-health-and-vault-ordering.md) |
+| **Zero-Trust Networking** | Tailscale operator, secure ingress without port exposure | [`platform/tailscale/`](./platform/tailscale/), [ADR-001](./docs/adrs/001-tailscale-ingress-placement.md) |
+| **High-Availability** | Vault Raft quorum, multi-node Kubernetes, Longhorn distributed storage | [`platform/vault/templates/`](./platform/vault/templates/), [Features](./docs/features-deep-dive.md#-storage-longhorn--seaweedfs) |
+| **Observability** | Prometheus + Grafana + Loki stack with Vault metrics | [`platform/monitoring/`](./platform/monitoring/) |
+| **Storage & Data** | Longhorn CSI, SeaweedFS S3, persistent volume management | [`platform/seaweedfs/`](./platform/seaweedfs/), [ADR-005](./docs/adrs/005-longhorn-back-to-gitops.md) |
+| **Infrastructure Automation** | Multi-environment Helm, validation blocks, CI/CD gates (companion repo) | Companion [`infra-talos-homelab`](https://github.com/Seom88/infra-talos-homelab) |
+| **DevSecOps Mindset** | Architecture Decisions documented, roadmap planned, phases tracked | [Roadmap](./docs/roadmap.md), [ADRs](./docs/adrs/) |
+
+**Full skill breakdown:** See [`docs/skills-demonstrated.md`](./docs/skills-demonstrated.md)
+
+---
+
+## ✨ Highlights
+
+- 🔒 **Enterprise Security** — Vault HA with auto-unseal, zero-trust networking, per-service RBAC
+- 🚀 **GitOps Native** — App-of-Apps pattern with wave-ordered dependencies and custom health checks
+- 🌐 **Cluster-Agnostic** — Runs on any Kubernetes distro (Talos in companion repo, but works with others)
+- ⚡ **Production-Ready Patterns** — Demonstrates how real platforms scale secrets, networking, and deployments
+- 📊 **Complete Observability** — Prometheus metrics, Grafana dashboards, Loki log aggregation
+- 📦 **Storage Ready** — Longhorn distributed storage + SeaweedFS S3 backend
+- 🔄 **Idempotent Bootstrap** — Rerun scripts safely, designed for repeated deployments
 
 ## 🏗 Architecture
 
@@ -67,131 +122,139 @@ graph TD
 
 ## 🛡 Key DevSecOps Features
 
-- **GitOps Flow**: ArgoCD (installed by the infra platform layer) manages everything declaratively via App-of-Apps. The bootstrap script deploys the root app and configures Vault.
-- **Cluster-Agnostic**: The GitOps layer runs on any Kubernetes distro — Talos in the companion repo, or any other CNCF-compliant distribution. ArgoCD, and the storage→apps ordering is expressed as declarative sync waves plus the Longhorn CSI readiness gate.
-- **Zero-Trust Networking**: Tailscale operator provides secure ingress without exposing ports — every service gets a `.tailnet` domain.
-- **Secrets Management**:
-  - HashiCorp Vault (HA, 3-node Raft) with auto-unseal via CronJob
-  - External Secrets Operator syncs Vault → native Kubernetes Secrets
-  - Per-service ClusterSecretStores for least-privilege access
-  - Secrets encryption at rest via KMS
-- **Certificate Automation**: cert-manager issues and renews TLS certificates for Vault and cluster services.
-- **Observability**: Prometheus + Grafana + Loki stack with Vault-injected credentials.
-- **Architecture Decision Records**: ADRs document key decisions and their tradeoffs.
+- **GitOps Automation** — ArgoCD (installed by the infra repo) manages everything declaratively via App-of-Apps. The bootstrap script deploys the root app and configures Vault in one idempotent step.
+- **Cluster-Agnostic Platform** — This layer runs on any Kubernetes distro. Talos Linux in the companion repo, but works with EKS, GKE, or any CNCF cluster once ArgoCD is pre-installed.
+- **Zero-Trust Networking** — Tailscale operator provides `.tailnet` secure ingress without exposing ports. Every admin access goes through Tailscale mesh VPN.
+- **Enterprise Secrets Management** — Vault HA (3-node Raft) with auto-unseal, External Secrets Operator syncs to native K8s Secrets, per-service ClusterSecretStores for least-privilege access.
+- **Distributed Storage** — Longhorn CSI (wave-0) provides persistent volumes; SeaweedFS adds S3-compatible object storage for logs and backups.
+- **Complete Observability** — Prometheus + Grafana + Loki stack with Vault, ArgoCD, and cluster metrics. All dashboards secured behind Tailscale.
+- **Declarative Everything** — Infrastructure, secrets, applications — all defined in git, no imperative commands. Audit trail for compliance.
+
+**For technical deep-dives:** See [`docs/features-deep-dive.md`](./docs/features-deep-dive.md)
 
 ## 🛠 Tech Stack
 
-| Category | Tool | Status |
-|----------|------|--------|
-| **Provisioning** | Terraform + Talos (`infra-talos-homelab`) | ✅ Companion repo (cluster + platform) |
-| **Orchestration** | Kubernetes (distro-agnostic) | ✅ Prerequisites via infra |
-| **GitOps** | ArgoCD | ✅ Prerequisite (installed by infra platform layer) |
-| **Storage** | Longhorn | ✅ Managed by this repo (wave-0 app) |
-| **Secrets** | Vault (HA Raft) + ESO | ✅ Per-service stores |
-| **Networking** | Tailscale Operator | ✅ Platform ingress templates |
-| **Certificates** | cert-manager | ✅ Vault TLS |
-| **Monitoring** | Prometheus + Grafana + Loki | ✅ Platform ingresses via Tailscale |
-| **Object storage** | SeaweedFS | ✅ S3 with Vault-injected credentials |
-| **Python tooling** | Typer ops CLI · pytest/testinfra · prometheus_client · Trivy scan | 🚧 Phase 5 (planned) |
+| Layer | Component | Status | Notes |
+|-------|-----------|--------|-------|
+| **Orchestration** | Kubernetes (any distro) | ✅ Ready | Talos Linux in companion repo |
+| **GitOps Engine** | ArgoCD v2.8+ | ✅ Ready | Installed by companion infra layer |
+| **Secrets** | Vault v1.15+ (HA Raft) | ✅ Deployed | 3-node cluster with auto-unseal |
+| **Secrets Sync** | External Secrets Operator | ✅ Deployed | Per-service ClusterSecretStores |
+| **Certificates** | cert-manager v1.13+ | ✅ Deployed | Automated TLS for services |
+| **Networking** | Tailscale Operator v1.9+ | ✅ Deployed | Zero-trust ingress (`.tailnet` domains) |
+| **Storage (Block)** | Longhorn v1.6+ | ✅ Deployed | Distributed, wave-0 with CSI gates |
+| **Storage (Object)** | SeaweedFS v3.6+ | ✅ Deployed | S3-compatible, Loki backend |
+| **Monitoring** | Prometheus v2.45+, Grafana v10+, Loki v2.9+ | ✅ Deployed | Full observability stack |
+| **Backups** | Velero v1.12+ | 🚧 Planned | Phase 3 (post-v1.0) |
+| **Python Automation** | Typer CLI, pytest, Trivy | 🚧 Phase 5 | Post-v1.0 release (v2.0 roadmap) |
 
-## 🐍 Python Tooling
-
-Python powers the **operational layer** around the declarative core: the manifests stay YAML/Helm, while Python carries the automation, validation, and security checks that fragile shell scripts do poorly.
-
-| Area | Stack | Why it matters |
-|------|-------|----------------|
-| **Ops CLI** | `typer` + `kubernetes` + `hvac` | Replaces fragile bootstrap shell scripts with a testable CLI: bootstrap, health checks, port-forward, cluster doctor |
-| **Infrastructure tests** | `pytest` + `testinfra` | Proves cluster state after bootstrap: Vault unsealed, ArgoCD Apps healthy, secrets synced — CI-ready validation |
-| **Observability exporter** | `prometheus_client` | Custom metrics the stack doesn't ship: Vault sealed state, ArgoCD app health/drift — ready for Grafana dashboards |
-| **Maintenance automation** | `hvac` + `kubernetes` | Secret rotation, Longhorn snapshot cleanup, Velero backup health |
-| **Image security validation** | Trivy orchestration | Scans every image referenced in the charts/manifests and gates on critical vulnerabilities — DevSecOps hardening |
-
-All areas are planned (not yet implemented) — see [Phase 5 in the Roadmap](#-roadmap).
+---
 
 ## 🏁 Getting Started
 
-This is the **GitOps layer** — it assumes a running cluster with ArgoCD already installed via the infra repo's platform layer. Storage is not a prerequisite anymore: this repo deploys Longhorn as a wave-0 platform app.
+This is the **GitOps layer** — it assumes a running cluster with ArgoCD already installed via the companion `infra-talos-homelab` repo's platform layer.
 
-If you want to replicate or fork this lab:
+### System Requirements
 
-1. **Ensure prerequisites**: Use a running Kubernetes cluster with **ArgoCD** installed. The infra repo's `platform/` Terraform root provisions it (nodes ready → ArgoCD) — run `just tf-platform-apply` there. Longhorn is deployed by this repo as wave 0 during bootstrap.
-2. **Fork both repos** — Update repository references (including the infra repo's platform layer) in the [Customization Guide](docs/customization-guide.md).
-3. **Bootstrap**: Run `just init-prod` or `just init-dev` (or `./bootstrap/init-gitops.sh [prod|dev]`), which deploys the root App-of-Apps — including Longhorn as wave 0 — and configures Vault. It does not install ArgoCD or any storage component. The script checks if the App-of-Apps already exists and skips reapply (idempotent); a second run acts as a status verifier showing ArgoCD Applications / pods coming up. Use `--force` (`just init-prod-force` / `./bootstrap/init-gitops.sh prod --force`) to reapply.
+- **Kubernetes 1.27+** (any CNCF-compliant distribution)
+- **ArgoCD 2.8+** (pre-installed on cluster)
+- **kubectl** and **helm 3.12+**
+- **just** (task runner) — [install](https://github.com/casey/just)
+- **Tailscale account** (free tier supported) — for secure ingress
+
+### Prerequisites
+
+1. Ensure you have a running Kubernetes cluster with **ArgoCD installed** as the platform layer
+   - If using companion repo: Run `just tf-platform-apply` in `infra-talos-homelab` first
+2. Cluster networking configured (Tailscale subnet router set up for secure access)
+3. `kubeconfig` available locally
+
+### Quick Setup
+
+```bash
+# 1. Fork/clone both repos and update repository references
+git clone https://github.com/YOUR_USERNAME/secured-gitops-tailscale-homelab.git
+cd secured-gitops-tailscale-homelab
+
+# 2. Bootstrap the GitOps layer (deploys root App-of-Apps + configures Vault)
+./bootstrap/init-gitops.sh prod
+
+# 3. Verify deployment (watch apps come online)
+kubectl get applications -n argocd
+just status
+
+# 4. Access dashboards
+# Grafana, Prometheus, Vault UI all available via Tailscale
+# Use port-forward for local access:
+kubectl port-forward -n monitoring svc/grafana 3000:80
+```
+
+**Full walkthrough:** See [`docs/getting-started.md`](./docs/getting-started.md)  
+**Customization:** See [`docs/customization-guide.md`](./docs/customization-guide.md)
 
 ## 📂 Project Structure
 
 ```
 secured-gitops-tailscale-homelab/
-├── bootstrap/                   # One-shot init scripts
-│   └── init-gitops.sh           # Deploys root App-of-Apps & configures Vault (idempotent, rerun for status)
-│
-├── platform/                    # Platform-level Helm charts
-│   ├── vault/                   # Vault HA chart + auto-unseal + ESO configs
-│   ├── monitoring/              # Prometheus / Grafana / Loki stack
-│   ├── tailscale/               # Tailscale operator + ingress templates
-│   └── seaweedfs/               # S3-compatible object storage
-│
-├── apps/                        # User-facing applications
-│   └── template-pod-tailscale/  # Reusable template: deploy + service + ingress
-│
-├── gitops/                      # Root "App of Apps" Helm chart
-│   ├── Chart.yaml               # Meta-chart orchestrating everything
-│   ├── values.yaml              # Production values
-│   ├── values-dev.yaml          # Dev overrides (branch: dev)
-│   └── templates/
-│       ├── root-prod-app.yaml   # Root App-of-Apps (points at ./gitops)
-│       └── apps/                # Plain Applications ordered by sync-wave
-│           ├── 00-cert-manager.yaml      # wave 0 (healthy)
-│           ├── 00-external-secrets.yaml  # wave 0 (healthy)
-│           ├── 00-longhorn.yaml          # wave 0 (healthy, CSI-gated)
-│           ├── 01-vault.yaml             # wave 1 (healthy)
-│           ├── 02-seaweedfs.yaml         # wave 2 (healthy)
-│           ├── 03-monitoring.yaml        # wave 3 (sync-only leaf)
-│           └── 04-tailscale.yaml         # wave 4 (sync-only, always last)
-│
-├── docs/                        # Documentation & ADRs
-│   ├── getting-started.md       # Full walkthrough
-│   ├── customization-guide.md   # Fork adaptation guide
-│   ├── secrets-structure.md     # Vault secret organization
-│   └── adrs/                    # Architecture Decision Records
-│
-└── justfile                     # Dev recipes for cluster management
+├── bootstrap/               # Bootstrap script (init-gitops.sh)
+├── platform/                # Helm charts (Vault, Monitoring, Tailscale, SeaweedFS)
+├── gitops/                  # Root App-of-Apps (wave-ordered deployments)
+├── apps/                    # User application templates
+├── docs/                    # Documentation, ADRs, guides
+├── .github/workflows/       # CI/CD pipelines
+├── renovate.json            # Dependency update automation
+├── justfile                 # Task automation
+└── README.md               # This file
 ```
+
+**Key files:**
+- `bootstrap/init-gitops.sh` — Idempotent bootstrap script
+- `gitops/Chart.yaml` — Root App-of-Apps meta-chart
+- `gitops/templates/apps/` — Platform apps ordered by sync-wave
+- `platform/vault/` → `platform/tailscale/` → ... — Individual platform charts
+
+**Full directory walkthrough:** See [`docs/getting-started.md`](./docs/getting-started.md)
 
 ## 📈 Roadmap
 
-### Phase 1 — Foundation ✅
-- [X] Bootstrap script: root App-of-Apps → Vault → apps
-- [X] ArgoCD with HA config and custom health probes
-- [X] Vault HA (3-node Raft) with TLS + auto-unseal + ESO integration
-- [X] Cert-Manager for automated TLS
-- [X] External Secrets Operator with per-service ClusterSecretStores
-- [X] Tailscale operator with platform ingress templates
-- [X] ArgoCD moved to infra repo platform layer; Longhorn back as a wave-0 GitOps app (ADR-005)
-- [X] Architecture Decision Records
+## 📈 Roadmap & Status
 
-### Phase 2 — Automation & Observability 🚧
-- [X] Monitoring stack — Prometheus + Grafana + Loki deployed
-- [X] Prometheus / Grafana ingresses enabled via Tailscale
-- [x] Renovate bot — weekly Mondays before 5am Europe/Madrid, grouped Helm + GitHub Actions, manual review for Vault/Longhorn/cert-manager (parity with infra-talos-homelab)
+**Current Version:** v1.0-beta · **Status:** Actively Maintained · **Last Update:** August 2026
 
-### Phase 3 — Storage & Scale 📋
-- [X] Longhorn — distributed block storage (app, deployed by this repo)
-- [X] SeaweedFS — S3-compatible object storage
-- [ ] Velero — cluster backups to SeaweedFS
+| Phase | Status | Highlights |
+|-------|--------|----------|
+| **Phase 1** — Foundation | ✅ Complete | Bootstrap, ArgoCD, Vault HA, cert-manager, Tailscale, ADRs |
+| **Phase 2** — Automation & Observability | ✅ Complete | Prometheus + Grafana + Loki, Renovate, CI/CD gates |
+| **Phase 3** — Storage & Scale | 🚧 In Progress | Longhorn ✅, SeaweedFS ✅, Velero (planned) |
+| **Phase 4** — Hardening & DX | 🟡 Partial | Bootstrap guard ✅, status verifier ✅, real app example (pending) |
+| **Phase 5** — Python Automation | 🚧 Planned | Post-v1.0: ops CLI, tests, metrics, image scanning |
 
-### Phase 4 — Hardening & Developer Experience 💡
-- [X] CI/CD Pipeline — GitHub Actions for lint, test, preview (validate + guarded deploy, `just validate` local mirror)
-- [ ] Real application deployment (Immich or similar)
+**Full roadmap with Phase 5 vision:** See [`docs/roadmap.md`](./docs/roadmap.md)
 
-> Phase 4 partially completed — bootstrap guard (`--force`), status verifier, CI workflow (validate + guarded deploy) and local `just validate` mirror.
+**v1.0 Release Target:** Q1 2026 (Phases 1-4 complete)  
+**v2.0 Roadmap:** Python ops layer (Phase 5) post-v1.0
 
-### Phase 5 — Python Automation & Image Security 🚧
-- [ ] Ops CLI: bootstrap, health checks, cluster doctor — replaces fragile bash (`typer` + `kubernetes` + `hvac`)
-- [ ] Infrastructure tests: `pytest` + `testinfra` validation of Vault / ArgoCD / secrets state
-- [ ] Prometheus exporter: Vault sealed state, ArgoCD app health & drift metrics (`prometheus_client`)
-- [ ] Maintenance automation: secret rotation, Longhorn snapshots, Velero backups (`hvac` + `kubernetes`)
-- [ ] Image security scanning: Trivy-based scan of chart images, gate on criticals
+---
+
+## 🤝 Contributing & Collaboration
+
+This project is actively maintained and open to contributions.
+
+### Get Involved
+
+- 🐛 **Found a bug?** → [GitHub Issues](https://github.com/Seom88/secured-gitops-tailscale-homelab/issues)
+- ✨ **Have an idea?** → [GitHub Discussions](https://github.com/Seom88/secured-gitops-tailscale-homelab/discussions)
+- 📝 **Want to contribute?** → See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines
+- 🏗️ **Architectural proposals?** → Open a PR with an ADR in [`docs/adrs/`](./docs/adrs/)
+
+### For Recruiters & Team Leads
+
+If you're evaluating DevOps/Platform Engineering talent:
+
+- **Portfolio Evidence:** This repo demonstrates [these specific skills](./docs/skills-demonstrated.md)
+- **Technical Communication:** See [ADRs](./docs/adrs/) for architectural thinking
+- **Real-World Patterns:** Production-grade implementations, not toy examples
+- **Contact:** Connect via [GitHub Profile](https://github.com/Seom88)
 
 ---
 
@@ -202,4 +265,19 @@ secured-gitops-tailscale-homelab/
 | [`infra-talos-homelab`](https://github.com/Seom88/infra-talos-homelab) | Cluster provisioning + ArgoCD engine — Terraform + Talos (Longhorn node prerequisites stay here) |
 | `secured-gitops-tailscale-homelab` _(this repo)_ | GitOps layer — Vault, Tailscale, storage apps (deploys Longhorn as a wave-0 app) |
 
-*Built for learning, security, and automation.*
+---
+
+## 📚 Documentation
+
+- **[Getting Started](./docs/getting-started.md)** — End-to-end bootstrap walkthrough
+- **[Customization Guide](./docs/customization-guide.md)** — Forking and adapting the project
+- **[Architecture](./docs/architecture.md)** — System design and component interactions
+- **[Features Deep Dive](./docs/features-deep-dive.md)** — Detailed explanations of each feature
+- **[Skills Demonstrated](./docs/skills-demonstrated.md)** — What this proves you can build
+- **[Roadmap](./docs/roadmap.md)** — Phases, status, and v2.0 vision
+- **[Architecture Decision Records](./docs/adrs/)** — Why key decisions were made
+- **[Secrets Structure](./docs/secrets-structure.md)** — Vault secret organization
+
+---
+
+**Built for learning, production patterns, and DevSecOps career growth.** ⭐ If this helps you, please consider starring the repo!
