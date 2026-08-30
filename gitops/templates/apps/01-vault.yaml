@@ -25,6 +25,14 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: vault
+  ignoreDifferences:
+  - group: batch
+    kind: Job
+    namespace: vault
+    jsonPointers:
+    - /spec/selector
+    - /spec/template/metadata/labels
+    - /spec/template/metadata/annotations
   syncPolicy:
     automated:
       prune: true
