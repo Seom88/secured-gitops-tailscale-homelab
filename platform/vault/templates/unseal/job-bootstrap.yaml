@@ -6,6 +6,8 @@ metadata:
   labels:
     app.kubernetes.io/name: vault-bootstrap
     app.kubernetes.io/component: operations
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -15,6 +17,8 @@ metadata:
   labels:
     app.kubernetes.io/name: vault-bootstrap
     app.kubernetes.io/component: operations
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
 rules:
   - apiGroups: [""]
     resources: ["secrets"]
@@ -37,6 +41,8 @@ metadata:
   labels:
     app.kubernetes.io/name: vault-bootstrap
     app.kubernetes.io/component: operations
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
 subjects:
   - kind: ServiceAccount
     name: vault-bootstrap
@@ -52,7 +58,7 @@ metadata:
   name: vault-bootstrap
   namespace: vault
   annotations:
-    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
     argocd.argoproj.io/sync-wave: "0"
   labels:
