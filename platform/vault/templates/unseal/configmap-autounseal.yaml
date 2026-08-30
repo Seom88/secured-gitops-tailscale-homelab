@@ -23,9 +23,9 @@ data:
     SLEEP=5
     i=1
     while [ "$i" -le "$RETRIES" ]; do
-      PODS=$($KUBECTL get pods -n "$NAMESPACE" \
+      PODS=$(timeout 15 $KUBECTL get pods -n "$NAMESPACE" \
         -l app.kubernetes.io/name=vault,component=server \
-        -o jsonpath='{.items[*].metadata.name}' 2>/dev/null)
+        -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || true)
       
       if [ -n "$PODS" ]; then
         echo "[autounseal] Found Vault pods: $PODS"
@@ -44,8 +44,8 @@ data:
     # Derive the secret name from the Helm release label on the first pod.
     # init-vault.sh creates it as "{release-name}-unseal-keys", so we do the same.
     FIRST_POD=$(echo "$PODS" | awk '{print $1}')
-    RELEASE_NAME=$($KUBECTL get pod "$FIRST_POD" -n "$NAMESPACE" \
-      -o jsonpath='{.metadata.labels.app\.kubernetes\.io/instance}' 2>/dev/null)
+    RELEASE_NAME=$(timeout 15 $KUBECTL get pod "$FIRST_POD" -n "$NAMESPACE" \
+      -o jsonpath='{.metadata.labels.app\.kubernetes\.io/instance}' 2>/dev/null || true)
 
     if [ -z "$RELEASE_NAME" ]; then
       echo "[autounseal] ERROR: Could not determine Helm release name from pod labels."
@@ -56,12 +56,12 @@ data:
     echo "[autounseal] Using secret: $SECRET_NAME"
 
     # Read unseal keys ONCE (never printed in logs)
-    KEY1=$($KUBECTL get secret "$SECRET_NAME" -n "$NAMESPACE" \
-      -o jsonpath='{.data.key1}' 2>/dev/null | base64 -d)
-    KEY2=$($KUBECTL get secret "$SECRET_NAME" -n "$NAMESPACE" \
-      -o jsonpath='{.data.key2}' 2>/dev/null | base64 -d)
-    KEY3=$($KUBECTL get secret "$SECRET_NAME" -n "$NAMESPACE" \
-      -o jsonpath='{.data.key3}' 2>/dev/null | base64 -d)
+    KEY1=$(timeout 15 $KUBECTL get secret "$SECRET_NAME" -n "$NAMESPACE" \
+      -o jsonpath='{.data.key1}' 2>/dev/null | base64 -d || echo "")
+    KEY2=$(timeout 15 $KUBECTL get secret "$SECRET_NAME" -n "$NAMESPACE" \
+      -o jsonpath='{.data.key2}' 2>/dev/null | base64 -d || echo "")
+    KEY3=$(timeout 15 $KUBECTL get secret "$SECRET_NAME" -n "$NAMESPACE" \
+      -o jsonpath='{.data.key3}' 2>/dev/null | base64 -d || echo "")
 
     if [ -z "$KEY1" ] || [ -z "$KEY2" ] || [ -z "$KEY3" ]; then
       echo "[autounseal] Secret '$SECRET_NAME' not found or keys are empty — Vault may not be initialized yet. Skipping."
@@ -72,7 +72,7 @@ data:
       echo "[autounseal] Checking pod: $POD"
 
       # Check the pod is in Running phase (not Pending/Succeeded/Failed).
-      PHASE=$($KUBECTL get pod "$POD" -n "$NAMESPACE" \
+      PHASE=$(timeout 15 $KUBECTL get pod "$POD" -n "$NAMESPACE" \
         -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
 
       if [ "$PHASE" != "Running" ]; then
@@ -81,8 +81,8 @@ data:
       fi
 
       # Check the container is actually running.
-      CONTAINER=$($KUBECTL get pod "$POD" -n "$NAMESPACE" \
-        -o jsonpath='{.status.containerStatuses[0].state.running}' 2>/dev/null)
+      CONTAINER=$(timeout 15 $KUBECTL get pod "$POD" -n "$NAMESPACE" \
+        -o jsonpath='{.status.containerStatuses[0].state.running}' 2>/dev/null || true)
 
       if [ -z "$CONTAINER" ]; then
         echo "[autounseal] Pod $POD container is not running (CrashLoopBackOff or waiting), skipping."
@@ -90,10 +90,10 @@ data:
       fi
 
       # Get current seal status (exit code 2 when sealed is expected — suppress it)
-      STATUS=$($KUBECTL exec -n "$NAMESPACE" "$POD" -- \
+      STATUS=$(timeout 15 $KUBECTL exec -n "$NAMESPACE" "$POD" -- \
         sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt \
                vault status -format=json -tls-server-name=$TLS_SERVER_NAME || true" \
-        2>/dev/null)
+        2>/dev/null || true)
 
       if [ -z "$STATUS" ]; then
         echo "[autounseal] Pod $POD did not respond, skipping."
@@ -112,26 +112,26 @@ data:
         echo "[autounseal] Pod $POD is SEALED. Unsealing..."
 
         # Unseal keys are never printed in logs
-        $KUBECTL exec -n "$NAMESPACE" "$POD" -- \
+        timeout 15 $KUBECTL exec -n "$NAMESPACE" "$POD" -- \
           sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt \
                  vault operator unseal -tls-server-name=$TLS_SERVER_NAME '$KEY1'" \
-          > /dev/null 2>&1
+          > /dev/null 2>&1 || true
 
-        $KUBECTL exec -n "$NAMESPACE" "$POD" -- \
+        timeout 15 $KUBECTL exec -n "$NAMESPACE" "$POD" -- \
           sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt \
                  vault operator unseal -tls-server-name=$TLS_SERVER_NAME '$KEY2'" \
-          > /dev/null 2>&1
+          > /dev/null 2>&1 || true
 
-        $KUBECTL exec -n "$NAMESPACE" "$POD" -- \
+        timeout 15 $KUBECTL exec -n "$NAMESPACE" "$POD" -- \
           sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt \
                  vault operator unseal -tls-server-name=$TLS_SERVER_NAME '$KEY3'" \
-          > /dev/null 2>&1
+          > /dev/null 2>&1 || true
 
         # Verify unseal was effective before reporting success
-        NEW_STATUS=$($KUBECTL exec -n "$NAMESPACE" "$POD" -- \
+        NEW_STATUS=$(timeout 15 $KUBECTL exec -n "$NAMESPACE" "$POD" -- \
           sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt \
                  vault status -format=json -tls-server-name=$TLS_SERVER_NAME || true" \
-          2>/dev/null)
+          2>/dev/null || true)
         NEW_SEALED=$(echo "$NEW_STATUS" | grep -o '"sealed":[^,}]*' | grep -o 'true\|false')
 
         if [ "$NEW_SEALED" = "false" ]; then

@@ -14,8 +14,8 @@ spec:
   startingDeadlineSeconds: 60
   jobTemplate:
     spec:
-      backoffLimit: 2
-      activeDeadlineSeconds: 120
+      backoffLimit: 1
+      activeDeadlineSeconds: 300
       template:
         metadata:
           labels:
@@ -24,46 +24,52 @@ spec:
         spec:
           serviceAccountName: vault-autounseal
           restartPolicy: OnFailure
+          terminationGracePeriodSeconds: 30
           securityContext:
             runAsNonRoot: true
             runAsUser: 1000
             runAsGroup: 1000
- 
+
           containers:
             - name: autounseal
               image: bitnami/kubectl:latest
               imagePullPolicy: IfNotPresent
- 
+
               command: ["/bin/sh", "/scripts/unseal.sh"]
- 
+
               env:
                 - name: VAULT_NAMESPACE
                   value: "vault"
                 - name: VAULT_TLS_SERVER_NAME
                   value: "vault"
- 
+
               volumeMounts:
                 - name: script
                   mountPath: /scripts
                   readOnly: true
- 
+                - name: tmp
+                  mountPath: /tmp
+
               resources:
                 requests:
-                  cpu: 10m
-                  memory: 32Mi
-                limits:
-                  cpu: 100m
+                  cpu: 50m
                   memory: 64Mi
- 
+                limits:
+                  cpu: 200m
+                  memory: 128Mi
+
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
                 capabilities:
                   drop: ["ALL"]
- 
+                seccompProfile:
+                  type: RuntimeDefault
+
           volumes:
             - name: script
               configMap:
                 name: vault-autounseal-script
                 defaultMode: 0555
- 
+            - name: tmp
+              emptyDir: {}
