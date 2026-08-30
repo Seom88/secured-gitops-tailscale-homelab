@@ -88,7 +88,7 @@ If ESO does encounter a transient "role not found" error, it retries with backof
 
 ### Config Job Pattern
 
-Each Job is a regular Kubernetes `Job` resource (not an ArgoCD hook) in the `vault` namespace with:
+Each Job is an ArgoCD `Sync` hook `Job` (see ADR-007) in the `vault` namespace with:
 
 ```yaml
 apiVersion: batch/v1
@@ -98,13 +98,15 @@ metadata:
   namespace: vault
   annotations:
     argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 spec:
-  ttlSecondsAfterFinished: 3600
+  ttlSecondsAfterFinished: 600  # fallback GC if hook delete fails; hook policy is primary
 ```
 
 Key properties:
-- **Not a hook.** The Job is a managed resource. ArgoCD tracks its health (failed Jobs degrade the app).
-- **`ttlSecondsAfterFinished: 3600`.** Completed Jobs are cleaned up automatically after one hour.
+- **ArgoCD `Sync` hook (see ADR-007).** The Job is a Resource Hook (`argocd.argoproj.io/hook: Sync`, `hook-delete-policy: BeforeHookCreation,HookSucceeded`), not a tracked resource. `BeforeHookCreation` handles Job immutability (delete-before-create with fresh `controller-uid`); `HookSucceeded` deletes after success. Not shown in `OutOfSync` after completion.
+- **`ttlSecondsAfterFinished: 600`.** Fallback GC if hook delete fails; hook policy is the primary cleanup (previously `3600` for managed Jobs).
 - **Wait loop.** The Job starts by polling `vault status` through `kubectl exec` until Vault is unsealed and responsive. This handles the race between the Job container starting and Vault finishing initialization.
 - **Idempotent.** All operations (`vault policy write`, `vault write auth/kubernetes/role/...`, `vault kv put`) are safe to re-run. Secrets are skipped if they already exist.
 
