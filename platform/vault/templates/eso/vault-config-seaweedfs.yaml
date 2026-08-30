@@ -8,7 +8,13 @@ metadata:
     argocd.argoproj.io/sync-options: Replace=true
 spec:
   ttlSecondsAfterFinished: 3600
+  selector:
+    matchLabels:
+      job-name: vault-config-seaweedfs
   template:
+    metadata:
+      labels:
+        job-name: vault-config-seaweedfs
     spec:
       serviceAccountName: vault-config
       restartPolicy: Never
