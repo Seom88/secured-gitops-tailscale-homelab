@@ -3,10 +3,10 @@
 ![Backend](https://img.shields.io/badge/Backend-RustFS_S3_velero--homelab-blue?style=flat-square)
 ![Namespace](https://img.shields.io/badge/Namespace-velero-green?style=flat-square)
 ![Chart](https://img.shields.io/badge/Chart-vmware--tanzu%2Fvelero_9.0.2-orange?style=flat-square)
-![Wave](https://img.shields.io/badge/Wave-0%20(Job%20-1)-yellow?style=flat-square)
+![Wave](https://img.shields.io/badge/Wave-0%20(hook%20Sync%20wave%200)-yellow?style=flat-square)
 ![Plugin](https://img.shields.io/badge/Plugin-velero--plugin--for--aws_v1.10.2-lightgrey?style=flat-square)
 
-> **Backend:** RustFS S3 bucket `velero-homelab` at `https://rustfs.lonk-mirfak.ts.net` (S3-compatible, path-style) · **Namespace:** `velero` · **Chart:** `vmware-tanzu/velero` `9.0.2` wrapped by `platform/velero` (`1.0.0`, appVersion `1.14.1`) · **ArgoCD wave:** `0` (Job `velero-bucket-init` at wave `-1`) · **Plugin:** `velero/velero-plugin-for-aws:v1.10.2`
+> **Backend:** RustFS S3 bucket `velero-homelab` at `https://rustfs.lonk-mirfak.ts.net` (S3-compatible, path-style) · **Namespace:** `velero` · **Chart:** `vmware-tanzu/velero` `9.0.2` wrapped by `platform/velero` (`1.0.0`, appVersion `1.14.1`) · **ArgoCD wave:** `0` (hook `velero-bucket-init` wave `0` `Sync`, after `tailscale-operator` wave `-1` Healthy) · **Plugin:** `velero/velero-plugin-for-aws:v1.10.2`
 
 ## Why Automation — Chicken-Egg Vault vs. Velero
 
@@ -33,14 +33,16 @@ aws_secret_access_key=...
 ```mermaid
 flowchart LR
     ENV["Env vars<br/>VELERO_AWS_ACCESS_KEY_ID<br/>VELERO_AWS_SECRET_ACCESS_KEY<br/>fallback AWS_*"]
+    TAILSCALE["tailscale-operator<br/>wave -1 Healthy<br/>MagicDNS rustfs.lonk-mirfak.ts.net"]
     BOOT["bootstrap/init-gitops.sh<br/>ensureVeleroCredentials()<br/>ns velero + Secret cloud-credentials"]
-    JOB["Job velero-bucket-init<br/>wave -1<br/>amazon/aws-cli:2.15.0<br/>create-bucket + head-bucket"]
+    JOB["Job velero-bucket-init<br/>hook Sync wave 0<br/>hostNetwork + 120s DNS wait<br/>amazon/aws-cli:2.15.0<br/>create-bucket + head-bucket"]
     APP["Application velero<br/>wave 0<br/>CreateNamespace=true<br/>ignoreDifferences Job"]
     CHART["Helm chart velero<br/>vmware-tanzu 9.0.2<br/>velero-plugin-for-aws v1.10.2"]
     BSL["BackupStorageLocation default<br/>bucket velero-homelab<br/>prefix velero/<br/>s3Url + s3ForcePathStyle"]
     RUSTFS[("RustFS S3<br/>https://rustfs.lonk-mirfak.ts.net<br/>region us-east-1")]
 
-    ENV --> BOOT --> JOB --> CHART --> BSL --> RUSTFS
+    ENV --> BOOT --> TAILSCALE --> JOB --> CHART --> BSL --> RUSTFS
+    TAILSCALE -. MagicDNS .-> JOB
     APP --> CHART
     BOOT -. Secret mount .-> JOB
     BOOT -. existingSecret .-> CHART
@@ -50,8 +52,9 @@ flowchart LR
 
 1. **Env** — operator or CI exports `VELERO_AWS_ACCESS_KEY_ID` / `VELERO_AWS_SECRET_ACCESS_KEY` (fallback `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` — same RustFS keys as Terraform).
 2. **Bootstrap** — `bootstrap/init-gitops.sh:ensureVeleroCredentials()` ensures namespace `velero` exists and creates/updates `Secret velero/cloud-credentials` (key `cloud`, idempotent via `--dry-run=client | kubectl apply`).
-3. **Job wave `-1`** — `templates/job-bucket-init.yaml` mounts that Secret at `/etc/velero/cloud`, parses `[default]` ini via `grep`/`cut`, and idempotently creates `velero-homelab` (`create-bucket` + `head-bucket`, `Prune=false`, `backoffLimit: 3`).
-4. **Chart wave `0`** — ArgoCD `Application` `gitops/templates/apps/05-velero.yaml` syncs `platform/velero` (`vmware-tanzu/velero:9.0.2`) with `backupStorageLocation` pointing at RustFS (`bucket velero-homelab`, `prefix velero/`, `s3ForcePathStyle: "true"`, `s3Url: https://rustfs.lonk-mirfak.ts.net`, `region: us-east-1`), `credentials.existingSecret: cloud-credentials`, `nodeAgent.enabled: true`, `defaultVolumesToFsBackup: true`, and plugin `velero-plugin-for-aws:v1.10.2`. Runs alongside `longhorn` (wave `0`), before `vault` (wave `1`).
+3. **Tailscale operator wave `-1` Healthy** — `platform/tailscale-operator` (`1.102.3`, `CreateNamespace=true`, `healthy`) must be `Healthy` before wave `0`; Argo blocks `0..4` until then, serializing MagicDNS `rustfs.lonk-mirfak.ts.net`.
+4. **Job hook `Sync` wave `0`** — `templates/job-bucket-init.yaml` (`hook: Sync`, `sync-wave: "0"`, `Prune=false`, `hostNetwork:true`, `ClusterFirstWithHostNet`, 120 s `nslookup` probe, `AWS_S3_ADDRESSING_STYLE=path`, `--no-verify-ssl`) mounts that Secret at `/etc/velero/cloud`, parses `[default]` ini via `grep`/`cut`, and idempotently creates `velero-homelab` (`create-bucket` + `head-bucket`, `Prune=false`, `backoffLimit: 3`).
+5. **Chart wave `0`** — ArgoCD `Application` `gitops/templates/apps/05-velero.yaml` syncs `platform/velero` (`vmware-tanzu/velero:9.0.2`) with `backupStorageLocation` pointing at RustFS (`bucket velero-homelab`, `prefix velero/`, `s3ForcePathStyle: "true"`, `s3Url: https://rustfs.lonk-mirfak.ts.net`, `region: us-east-1`), `credentials.existingSecret: cloud-credentials`, `nodeAgent.enabled: true`, `defaultVolumesToFsBackup: true`, and plugin `velero-plugin-for-aws:v1.10.2`. Runs alongside `longhorn` (wave `0`), before `vault` (wave `1`).
 5. **RustFS** — `BackupStorageLocation default` becomes `Ready`; schedules write under `s3://velero-homelab/velero/`.
 
 ## What Is Backed Up
@@ -98,16 +101,17 @@ Node-agent (restic successor) is enabled cluster-wide so Longhorn volumes are ba
 
 CI path: `.github/workflows/deploy.yaml` already injects `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` to restore kubeconfig from infra state; the `Bootstrap` step inherits that env so `ensureVeleroCredentials()` works without extra secrets. Optional `VELERO_AWS_*` repo secrets can be added for separation — see [docs/velero.md §4.2](../../docs/velero.md) and [docs/ci-cd.md](../../docs/ci-cd.md).
 
-### 2. Bucket Job — `templates/job-bucket-init.yaml` (wave `-1`)
+### 2. Bucket Job — `templates/job-bucket-init.yaml` (hook `Sync` wave `0`)
 
 - **Kind:** `batch/v1` `Job` `velero-bucket-init`, `namespace: velero`, conditional on `.Values.velero.enabled`.
-- **Wave:** `argocd.argoproj.io/sync-wave: "-1"` — ArgoCD creates it before the `Application velero` (wave `0`).
-- **Prune:** `argocd.argoproj.io/sync-options: Prune=false` + `ttlSecondsAfterFinished: 600` — Argo never prunes it; Kubernetes GCs after 10 min, logs remain inspectable until then.
+- **Hook/Wave:** `argocd.argoproj.io/hook: Sync` `argocd.argoproj.io/hook-delete-policy: BeforeHookCreation` `argocd.argoproj.io/sync-wave: "0"` `argocd.argoproj.io/sync-options: Prune=false` `hook-weight: "-1"` + `helm.sh/hook-weight: "-1"` + `ttlSecondsAfterFinished: 600` `activeDeadlineSeconds: 600` — Argo creates it as Sync hook of wave `0` after `tailscale-operator` wave `-1` is Healthy.
+- **Network:** `hostNetwork: true` `dnsPolicy: ClusterFirstWithHostNet` — fallback resolving `rustfs.lonk-mirfak.ts.net` via MagicDNS; DNS wait loop 120 s (`nslookup`/`getent hosts`) before bucket ops.
+- **S3 compat:** `AWS_EC2_METADATA_DISABLED=true` `AWS_S3_ADDRESSING_STYLE=path` (+ `aws configure set default.s3.addressing_style path`) `--no-verify-ssl` `region: us-east-1` `s3ForcePathStyle` path-style via `--endpoint-url`.
 - **Image:** `amazon/aws-cli:2.15.0` (`imagePullPolicy: IfNotPresent`).
 - **ServiceAccount:** `default` (avoids chicken-egg with subchart `ServiceAccount velero` created in the same release).
 - **Credentials:** mounts `Secret cloud-credentials` (`key: cloud → path: cloud`) at `/etc/velero/cloud`; parses with `grep -E 'aws_access_key_id' | cut -d'=' -f2 | tr -d '[:space:]'` and exports `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_DEFAULT_REGION=us-east-1`.
-- **Idempotent logic:** `aws s3api create-bucket --bucket velero-homelab --endpoint-url https://rustfs.lonk-mirfak.ts.net --region us-east-1`; on failure checks `BucketAlreadyOwnedByYou|BucketAlreadyExists|already exists` → treat as success; otherwise exit `$RC`. Then `aws s3api head-bucket` for verification and `aws s3 ls s3://velero-homelab/` (non-fatal).
-- **Retry:** `restartPolicy: OnFailure`, `backoffLimit: 3`.
+- **Idempotent logic:** `aws s3api create-bucket --bucket velero-homelab --endpoint-url https://rustfs.lonk-mirfak.ts.net --region us-east-1 --no-verify-ssl`; on failure checks `BucketAlreadyOwnedByYou|BucketAlreadyExists|already exists` → treat as success; otherwise exit `$RC`. Then `aws s3api head-bucket` for verification and `aws s3 ls s3://velero-homelab/` (non-fatal).
+- **Retry:** `restartPolicy: OnFailure`, `backoffLimit: 3`, DNS wait 120 s.
 - **Failure hint:** if `cloud` file missing, exits `1` with `Hint: ensure bootstrap/init-gitops.sh ensureVeleroCredentials() ran with VELERO_AWS_* or AWS_*`.
 
 ### 3. ArgoCD Wave Ordering — `gitops/templates/apps/05-velero.yaml`
@@ -128,7 +132,7 @@ AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... ./bootstrap/init-gitops.sh prod
 # 2. ArgoCD — velero must be Synced/Healthy in wave 0 before vault (wave 1)
 kubectl get applications -n argocd | grep -E 'velero|vault|longhorn'
 
-# 3. Job — wave -1 bucket init
+# 3. Job — hook Sync wave 0 bucket init
 kubectl -n velero get job velero-bucket-init
 kubectl -n velero logs job/velero-bucket-init
 kubectl -n velero get events --field-selector involvedObject.name=velero-bucket-init
@@ -168,9 +172,9 @@ kubectl -n velero get secret cloud-credentials -o jsonpath='{.data.cloud}' | bas
 
 ## Bucket Creation
 
-### Automatic (default) — Job `velero-bucket-init` wave `-1`
+### Automatic (default) — Job `velero-bucket-init` hook `Sync` wave `0`
 
-No local `aws-cli` or CI step required. The Job is deployed as part of `platform/velero` and reuses the Secret already created by `ensureVeleroCredentials()`.
+No local `aws-cli` or CI step required. The Job is deployed as `argocd.argoproj.io/hook: Sync` wave `0` after `tailscale-operator` wave `-1` Healthy — Argo serializes it — and reuses the Secret already created by `ensureVeleroCredentials()`. `hostNetwork: true` + `ClusterFirstWithHostNet` + 120 s DNS wait ensures `rustfs.lonk-mirfak.ts.net` MagicDNS is ready.
 
 Verification after sync — see [Quick Start / Verify](#quick-start--verify) step 3. The Job is idempotent: re-syncing ArgoCD re-runs `create-bucket` safely; `head-bucket` confirms accessibility.
 
@@ -178,10 +182,14 @@ Key Job fields:
 
 | Field | Value |
 |-------|-------|
-| `argocd.argoproj.io/sync-wave` | `"-1"` |
+| `argocd.argoproj.io/hook` | `Sync` |
+| `argocd.argoproj.io/sync-wave` | `"0"` |
 | `argocd.argoproj.io/sync-options` | `Prune=false` |
+| `argocd.argoproj.io/hook-weight` | `"-1"` |
 | `helm.sh/hook-weight` | `"-1"` |
 | `ttlSecondsAfterFinished` | `600` |
+| `hostNetwork` | `true` |
+| `dnsPolicy` | `ClusterFirstWithHostNet` |
 | `backoffLimit` | `3` |
 | `image` | `amazon/aws-cli:2.15.0` |
 | `serviceAccountName` | `default` |
@@ -189,6 +197,7 @@ Key Job fields:
 | `endpoint` | `https://rustfs.lonk-mirfak.ts.net` |
 | `bucket` | `velero-homelab` |
 | `region` | `us-east-1` |
+| `env` | `AWS_EC2_METADATA_DISABLED=true`, `AWS_S3_ADDRESSING_STYLE=path`, `--no-verify-ssl` |
 
 ### Manual Fallback — `aws s3api` (only if Job cannot run)
 
@@ -217,7 +226,7 @@ aws s3api get-bucket-location --bucket velero-homelab --endpoint-url https://rus
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `secret "cloud-credentials" not found` / `CreateContainerConfigError` | `ensureVeleroCredentials()` not run with env vars | `VELERO_AWS_ACCESS_KEY_ID=... VELERO_AWS_SECRET_ACCESS_KEY=... ./bootstrap/init-gitops.sh prod` or `AWS_*` fallback; verify `kubectl -n velero get secret cloud-credentials -o jsonpath='{.data.cloud}' \| base64 -d` is `[default]` ini. The Job `velero-bucket-init` also fails if the Secret is missing — check `kubectl -n velero logs job/velero-bucket-init`. |
-| `NoSuchBucket: The specified bucket does not exist` | Bucket `velero-homelab` not created (Job did not run or Secret was missing at Job start) | Automatic: `kubectl -n velero get job velero-bucket-init` + `kubectl -n velero logs job/velero-bucket-init` — the wave `-1` Job creates it idempotently; re-sync ArgoCD if needed. Fallback manual: `aws s3api create-bucket --bucket velero-homelab --endpoint-url https://rustfs.lonk-mirfak.ts.net --region us-east-1`. |
+| `NoSuchBucket: The specified bucket does not exist` | Bucket `velero-homelab` not created (Job hook did not run or Secret was missing at Job start or DNS unresolved) | Automatic: `kubectl -n velero get job velero-bucket-init` + `kubectl -n velero logs job/velero-bucket-init` — the hook `Sync` wave `0` Job creates it idempotently; re-sync ArgoCD if needed. Fallback manual: `aws s3api create-bucket --bucket velero-homelab --endpoint-url https://rustfs.lonk-mirfak.ts.net --region us-east-1 --no-verify-ssl`. |
 | `PermanentRedirect` / `SignatureDoesNotMatch` | `s3ForcePathStyle` / `s3Url` mismatch (virtual-hosted vs path-style) | Ensure `values.yaml` has `s3ForcePathStyle: "true"` and `s3Url: https://rustfs.lonk-mirfak.ts.net` (not empty, not trailing slash). The Job uses `--endpoint-url` (path-style) consistently. |
 | `BackupStorageLocation default is not in Ready state` | Invalid credentials, RustFS unreachable via Tailscale, or wrong `cloud` key format | Validate `aws s3 ls --endpoint-url https://rustfs.lonk-mirfak.ts.net --region us-east-1` from within cluster; ensure Secret key is exactly `cloud` with content `[default]\naws_access_key_id=...\naws_secret_access_key=...` (no extra spaces, no JSON). Check `kubectl -n velero describe backupstoragelocations.velero.io default` and `kubectl logs -n velero deploy/velero`. |
 | `backupStoragelocations.velero.io "default" not found` | Chart not synced yet (wave `0`) | Check ArgoCD `Application velero` — must be `Synced/Healthy` before `vault` (wave `1`): `kubectl get application velero -n argocd -o yaml \| yq .status`. |
@@ -244,7 +253,7 @@ For Vault disaster recovery follow **[`docs/runbook-vault-restore.md`](../../doc
 | `Chart.yaml` | Wrapper chart `velero` `1.0.0` (`appVersion: 1.14.1`) depending on `vmware-tanzu/velero:9.0.2` (`condition: velero.enabled`) |
 | `values.yaml` | `backupStorageLocation` (RustFS `velero-homelab`, `prefix velero/`, `region us-east-1`, `s3ForcePathStyle true`, `s3Url`), `volumeSnapshotLocation`, `schedules` (`daily-full` + `vault-hourly`), `nodeAgent.enabled`, `credentials.existingSecret cloud-credentials`, `initContainers` plugin `v1.10.2`, `resources`, `metrics/serviceMonitor` |
 | `templates/namespace.yaml` | `Namespace velero` (`pod-security.kubernetes.io/enforce: privileged`) |
-| `templates/job-bucket-init.yaml` | Wave `-1` `Job velero-bucket-init` (`amazon/aws-cli:2.15.0`, `Prune=false`, `ttlSecondsAfterFinished: 600`, `backoffLimit: 3`, mounts `cloud-credentials`, idempotent `create-bucket` + `head-bucket`) |
+| `templates/job-bucket-init.yaml` | Hook `Sync` wave `0` `Job velero-bucket-init` (`amazon/aws-cli:2.15.0`, `Prune=false`, `hook-weight -1`, `hostNetwork:true`, `ttl 600`, 120 s DNS wait, mounts `cloud-credentials`, idempotent `create-bucket` + `head-bucket`, `--no-verify-ssl`, `AWS_S3_ADDRESSING_STYLE=path`) |
 | `charts/velero-9.0.2.tgz` | Vendored subchart (Helm dependency) |
 | `Chart.lock` / `.helmignore` | Helm lock / ignore |
 | `README.md` | This file |
@@ -267,4 +276,4 @@ For Vault disaster recovery follow **[`docs/runbook-vault-restore.md`](../../doc
 
 ---
 
-*Velero sits in wave 0 with Longhorn and creates the Secret outside Vault — the same pattern ADR-004 evaluates as option A. The wave `-1` Job makes `velero-homelab` bucket creation fully GitOps-automated; no manual `aws s3api` step is required unless the Job cannot run.*
+*Velero sits in wave 0 with Longhorn and creates the Secret outside Vault — the same pattern ADR-004 evaluates as option A (now ADR-010 for Tailscale). The hook `Sync` wave `0` Job (after `tailscale-operator` wave `-1` Healthy) makes `velero-homelab` bucket creation fully GitOps-automated; no manual `aws s3api` step is required unless the Job cannot run.*

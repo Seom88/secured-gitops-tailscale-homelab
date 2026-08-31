@@ -50,29 +50,32 @@ flowchart LR
 
 | Wave | Apps | Política | Notas |
 |------|------|----------|-------|
-| `0` | `longhorn`, `velero` | `healthy` | Almacenamiento y backup deben estar sanos antes que nada |
+| `-1` | `tailscale-operator` (`platform/tailscale-operator`) | `healthy` | Operador Tailscale debe estar `Healthy` antes que nada — serializa MagicDNS para RustFS |
+| `0` | `longhorn`, `velero` (`velero-bucket-init` hook) | `healthy` / `hook: Sync` | Almacenamiento y backup deben estar sanos antes que nada; bucket-init hook espera 120 s a que MagicDNS resuelva |
 | `1` | `vault` | `healthy` | Depende de Longhorn (PVCs) y opcionalmente Velero (restore) |
 | `2` | `seaweedfs` | `healthy` | S3 interno (no usado por Velero, que va a RustFS) |
 | `3` | `monitoring` | `sync-only` | Puede tolerar degraded |
-| `4` | `tailscale` | `sync-only` | Siempre último, expone Ingress |
+| `4` | `tailscale` (`platform/tailscale` ingress-only) | `sync-only` | Siempre último, expone 11 Ingress; operador ya está en wave `-1` |
 
-Velero en wave `0` junto a Longhorn (no `1` como Vault) garantiza que `BackupStorageLocation` y `node-agent` estén listos antes de que Vault cree PVCs.
+`tailscale-operator` en wave `-1` `healthy` es el gate que serializa MagicDNS (`rustfs.lonk-mirfak.ts.net`) antes del `velero-bucket-init` (hook wave `0`). Velero en wave `0` junto a Longhorn garantiza que `BackupStorageLocation` y `node-agent` estén listos antes de que Vault cree PVCs.
 
 ## 3. Bucket — creación automática vía Job wave -1 (idempotente)
 
 Velero no crea el bucket por sí mismo. En este repo el bucket `velero-homelab` se crea **automáticamente dentro del cluster** — no necesitas `aws-cli` local ni pasos extra en CI.
 
-### 3.1 Automático (por defecto) — Job `velero-bucket-init` wave -1
+### 3.1 Automático (por defecto) — Job `velero-bucket-init` hook `Sync` wave `0` (serializado tras `tailscale-operator` Healthy)
 
-`platform/velero/templates/job-bucket-init.yaml` despliega un `Job` (`batch/v1`) que se ejecuta **antes** que el chart de Velero:
+`platform/velero/templates/job-bucket-init.yaml` despliega un `Job` (`batch/v1`) **hook ArgoCD** que se ejecuta **después** de que `tailscale-operator` wave `-1` esté `Healthy`:
 
-- **Wave:** `argocd.argoproj.io/sync-wave: "-1"` (ArgoCD lo crea antes que la `Application velero` wave `0`).
-- **No prune:** `argocd.argoproj.io/sync-options: Prune=false` + `ttlSecondsAfterFinished: 600` — Argo no lo borra tras `Synced`; Kubernetes lo GC pasados 10 min y los logs quedan inspeccionables.
+- **Hook:** `argocd.argoproj.io/hook: Sync` `argocd.argoproj.io/hook-delete-policy: BeforeHookCreation` `argocd.argoproj.io/sync-wave: "0"` `argocd.argoproj.io/sync-options: Prune=false` + `hook-weight: "-1"` (`helm.sh/hook-weight: "-1"`), `ttlSecondsAfterFinished: 600`, `activeDeadlineSeconds: 600` — Argo lo crea como hook de wave `0`; Kubernetes lo GC pasados 10 min.
+- **Red:** `hostNetwork: true`, `dnsPolicy: ClusterFirstWithHostNet` — fallback que permite resolver `rustfs.lonk-mirfak.ts.net` via MagicDNS del host incluso sin `ProxyGroup`/`Connector`; serializado tras operator `Healthy`, el DNS ya debería resolver, pero el fallback cubre Talos sin CRD.
+- **DNS wait:** antes de `create-bucket`, espera hasta 120 s (`nslookup` / `getent hosts` loop) a que `rustfs.lonk-mirfak.ts.net` resuelva — gate que cubre la propagación de MagicDNS tras el operator Ready.
+- **S3 compat:** `AWS_EC2_METADATA_DISABLED=true`, `AWS_S3_ADDRESSING_STYLE=path` (env + `aws configure set default.s3.addressing_style path`), `--no-verify-ssl` para cert Tailscale funnel, `region: us-east-1`, `s3ForcePathStyle` via `--endpoint-url` path-style.
 - **Imagen:** `amazon/aws-cli:2.15.0` (oficial, liviana; alternativa `bitnami/aws-cli:latest`).
 - **Credenciales:** monta el mismo `Secret velero/cloud-credentials` (key `cloud` con formato `[default]\naws_access_key_id=...\naws_secret_access_key=...`) creado por `bootstrap/init-gitops.sh:ensureVeleroCredentials()` en `/etc/velero/cloud` y lo parsea con `grep`/`cut` para exportar `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` + `AWS_DEFAULT_REGION=us-east-1`. No requiere `envFrom` ni duplicar el Secret.
-- **Idempotente:** `aws s3api create-bucket --bucket velero-homelab --endpoint-url https://rustfs.lonk-mirfak.ts.net --region us-east-1 2>&1 || true`; si el error es `BucketAlreadyOwnedByYou` / `BucketAlreadyExists` / `already exists` lo considera éxito. Luego verifica con `aws s3api head-bucket` y loguea el resultado. `s3ForcePathStyle` es path-style via `--endpoint-url`, no necesita config extra.
-- **Reintentos:** `restartPolicy: OnFailure`, `backoffLimit: 3`. Usa `serviceAccountName: default` en wave `-1` para evitar chicken-egg con el `ServiceAccount velero` del subchart (puedes cambiarlo a `velero` si añades RBAC propio).
-- **Dependencia:** requiere que `ensureVeleroCredentials()` haya creado `cloud-credentials` antes del sync (el bootstrap lo hace siempre); si el Secret no existe el Job falla con mensaje explícito.
+- **Idempotente:** `aws s3api create-bucket --bucket velero-homelab --endpoint-url https://rustfs.lonk-mirfak.ts.net --region us-east-1 --no-verify-ssl 2>&1 || true`; si el error es `BucketAlreadyOwnedByYou` / `BucketAlreadyExists` / `already exists` lo considera éxito. Luego verifica con `aws s3api head-bucket` y loguea el resultado. `s3ForcePathStyle` es path-style via `--endpoint-url`.
+- **Reintentos:** `restartPolicy: OnFailure`, `backoffLimit: 3`. Usa `serviceAccountName: default` en wave `0` para evitar chicken-egg con el `ServiceAccount velero` del subchart (puedes cambiarlo a `velero` si añades RBAC propio).
+- **Dependencia:** requiere que `ensureVeleroCredentials()` haya creado `cloud-credentials` antes del sync (el bootstrap lo hace siempre); si el Secret no existe el Job falla con mensaje explícito, pero **también** requiere que `tailscale-operator` wave `-1` esté `Healthy` — Argo garantiza el orden, y el DNS wait de 120 s absorbe la propagación.
 
 No necesitas instalar `aws-cli` localmente ni añadir steps en `.github/workflows/deploy.yaml` — el Job reutiliza las credenciales que ya inyecta `deploy.yaml` → `init-gitops.sh`.
 
