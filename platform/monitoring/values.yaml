@@ -87,7 +87,7 @@ kube-prometheus-stack:
     additionalDataSources:
       - name: Loki
         type: loki
-        url: http://monitoring-loki-gateway.monitoring.svc.cluster.local
+        url: http://monitoring-loki-gateway.monitoring.svc.cluster.local/
         access: proxy
         # Even with auth_enabled: false, Loki requires an org ID header
         # This is a known quirk - the value can be anything since auth is disabled
@@ -112,6 +112,15 @@ kube-prometheus-stack:
   prometheus:
     prometheusSpec:
       retention: 15d
+      retentionSize: 25GB
+      storageSpec:
+        volumeClaimTemplate:
+          spec:
+            storageClassName: longhorn
+            accessModes: ["ReadWriteOnce"]
+            resources:
+              requests:
+                storage: 30Gi
 
     # Native Ingress configuration for Prometheus
     ingress:

@@ -10,13 +10,24 @@ loki:
 
 # Configuration for the Kube-Prometheus-Stack subchart
 kube-prometheus-stack:
+  prometheus:
+    prometheusSpec:
+      storageSpec:
+        volumeClaimTemplate:
+          spec:
+            storageClassName: longhorn
+            accessModes: ["ReadWriteOnce"]
+            resources:
+              requests:
+                storage: 10Gi
+
   # Grafana configuration
   grafana:
     # Add Loki as a data source
     additionalDataSources:
       - name: Loki
         type: loki
-        url: http://monitoring-dev-loki-gateway.monitoring.svc.cluster.local
+        url: http://monitoring-dev-loki-gateway.monitoring.svc.cluster.local/
         access: proxy
         jsonData:
           httpHeaderName1: "X-Scope-OrgID"
