@@ -31,10 +31,9 @@ velero:
         config:
           region: us-east-1
           s3ForcePathStyle: "true"
-          s3Url: https://rustfs.lonk-mirfak.ts.net
+          s3Url: https://rustfs-egress.velero.svc.cluster.local:443
           insecureSkipTLSVerify: "true"
-          # RustFS via Tailscale funnel uses a Tailscale-issued cert not in public CA bundle,
-          # same as bucket-init Job --no-verify-ssl.
+          # RustFS is reached via the Tailscale Egress proxy service (rustfs-egress).
     # VolumeSnapshotLocation — not used (Longhorn snapshots via FsBackup), but chart requires at least one entry.
     volumeSnapshotLocation:
       - name: default

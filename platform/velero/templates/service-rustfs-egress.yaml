@@ -1,0 +1,17 @@
+{{- if .Values.velero.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: rustfs-egress
+  namespace: velero
+  annotations:
+    tailscale.com/tailnet-fqdn: rustfs.lonk-mirfak.ts.net
+spec:
+  type: ExternalName
+  externalName: placeholder
+  ports:
+    - name: https
+      port: 443
+      protocol: TCP
+      targetPort: 443
+{{- end }}
