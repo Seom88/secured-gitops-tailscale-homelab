@@ -61,7 +61,7 @@ spec:
               # Ensure aws-cli uses path-style addressing (RustFS requires it)
               aws configure set default.s3.addressing_style path || true
               aws configure set default.s3.addressing_style path --profile default || true
-              ENDPOINT="https://rustfs-egress.velero.svc.cluster.local:443"
+              ENDPOINT="https://rustfs.lonk-mirfak.ts.net"
               BUCKET="velero-homelab"
               if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
                 echo "[bucket-init] ERROR: could not parse credentials from $CRED_FILE"
@@ -70,20 +70,20 @@ spec:
                 exit 1
               fi
               # Wait for Tailscale Egress service DNS / proxy to be ready
-              echo "[bucket-init] Waiting for rustfs-egress.velero.svc.cluster.local (max 120s)..."
+              echo "[bucket-init] Waiting for rustfs.lonk-mirfak.ts.net (max 120s)..."
               DNS_WAIT=0
               DNS_MAX=120
               while [ $DNS_WAIT -lt $DNS_MAX ]; do
-                if nslookup rustfs-egress.velero.svc.cluster.local >/dev/null 2>&1 || getent hosts rustfs-egress.velero.svc.cluster.local >/dev/null 2>&1; then
-                  echo "[bucket-init] DNS resolved for rustfs-egress.velero.svc.cluster.local"
+                if nslookup rustfs.lonk-mirfak.ts.net >/dev/null 2>&1 || getent hosts rustfs.lonk-mirfak.ts.net >/dev/null 2>&1; then
+                  echo "[bucket-init] DNS resolved for rustfs.lonk-mirfak.ts.net"
                   break
                 fi
-                echo "[bucket-init] Service DNS not yet resolved ($DNS_WAIT/$DNS_MAX s)..."
+                echo "[bucket-init] DNS not yet resolved ($DNS_WAIT/$DNS_MAX s)..."
                 sleep 5
                 DNS_WAIT=$((DNS_WAIT + 5))
               done
               if [ $DNS_WAIT -ge $DNS_MAX ]; then
-                echo "[bucket-init] WARNING: Service DNS still not resolved after $DNS_MAX s — proceeding anyway (may fail, Argo will retry)"
+                echo "[bucket-init] WARNING: DNS still not resolved after $DNS_MAX s — proceeding anyway (may fail, Argo will retry)"
               fi
 
               echo "[bucket-init] Creating bucket $BUCKET at $ENDPOINT (region $AWS_DEFAULT_REGION)..."
