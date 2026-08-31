@@ -62,8 +62,12 @@ spec:
               fi
               echo "[bucket-init] Creating bucket $BUCKET at $ENDPOINT (region $AWS_DEFAULT_REGION)..."
 
+              # RustFS via Tailscale funnel uses a Tailscale-issued cert not in public CA bundle.
+              # The aws-cli container has no Tailscale CA, so skip TLS verify (same as Velero's insecureSkipTLSVerify).
+              AWS_S3_EXTRA="--no-verify-ssl"
+
               set +e
-              OUTPUT="$(aws s3api create-bucket --bucket "$BUCKET" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" 2>&1)"
+              OUTPUT="$(aws s3api create-bucket --bucket "$BUCKET" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" $AWS_S3_EXTRA 2>&1)"
               RC=$?
               set -e
               echo "$OUTPUT"
@@ -79,10 +83,10 @@ spec:
               fi
 
               echo "[bucket-init] Verifying bucket with head-bucket..."
-              aws s3api head-bucket --bucket "$BUCKET" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION"
+              aws s3api head-bucket --bucket "$BUCKET" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" $AWS_S3_EXTRA
               echo "[bucket-init] Verification OK — bucket $BUCKET is accessible."
               # Optional: list to confirm write permission (non-fatal).
-              aws s3 ls "s3://$BUCKET/" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" || true
+              aws s3 ls "s3://$BUCKET/" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" $AWS_S3_EXTRA || true
               echo "[bucket-init] Done."
           volumeMounts:
             - name: cloud-credentials
