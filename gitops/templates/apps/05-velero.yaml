@@ -1,0 +1,43 @@
+{{- if .Values.platformApps.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: velero{{- if .Values.developmentApp.enabled }}-dev{{- end }}
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  labels:
+    wave-policy: healthy
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL }}
+    targetRevision: {{ if .Values.developmentApp.enabled }}dev{{ else }}main{{ end }}
+    path: platform/velero
+    helm:
+      ignoreMissingValueFiles: true
+      valueFiles:
+        - values.yaml
+        {{- if .Values.developmentApp.enabled }}
+        - values-dev.yaml
+        {{- end }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: velero
+  ignoreDifferences:
+  - group: batch
+    kind: Job
+    namespace: velero
+    jsonPointers:
+    - /spec/selector
+    - /spec/template/metadata/labels
+    - /spec/template/metadata/annotations
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - Retry=true
+{{- end }}

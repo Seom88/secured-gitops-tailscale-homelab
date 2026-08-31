@@ -127,6 +127,48 @@ else
   echo -e "${YELLOW}  💡 If you expect Longhorn, push gitops/values.yaml with longhorn to origin/main and re-run.${NC}"
 fi
 
+ensureVeleroCredentials() {
+  echo -e "\n${BLUE}🛡️  Ensuring Velero S3 credentials (RustFS)...${NC}"
+
+  # Ensure namespace exists (idempotent, also created by Helm/ArgoCD but needed for Secret)
+  if ! kubectl get namespace velero >/dev/null 2>&1; then
+    echo -e "${YELLOW}  [Velero] Creating namespace velero...${NC}"
+    kubectl create namespace velero >/dev/null 2>&1 || true
+  else
+    echo -e "${GREEN}  [Velero] Namespace velero exists.${NC}"
+  fi
+
+  # Resolve credentials: prefer VELERO_AWS_* , fallback to AWS_* (same RustFS keys as Terraform).
+  VELERO_KEY_ID="${VELERO_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}"
+  VELERO_SECRET="${VELERO_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}"
+
+  if [ -z "$VELERO_KEY_ID" ] || [ -z "$VELERO_SECRET" ]; then
+    echo -e "${YELLOW}  [Velero] ⚠️  No S3 credentials in env (VELERO_AWS_ACCESS_KEY_ID / VELERO_AWS_SECRET_ACCESS_KEY or AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY).${NC}"
+    echo -e "${YELLOW}  [Velero]    Velero chart will stay Pending (BackupStorageLocation unavailable) until you create the Secret.${NC}"
+    echo -e "${YELLOW}  [Velero]    Create it with: VELERO_AWS_ACCESS_KEY_ID=... VELERO_AWS_SECRET_ACCESS_KEY=... ./bootstrap/init-gitops.sh $ENV${NC}"
+    echo -e "${YELLOW}  [Velero]    Expected Secret: velero/cloud-credentials key 'cloud' = \"[default]\\naws_access_key_id=...\\naws_secret_access_key=...\"${NC}"
+    return 0
+  fi
+
+  # Velero AWS plugin expects key `cloud` with ini format:
+  #   [default]
+  #   aws_access_key_id=...
+  #   aws_secret_access_key=...
+  CLOUD_CONTENT="[default]
+aws_access_key_id=${VELERO_KEY_ID}
+aws_secret_access_key=${VELERO_SECRET}"
+
+  echo -e "${YELLOW}  [Velero] Creating/updating Secret velero/cloud-credentials (existingSecret for Helm)...${NC}"
+  kubectl create secret generic cloud-credentials \
+    --namespace velero \
+    --from-literal=cloud="$CLOUD_CONTENT" \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  echo -e "${GREEN}  [Velero] Secret velero/cloud-credentials ready.${NC}"
+}
+
+# --- STEP 1.6: Velero credentials (must run after Longhorn, before Vault) ---
+ensureVeleroCredentials
+
 # --- STEP 2: Vault configuration ---
 echo -e "\n${BLUE}🔑 Configuring Hashicorp Vault...${NC}"
 chmod +x platform/vault/scripts/bootstrap-vault.sh
@@ -146,6 +188,8 @@ echo -e "\n${BOLD}Vault Pods:${NC}"
 kubectl get pods -n vault || true
 echo -e "\n${BOLD}Monitoring Pods:${NC}"
 kubectl get pods -n monitoring || true
+echo -e "\n${BOLD}Velero Pods:${NC}"
+kubectl get pods -n velero || true
 echo -e "\n${BOLD}Tailscale Pods:${NC}"
 kubectl get pods -n tailscale || true
 

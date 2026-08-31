@@ -14,24 +14,98 @@ data:
     NAMESPACE="${VAULT_NAMESPACE:-vault}"
     TLS_SERVER_NAME="${VAULT_TLS_SERVER_NAME:-vault}"
     KUBECTL="kubectl"
+    TIMEOUT=20
+    RETRY_ATTEMPTS=3
+    OVERALL_FAILED=0
 
-    echo "[autounseal] Starting pod review in namespace: $NAMESPACE"
+    echo "[autounseal] Starting pod review in namespace: $NAMESPACE (TLS server name: $TLS_SERVER_NAME)"
 
-    # Get Vault server pod list with retry.
+    # ---- helpers ----
+    # Parse Vault status JSON field with jq if available, fallback to grep
+    parse_field() {
+      _json="$1"
+      _field="$2"
+      if command -v jq >/dev/null 2>&1; then
+        echo "$_json" | jq -r --arg f "$_field" '.[$f] // empty' 2>/dev/null | tr -d '\n'
+        # For booleans jq -r gives true/false strings; fallback handled below
+        return 0
+      fi
+      # fallback: extract "field": value (boolean or string)
+      _val=$(echo "$_json" | grep -o "\"$_field\"[[:space:]]*:[[:space:]]*[^,}]*" 2>/dev/null | head -1 | grep -o 'true\|false' 2>/dev/null || true)
+      if [ -n "$_val" ]; then
+        echo "$_val"
+      else
+        # try string value
+        echo "$_json" | grep -o "\"$_field\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" 2>/dev/null | head -1 | sed 's/.*"\([^"]*\)".*/\1/' 2>/dev/null || true
+      fi
+    }
+
+    # Get vault status JSON with TLS handling and retries
+    get_vault_status() {
+      _pod="$1"
+      _attempt=1
+      while [ "$_attempt" -le "$RETRY_ATTEMPTS" ]; do
+        _out=$(timeout $TIMEOUT $KUBECTL exec -n "$NAMESPACE" "$_pod" -- \
+          sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault status -format=json -tls-server-name=$TLS_SERVER_NAME || true" \
+          2>/dev/null || true)
+        if echo "$_out" | grep -q '"sealed"' 2>/dev/null; then
+          echo "$_out"
+          return 0
+        fi
+        # fallback without -tls-server-name (handles mis-configured TLS)
+        _out2=$(timeout $TIMEOUT $KUBECTL exec -n "$NAMESPACE" "$_pod" -- \
+          sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault status -format=json || true" \
+          2>/dev/null || true)
+        if echo "$_out2" | grep -q '"sealed"' 2>/dev/null; then
+          echo "[autounseal] WARNING: Pod $_pod status succeeded only without -tls-server-name (attempt $_attempt)" >&2
+          echo "$_out2"
+          return 0
+        fi
+        if [ "$_attempt" -lt "$RETRY_ATTEMPTS" ]; then
+          sleep 2
+        fi
+        _attempt=$((_attempt + 1))
+      done
+      echo ""
+      return 1
+    }
+
+    vault_exec_retry() {
+      _pod="$1"
+      _cmd="$2"
+      _attempt=1
+      while [ "$_attempt" -le "$RETRY_ATTEMPTS" ]; do
+        if timeout $TIMEOUT $KUBECTL exec -n "$NAMESPACE" "$_pod" -- sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt $_cmd" 2>/dev/null; then
+          return 0
+        fi
+        # second try without tls-server-name if command contained it
+        if echo "$_cmd" | grep -q "tls-server-name" 2>/dev/null; then
+          _fallback=$(echo "$_cmd" | sed 's/-tls-server-name=[^ ]*//g')
+          if timeout $TIMEOUT $KUBECTL exec -n "$NAMESPACE" "$_pod" -- sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt $_fallback" 2>/dev/null; then
+            return 0
+          fi
+        fi
+        if [ "$_attempt" -lt "$RETRY_ATTEMPTS" ]; then
+          sleep 2
+        fi
+        _attempt=$((_attempt + 1))
+      done
+      return 1
+    }
+
+    # ---- discover pods with retry ----
     echo "[autounseal] Looking for Vault pods..."
     RETRIES=12
     SLEEP=5
     i=1
     while [ "$i" -le "$RETRIES" ]; do
-      PODS=$(timeout 15 $KUBECTL get pods -n "$NAMESPACE" \
+      PODS=$(timeout $TIMEOUT $KUBECTL get pods -n "$NAMESPACE" \
         -l app.kubernetes.io/name=vault,component=server \
         -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || true)
-      
       if [ -n "$PODS" ]; then
         echo "[autounseal] Found Vault pods: $PODS"
         break
       fi
-
       if [ "$i" -eq "$RETRIES" ]; then
         echo "[autounseal] ERROR: No Vault pods found after $((RETRIES * SLEEP)) seconds."
         exit 1
@@ -42,9 +116,8 @@ data:
     done
 
     # Derive the secret name from the Helm release label on the first pod.
-    # init-vault.sh creates it as "{release-name}-unseal-keys", so we do the same.
     FIRST_POD=$(echo "$PODS" | awk '{print $1}')
-    RELEASE_NAME=$(timeout 15 $KUBECTL get pod "$FIRST_POD" -n "$NAMESPACE" \
+    RELEASE_NAME=$(timeout $TIMEOUT $KUBECTL get pod "$FIRST_POD" -n "$NAMESPACE" \
       -o jsonpath='{.metadata.labels.app\.kubernetes\.io/instance}' 2>/dev/null || true)
 
     if [ -z "$RELEASE_NAME" ]; then
@@ -53,97 +126,289 @@ data:
     fi
 
     SECRET_NAME="${RELEASE_NAME}-unseal-keys"
-    echo "[autounseal] Using secret: $SECRET_NAME"
+    echo "[autounseal] Using secret: $SECRET_NAME (release: $RELEASE_NAME)"
 
-    # Read unseal keys ONCE (never printed in logs)
-    KEY1=$(timeout 15 $KUBECTL get secret "$SECRET_NAME" -n "$NAMESPACE" \
-      -o jsonpath='{.data.key1}' 2>/dev/null | base64 -d || echo "")
-    KEY2=$(timeout 15 $KUBECTL get secret "$SECRET_NAME" -n "$NAMESPACE" \
-      -o jsonpath='{.data.key2}' 2>/dev/null | base64 -d || echo "")
-    KEY3=$(timeout 15 $KUBECTL get secret "$SECRET_NAME" -n "$NAMESPACE" \
-      -o jsonpath='{.data.key3}' 2>/dev/null | base64 -d || echo "")
-
-    if [ -z "$KEY1" ] || [ -z "$KEY2" ] || [ -z "$KEY3" ]; then
-      echo "[autounseal] Secret '$SECRET_NAME' not found or keys are empty — Vault may not be initialized yet. Skipping."
+    # ---- validation: secret exists and CA consistent ----
+    if ! timeout $TIMEOUT $KUBECTL get secret "$SECRET_NAME" -n "$NAMESPACE" >/dev/null 2>&1; then
+      echo "[autounseal] Secret '$SECRET_NAME' not found — Vault may not be initialized yet. Skipping (will retry next cycle)."
       exit 0
     fi
+    echo "[autounseal] Secret '$SECRET_NAME' exists — validating CA..."
 
-    for POD in $PODS; do
-      echo "[autounseal] Checking pod: $POD"
-
-      # Check the pod is in Running phase (not Pending/Succeeded/Failed).
-      PHASE=$(timeout 15 $KUBECTL get pod "$POD" -n "$NAMESPACE" \
-        -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
-
-      if [ "$PHASE" != "Running" ]; then
-        echo "[autounseal] Pod $POD is not in Running phase ($PHASE), skipping."
-        continue
-      fi
-
-      # Check the container is actually running.
-      CONTAINER=$(timeout 15 $KUBECTL get pod "$POD" -n "$NAMESPACE" \
-        -o jsonpath='{.status.containerStatuses[0].state.running}' 2>/dev/null || true)
-
-      if [ -z "$CONTAINER" ]; then
-        echo "[autounseal] Pod $POD container is not running (CrashLoopBackOff or waiting), skipping."
-        continue
-      fi
-
-      # Get current seal status (exit code 2 when sealed is expected — suppress it)
-      STATUS=$(timeout 15 $KUBECTL exec -n "$NAMESPACE" "$POD" -- \
-        sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt \
-               vault status -format=json -tls-server-name=$TLS_SERVER_NAME || true" \
-        2>/dev/null || true)
-
-      if [ -z "$STATUS" ]; then
-        echo "[autounseal] Pod $POD did not respond, skipping."
-        continue
-      fi
-
-      SEALED=$(echo "$STATUS" | grep -o '"sealed":[^,}]*' | grep -o 'true\|false')
-      INITIALIZED=$(echo "$STATUS" | grep -o '"initialized":[^,}]*' | grep -o 'true\|false')
-
-      if [ "$INITIALIZED" != "true" ]; then
-        echo "[autounseal] Pod $POD is not initialized yet, skipping."
-        continue
-      fi
-
-      if [ "$SEALED" = "true" ]; then
-        echo "[autounseal] Pod $POD is SEALED. Unsealing..."
-
-        # Unseal keys are never printed in logs
-        timeout 15 $KUBECTL exec -n "$NAMESPACE" "$POD" -- \
-          sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt \
-                 vault operator unseal -tls-server-name=$TLS_SERVER_NAME '$KEY1'" \
-          > /dev/null 2>&1 || true
-
-        timeout 15 $KUBECTL exec -n "$NAMESPACE" "$POD" -- \
-          sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt \
-                 vault operator unseal -tls-server-name=$TLS_SERVER_NAME '$KEY2'" \
-          > /dev/null 2>&1 || true
-
-        timeout 15 $KUBECTL exec -n "$NAMESPACE" "$POD" -- \
-          sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt \
-                 vault operator unseal -tls-server-name=$TLS_SERVER_NAME '$KEY3'" \
-          > /dev/null 2>&1 || true
-
-        # Verify unseal was effective before reporting success
-        NEW_STATUS=$(timeout 15 $KUBECTL exec -n "$NAMESPACE" "$POD" -- \
-          sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt \
-                 vault status -format=json -tls-server-name=$TLS_SERVER_NAME || true" \
-          2>/dev/null || true)
-        NEW_SEALED=$(echo "$NEW_STATUS" | grep -o '"sealed":[^,}]*' | grep -o 'true\|false')
-
-        if [ "$NEW_SEALED" = "false" ]; then
-          echo "[autounseal] Pod $POD unsealed successfully."
-        else
-          echo "[autounseal] ERROR: Pod $POD is still sealed after unseal attempt."
-          exit 1
-        fi
+    CA_DATA=$(timeout $TIMEOUT $KUBECTL get secret vault-tls -n "$NAMESPACE" -o jsonpath='{.data.ca\.crt}' 2>/dev/null || echo "")
+    if [ -z "$CA_DATA" ]; then
+      echo "[autounseal] WARNING: CA secret 'vault-tls' not found or empty — TLS verification may fail. Check cert-manager / vault-tls secret."
+    else
+      CA_LEN=$(echo "$CA_DATA" | wc -c | tr -d ' ')
+      echo "[autounseal] CA secret 'vault-tls' present (ca.crt length: ${CA_LEN} chars)."
+      # Optional deeper check: verify CA file exists inside at least one pod
+      CA_CHECK_POD=$(echo "$PODS" | awk '{print $1}')
+      if ! timeout $TIMEOUT $KUBECTL exec -n "$NAMESPACE" "$CA_CHECK_POD" -- sh -c "test -s /vault/userconfig/vault-tls/ca.crt && echo ok" 2>/dev/null | grep -q ok; then
+        echo "[autounseal] WARNING: CA file /vault/userconfig/vault-tls/ca.crt not found or empty inside pod $CA_CHECK_POD — TLS will likely fail."
       else
-        echo "[autounseal] Pod $POD is already unsealed."
+        echo "[autounseal] CA file present inside pod $CA_CHECK_POD."
+      fi
+    fi
+
+    # ---- dynamic unseal keys (supports 3 or 5) ----
+    SECRET_JSON=$(timeout $TIMEOUT $KUBECTL get secret "$SECRET_NAME" -n "$NAMESPACE" -o json 2>/dev/null || echo "")
+    if [ -z "$SECRET_JSON" ]; then
+      echo "[autounseal] ERROR: Failed to fetch secret JSON for $SECRET_NAME"
+      exit 1
+    fi
+
+    # Extract key names matching key[0-9]+
+    if command -v jq >/dev/null 2>&1; then
+      KEY_NAMES=$(echo "$SECRET_JSON" | jq -r '.data | keys[]' 2>/dev/null | grep -E '^key[0-9]+$' | sort -V || true)
+    else
+      KEY_NAMES=$(echo "$SECRET_JSON" | grep -o '"key[0-9][0-9]*"[[:space:]]*:' 2>/dev/null | sed 's/"//g; s/://g; s/ //g' | sort -V || true)
+      # fallback hardcoded if extraction failed
+      if [ -z "$KEY_NAMES" ]; then
+        KEY_NAMES="key1 key2 key3"
+        # Check if key4/key5 exist via jsonpath quickly
+        for k in key4 key5; do
+          if timeout $TIMEOUT $KUBECTL get secret "$SECRET_NAME" -n "$NAMESPACE" -o jsonpath="{.data.$k}" 2>/dev/null | grep -q .; then
+            KEY_NAMES="$KEY_NAMES $k"
+          fi
+        done
+      else
+        # convert newline separated to space separated handling
+        KEY_NAMES=$(echo "$KEY_NAMES" | tr '\n' ' ')
+      fi
+    fi
+
+    if [ -z "$KEY_NAMES" ]; then
+      echo "[autounseal] ERROR: No unseal keys found in secret $SECRET_NAME (expected key1..keyN)"
+      exit 1
+    fi
+
+    KEY_COUNT=0
+    # Validate each key can be decoded (supports 3 or 5 dynamically)
+    for K in $KEY_NAMES; do
+      K=$(echo "$K" | tr -d '\r\n' | xargs 2>/dev/null || echo "$K")
+      if [ -z "$K" ]; then continue; fi
+      VAL=$(timeout $TIMEOUT $KUBECTL get secret "$SECRET_NAME" -n "$NAMESPACE" -o jsonpath="{.data.$K}" 2>/dev/null | base64 -d 2>/dev/null || echo "")
+      if [ -n "$VAL" ]; then
+        KEY_COUNT=$((KEY_COUNT + 1))
+      else
+        echo "[autounseal] WARNING: Key $K is empty or failed to decode — skipping."
       fi
     done
 
-    echo "[autounseal] Review complete."
+    if [ "$KEY_COUNT" -lt 2 ]; then
+      echo "[autounseal] ERROR: Not enough unseal keys decoded (found $KEY_COUNT, need >=2). Secret may be corrupted."
+      exit 1
+    fi
+    echo "[autounseal] Loaded $KEY_COUNT unseal keys dynamically: $(echo "$KEY_NAMES" | tr '\n' ' ' | xargs)"
+
+    # ---- identify healthy leader for raft operations ----
+    HEALTHY_POD=""
+    # Prefer vault-2 if it exists and is healthy, otherwise first unsealed healthy pod
+    for CANDIDATE in $PODS; do
+      CAND_PHASE=$(timeout $TIMEOUT $KUBECTL get pod "$CANDIDATE" -n "$NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
+      if [ "$CAND_PHASE" != "Running" ]; then
+        continue
+      fi
+      CAND_CONTAINER=$(timeout $TIMEOUT $KUBECTL get pod "$CANDIDATE" -n "$NAMESPACE" -o jsonpath='{.status.containerStatuses[0].state.running}' 2>/dev/null || true)
+      if [ -z "$CAND_CONTAINER" ]; then
+        continue
+      fi
+      CAND_STATUS=$(get_vault_status "$CANDIDATE" || true)
+      if [ -z "$CAND_STATUS" ]; then
+        continue
+      fi
+      CAND_SEALED=$(parse_field "$CAND_STATUS" "sealed")
+      CAND_INIT=$(parse_field "$CAND_STATUS" "initialized")
+      CAND_STANDBY=$(parse_field "$CAND_STATUS" "standby")
+      # Healthy = initialized true and sealed false (standby ok is fine)
+      if [ "$CAND_INIT" = "true" ] && [ "$CAND_SEALED" = "false" ]; then
+        HEALTHY_POD="$CANDIDATE"
+        # Prefer vault-2 style name if available: check if candidate ends with -2, keep it as best
+        if echo "$CANDIDATE" | grep -q -- "-2$"; then
+          echo "[raft-recovery] Selected leader candidate $CANDIDATE (unsealed, healthy; preferred -2)"
+          break
+        fi
+        # otherwise first healthy is fine, but continue to see if -2 exists later? For now break on first healthy to keep deterministic
+        echo "[raft-recovery] Selected leader candidate $CANDIDATE (unsealed, healthy)"
+        break
+      fi
+    done
+
+    if [ -z "$HEALTHY_POD" ]; then
+      echo "[raft-recovery] WARNING: No healthy unsealed peer found — raft recovery (remove-peer/join) will be deferred until a peer is healthy."
+    else
+      echo "[raft-recovery] Healthy leader for raft ops: $HEALTHY_POD"
+    fi
+
+    # ---- main loop per pod ----
+    for POD in $PODS; do
+      echo "[autounseal] Checking pod: $POD"
+
+      PHASE=$(timeout $TIMEOUT $KUBECTL get pod "$POD" -n "$NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
+      CONTAINER_RUNNING=$(timeout $TIMEOUT $KUBECTL get pod "$POD" -n "$NAMESPACE" -o jsonpath='{.status.containerStatuses[0].state.running}' 2>/dev/null || true)
+      RESTART_COUNT=$(timeout $TIMEOUT $KUBECTL get pod "$POD" -n "$NAMESPACE" -o jsonpath='{.status.containerStatuses[0].restartCount}' 2>/dev/null || echo "0")
+      WAITING_REASON=$(timeout $TIMEOUT $KUBECTL get pod "$POD" -n "$NAMESPACE" -o jsonpath='{.status.containerStatuses[0].state.waiting.reason}' 2>/dev/null || true)
+
+      # Case 1: Pod not Running
+      if [ "$PHASE" != "Running" ]; then
+        echo "[raft-recovery] WARNING: Pod $POD is not Running (phase=$PHASE, waiting=$WAITING_REASON, restarts=$RESTART_COUNT) — CrashLoopBackOff or pending."
+        if [ -n "$HEALTHY_POD" ] && [ "$HEALTHY_POD" != "$POD" ]; then
+          echo "[raft-recovery] Attempting 'vault operator raft remove-peer $POD' via healthy $HEALTHY_POD (not deleting pod)..."
+          if timeout $TIMEOUT $KUBECTL exec -n "$NAMESPACE" "$HEALTHY_POD" -- sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault operator raft remove-peer -tls-server-name=$TLS_SERVER_NAME $POD || env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault operator raft remove-peer $POD || true" 2>&1 | grep -v "command terminated" || true; then
+            echo "[raft-recovery] remove-peer command issued for $POD (check logs for success)."
+          else
+            echo "[raft-recovery] WARNING: remove-peer for $POD via $HEALTHY_POD failed — will retry next cycle."
+          fi
+        else
+          echo "[raft-recovery] No healthy peer to run remove-peer for $POD — deferring."
+        fi
+        OVERALL_FAILED=1
+        continue
+      fi
+
+      # Case 2: Container not running (CrashLoopBackOff)
+      if [ -z "$CONTAINER_RUNNING" ]; then
+        echo "[raft-recovery] WARNING: Pod $POD container is not running (waiting reason: ${WAITING_REASON:-unknown}, restarts=$RESTART_COUNT) — possible CrashLoopBackOff."
+        if [ -n "$HEALTHY_POD" ] && [ "$HEALTHY_POD" != "$POD" ]; then
+          echo "[raft-recovery] Attempting 'vault operator raft remove-peer $POD' via healthy $HEALTHY_POD..."
+          timeout $TIMEOUT $KUBECTL exec -n "$NAMESPACE" "$HEALTHY_POD" -- sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault operator raft remove-peer -tls-server-name=$TLS_SERVER_NAME $POD || env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault operator raft remove-peer $POD || true" 2>&1 | grep -v "command terminated" || true
+          echo "[raft-recovery] remove-peer issued for $POD."
+        else
+          echo "[raft-recovery] No healthy peer to run remove-peer for $POD — deferring."
+        fi
+        OVERALL_FAILED=1
+        continue
+      fi
+
+      # Get vault status with TLS handling and retry
+      STATUS=$(get_vault_status "$POD" || true)
+
+      if [ -z "$STATUS" ]; then
+        echo "[autounseal] WARNING: Pod $POD did not respond to vault status after $RETRY_ATTEMPTS attempts — marking as failed."
+        OVERALL_FAILED=1
+        continue
+      fi
+
+      SEALED=$(parse_field "$STATUS" "sealed")
+      INITIALIZED=$(parse_field "$STATUS" "initialized")
+      # Fallback if parse_field returned empty (jq may output empty for booleans without proper handling)
+      if [ -z "$SEALED" ]; then
+        SEALED=$(echo "$STATUS" | grep -o '"sealed"[[:space:]]*:[[:space:]]*[^,}]*' | grep -o 'true\|false' | head -1 || echo "")
+      fi
+      if [ -z "$INITIALIZED" ]; then
+        INITIALIZED=$(echo "$STATUS" | grep -o '"initialized"[[:space:]]*:[[:space:]]*[^,}]*' | grep -o 'true\|false' | head -1 || echo "")
+      fi
+
+      echo "[autounseal] Pod $POD status: initialized=$INITIALIZED sealed=$SEALED phase=$PHASE"
+
+      # Case 3: Not initialized — attempt raft join instead of skipping
+      if [ "$INITIALIZED" != "true" ]; then
+        echo "[raft-recovery] Pod $POD is NOT initialized (initialized=$INITIALIZED) — attempting raft join via leader..."
+        if [ -z "$HEALTHY_POD" ]; then
+          echo "[raft-recovery] ERROR: No healthy leader available to join $POD — cannot raft join now. Will retry next cycle."
+          OVERALL_FAILED=1
+          continue
+        fi
+        if [ "$HEALTHY_POD" = "$POD" ]; then
+          echo "[raft-recovery] WARNING: Pod $POD is itself the only candidate leader but not initialized — cannot self-join. Manual intervention may be required."
+          OVERALL_FAILED=1
+          continue
+        fi
+        LEADER_ADDR="https://${HEALTHY_POD}.vault-internal.${NAMESPACE}.svc.cluster.local:8200"
+        echo "[raft-recovery] Joining $POD -> leader $HEALTHY_POD ($LEADER_ADDR)"
+        JOIN_OUTPUT=""
+        # Try with TLS server name first
+        JOIN_OUTPUT=$(timeout $TIMEOUT $KUBECTL exec -n "$NAMESPACE" "$POD" -- sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault operator raft join -tls-server-name=$TLS_SERVER_NAME $LEADER_ADDR 2>&1 || env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault operator raft join $LEADER_ADDR 2>&1 || true" 2>/dev/null || true)
+        echo "[raft-recovery] Join output for $POD: $JOIN_OUTPUT"
+        if echo "$JOIN_OUTPUT" | grep -qi "joined\|success" 2>/dev/null; then
+          echo "[raft-recovery] Pod $POD raft join succeeded."
+        else
+          # Check if already a member
+          if echo "$JOIN_OUTPUT" | grep -qi "already.*member\|already.*part of" 2>/dev/null; then
+            echo "[raft-recovery] Pod $POD already member of raft cluster (join returned already member)."
+          else
+            echo "[raft-recovery] ERROR: Pod $POD raft join failed via $HEALTHY_POD. Output: $JOIN_OUTPUT"
+            OVERALL_FAILED=1
+            continue
+          fi
+        fi
+        # After join, re-check status and if sealed, attempt unseal in next section
+        sleep 2
+        STATUS=$(get_vault_status "$POD" || true)
+        if [ -n "$STATUS" ]; then
+          SEALED=$(parse_field "$STATUS" "sealed")
+          INITIALIZED=$(parse_field "$STATUS" "initialized")
+          if [ -z "$SEALED" ]; then SEALED=$(echo "$STATUS" | grep -o '"sealed"[^,}]*' | grep -o 'true\|false' | head -1); fi
+          if [ -z "$INITIALIZED" ]; then INITIALIZED=$(echo "$STATUS" | grep -o '"initialized"[^,}]*' | grep -o 'true\|false' | head -1); fi
+          echo "[raft-recovery] Post-join status for $POD: initialized=$INITIALIZED sealed=$SEALED"
+          if [ "$INITIALIZED" != "true" ]; then
+            echo "[raft-recovery] WARNING: Pod $POD still not initialized after join — will retry next cycle."
+            OVERALL_FAILED=1
+            continue
+          fi
+        else
+          echo "[raft-recovery] WARNING: Pod $POD not responding after join — will retry next cycle."
+          OVERALL_FAILED=1
+          continue
+        fi
+      fi
+
+      # Case 4: Unseal if sealed
+      if [ "$SEALED" = "true" ]; then
+        echo "[unseal] Pod $POD is SEALED — unsealing with $KEY_COUNT keys ($KEY_NAMES)..."
+        # Iterate over key names and decode on-the-fly to avoid newline/subshell issues
+        for UNSEAL_K in $KEY_NAMES; do
+          UNSEAL_K=$(echo "$UNSEAL_K" | tr -d '\r\n' | xargs 2>/dev/null || echo "$UNSEAL_K")
+          if [ -z "$UNSEAL_K" ]; then continue; fi
+          UNSEAL_KEY=$(timeout $TIMEOUT $KUBECTL get secret "$SECRET_NAME" -n "$NAMESPACE" -o jsonpath="{.data.$UNSEAL_K}" 2>/dev/null | base64 -d 2>/dev/null || echo "")
+          if [ -z "$UNSEAL_KEY" ]; then
+            echo "[unseal] WARNING: Key $UNSEAL_K empty or decode failed for $POD — skipping."
+            continue
+          fi
+          # Never log the key itself
+          if ! timeout $TIMEOUT $KUBECTL exec -n "$NAMESPACE" "$POD" -- sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault operator unseal -tls-server-name=$TLS_SERVER_NAME '$UNSEAL_KEY'" >/dev/null 2>&1; then
+            # fallback without tls-server-name
+            timeout $TIMEOUT $KUBECTL exec -n "$NAMESPACE" "$POD" -- sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault operator unseal '$UNSEAL_KEY'" >/dev/null 2>&1 || true
+          fi
+        done
+        # Verify unseal
+        sleep 1
+        NEW_STATUS=$(get_vault_status "$POD" || true)
+        if [ -z "$NEW_STATUS" ]; then
+          echo "[unseal] ERROR: Pod $POD did not respond after unseal attempt."
+          OVERALL_FAILED=1
+          continue
+        fi
+        NEW_SEALED=$(parse_field "$NEW_STATUS" "sealed")
+        if [ -z "$NEW_SEALED" ]; then
+          NEW_SEALED=$(echo "$NEW_STATUS" | grep -o '"sealed"[^,}]*' | grep -o 'true\|false' | head -1 || echo "true")
+        fi
+        if [ "$NEW_SEALED" = "false" ]; then
+          echo "[unseal] Pod $POD unsealed successfully."
+          # Update healthy pod if we didn't have one before
+          if [ -z "$HEALTHY_POD" ]; then
+            HEALTHY_POD="$POD"
+            echo "[raft-recovery] Updated healthy leader to $POD after successful unseal."
+          fi
+        else
+          echo "[unseal] ERROR: Pod $POD is still sealed after unseal attempt (sealed=$NEW_SEALED)."
+          OVERALL_FAILED=1
+        fi
+      else
+        if [ "$SEALED" = "false" ]; then
+          echo "[autounseal] Pod $POD is already unsealed."
+        else
+          echo "[autounseal] WARNING: Pod $POD has unknown sealed state ('$SEALED') — treating as failure."
+          OVERALL_FAILED=1
+        fi
+      fi
+    done
+
+    if [ "$OVERALL_FAILED" -ne 0 ]; then
+      echo "[autounseal] Review complete — SOME PODS FAILED (unsealed or raft-join incomplete). Exiting 1 to signal CronJob failure."
+      exit 1
+    fi
+
+    echo "[autounseal] Review complete — all pods healthy, unsealed and joined."
     exit 0
+

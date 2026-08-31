@@ -1,0 +1,116 @@
+developmentApp:
+  enabled: false
+
+# Velero subchart wrapper — all keys under `velero` map to vmware-tanzu/velero chart.
+velero:
+  enabled: true
+
+  # RBAC — ServiceAccount used by Velero server and node-agent.
+  serviceAccount:
+    server:
+      create: true
+      name: velero
+
+  # AWS plugin — required for RustFS S3 (S3-compatible) backend.
+  initContainers:
+    - name: velero-plugin-for-aws
+      image: velero/velero-plugin-for-aws:v1.10.2
+      imagePullPolicy: IfNotPresent
+      volumeMounts:
+        - mountPath: /target
+          name: plugins
+
+  configuration:
+    # BackupStorageLocation — single default location on RustFS.
+    backupStorageLocation:
+      - name: default
+        provider: aws
+        bucket: velero-homelab
+        prefix: velero
+        caCert: ""
+        config:
+          region: us-east-1
+          s3ForcePathStyle: "true"
+          s3Url: https://rustfs.lonk-mirfak.ts.net
+          # RustFS may require path-style; keep consistent with backupStorageLocation.
+    # VolumeSnapshotLocation — not used (Longhorn snapshots via FsBackup), but chart requires at least one entry.
+    volumeSnapshotLocation:
+      - name: default
+        provider: aws
+        config:
+          region: us-east-1
+    # General behaviour
+    snapshotVolumes: false
+    defaultVolumesToFsBackup: true
+    backupSyncPeriod: 1m
+    restoreOnlyMode: false
+    # UI: keep default 60s.
+    # Features: enable FileSystemBackup (former Restic) and CSI if available.
+    features: veleroFeatureGates
+
+  # Credentials — the Secret `cloud-credentials` is created by bootstrap/init-gitops.sh
+  # (chicken-egg: Velero cannot use ESO/Vault because Vault itself is backed up).
+  # Format expected by the chart: key `cloud` = "[default]\naws_access_key_id=...\naws_secret_access_key=...\n"
+  credentials:
+    existingSecret: cloud-credentials
+    useSecret: true
+
+  # SnapshotsEnabled — enables VolumeSnapshot handling (kept true for future CSI).
+  snapshotsEnabled: true
+
+  # NodeAgent (formerly restic) — required for PVC filesystem backup (Longhorn volumes).
+  nodeAgent:
+    enabled: true
+
+  # Schedules — default Schedules installed at deploy time.
+  schedules:
+    daily-full:
+      disabled: false
+      schedule: "0 2 * * *"
+      useOwnerReferencesInBackup: false
+      template:
+        ttl: 720h
+        includedNamespaces:
+          - "*"
+        storageLocation: default
+        volumeSnapshotLocations:
+          - default
+        defaultVolumesToFsBackup: true
+    vault-hourly:
+      disabled: false
+      schedule: "0 * * * *"
+      useOwnerReferencesInBackup: false
+      template:
+        ttl: 168h
+        includedNamespaces:
+          - vault
+        # Critical Vault resources — hourly protection for unseal keys & TLS.
+        includedResources:
+          - secrets
+          - configmaps
+          - persistentvolumeclaims
+          - cronjobs
+        labelSelector:
+          matchLabels: {}
+        storageLocation: default
+        defaultVolumesToFsBackup: false
+
+  # Resource requests — conservative homelab defaults.
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      additionalLabels:
+        release: monitoring
+
+  # UpgradeCRDs — install Velero CRDs via Helm.
+  upgradeCRDs: true
+  cleanUpCRDs: false

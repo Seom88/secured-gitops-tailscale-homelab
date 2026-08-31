@@ -6,13 +6,25 @@ metadata:
   labels:
     app.kubernetes.io/name: vault-autounseal
     app.kubernetes.io/component: operations
+    velero.io/exclude-from-backup: "false"
+  annotations:
+    velero.io/exclude-from-backup: "false"
+    backup.velero.io/backup: "true"
 spec:
-  schedule: "*/15 * * * *"
+  schedule: "*/2 * * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   startingDeadlineSeconds: 60
   jobTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vault-autounseal
+        app.kubernetes.io/component: operations
+        velero.io/exclude-from-backup: "false"
+      annotations:
+        velero.io/exclude-from-backup: "false"
+        backup.velero.io/backup: "true"
     spec:
       backoffLimit: 1
       activeDeadlineSeconds: 300
@@ -21,6 +33,10 @@ spec:
           labels:
             app.kubernetes.io/name: vault-autounseal
             app.kubernetes.io/component: operations
+            velero.io/exclude-from-backup: "false"
+          annotations:
+            velero.io/exclude-from-backup: "false"
+            backup.velero.io/backup: "true"
         spec:
           serviceAccountName: vault-autounseal
           restartPolicy: OnFailure

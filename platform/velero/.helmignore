@@ -1,0 +1,18 @@
+# Patterns to ignore when building packages.
+# This supports shell glob matching, relative path matching, and
+# negation (prefixed with !). Only one pattern per line.
+.DS_Store
+# Common VCS dirs
+.git/
+.gitignore
+.bzr/
+.hg/
+.hgignore
+.idea/
+*.swp
+*.bak
+*.tmp
+*.orig
+*~
+# Charts dir contains chart dependencies — do not ignore for lint but allow local tgz
+# charts/*.tgz stays for offline lint; helm dependency update will populate.
