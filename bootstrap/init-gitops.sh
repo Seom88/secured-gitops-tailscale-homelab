@@ -82,14 +82,14 @@ ensureTailscaleCredentials() {
     echo -e "${GREEN}  [Tailscale] Namespace tailscale exists.${NC}"
   fi
 
-  # Resolve credentials: TS_OAUTH_CLIENT_ID / TS_OAUTH_SECRET (GitHub Secrets / local env)
-  TS_CLIENT_ID="${TS_OAUTH_CLIENT_ID:-}"
-  TS_CLIENT_SECRET="${TS_OAUTH_SECRET:-${TS_OAUTH_CLIENT_SECRET:-}}"
+  # Resolve credentials: K8S_TS_OAUTH_CLIENT_ID / K8S_TS_OAUTH_SECRET (GitHub Secrets / local env)
+  TS_CLIENT_ID="${K8S_TS_OAUTH_CLIENT_ID:-}"
+  TS_CLIENT_SECRET="${K8S_TS_OAUTH_SECRET:-${K8S_TS_OAUTH_CLIENT_SECRET:-}}"
 
   if [ -z "$TS_CLIENT_ID" ] || [ -z "$TS_CLIENT_SECRET" ]; then
-    echo -e "${YELLOW}  [Tailscale] ⚠️  No Tailscale OAuth credentials in env (TS_OAUTH_CLIENT_ID / TS_OAUTH_SECRET).${NC}"
+    echo -e "${YELLOW}  [Tailscale] ⚠️  No Tailscale OAuth credentials in env (K8S_TS_OAUTH_CLIENT_ID / K8S_TS_OAUTH_SECRET).${NC}"
     echo -e "${YELLOW}  [Tailscale]    Tailscale operator will stay Degraded until you create the Secret.${NC}"
-    echo -e "${YELLOW}  [Tailscale]    Create it with: TS_OAUTH_CLIENT_ID=... TS_OAUTH_SECRET=... ./bootstrap/init-gitops.sh $ENV${NC}"
+    echo -e "${YELLOW}  [Tailscale]    Create it with: K8S_TS_OAUTH_CLIENT_ID=... K8S_TS_OAUTH_SECRET=... ./bootstrap/init-gitops.sh $ENV${NC}"
     echo -e "${YELLOW}  [Tailscale]    Expected Secret: tailscale/operator-oauth keys 'client_id' + 'client_secret'${NC}"
     return 0
   fi
