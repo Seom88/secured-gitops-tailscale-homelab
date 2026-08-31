@@ -5,29 +5,36 @@ metadata:
   name: velero-bucket-init
   namespace: velero
   annotations:
-    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "0"
     argocd.argoproj.io/sync-options: Prune=false
+    argocd.argoproj.io/hook-weight: "-1"
     helm.sh/hook-weight: "-1"
-    # Keep Job after success so Argo does not prune it and logs remain inspectable.
-    # ttlSecondsAfterFinished will GC it after 600s.
 spec:
   backoffLimit: 3
   ttlSecondsAfterFinished: 600
+  activeDeadlineSeconds: 600
   template:
     metadata:
       labels:
         app.kubernetes.io/name: velero-bucket-init
         app.kubernetes.io/component: bucket-init
     spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       # Use `default` SA to avoid chicken-egg with velero SA (created by subchart in same release).
-      # The Job only needs to mount the Secret; no RBAC beyond that is required.
-      # If you need custom RBAC, create a dedicated SA and reference it here.
       serviceAccountName: default
       restartPolicy: OnFailure
       containers:
         - name: bucket-init
           image: amazon/aws-cli:2.15.0
           imagePullPolicy: IfNotPresent
+          env:
+            - name: AWS_EC2_METADATA_DISABLED
+              value: "true"
+            - name: AWS_S3_ADDRESSING_STYLE
+              value: "path"
           command: ["/bin/sh", "-c"]
           args:
             - |
@@ -48,10 +55,14 @@ spec:
                 exit 1
               fi
               # Velero secret format: "[default]\naws_access_key_id=...\naws_secret_access_key=..."
-              # Parse with grep/cut, strip spaces.
               export AWS_ACCESS_KEY_ID="$(grep -E 'aws_access_key_id' "$CRED_FILE" | cut -d'=' -f2 | tr -d '[:space:]')"
               export AWS_SECRET_ACCESS_KEY="$(grep -E 'aws_secret_access_key' "$CRED_FILE" | cut -d'=' -f2 | tr -d '[:space:]')"
               export AWS_DEFAULT_REGION="us-east-1"
+              export AWS_EC2_METADATA_DISABLED="true"
+              export AWS_S3_ADDRESSING_STYLE="path"
+              # Ensure aws-cli uses path-style addressing (RustFS requires it)
+              aws configure set default.s3.addressing_style path || true
+              aws configure set default.s3.addressing_style path --profile default || true
               ENDPOINT="https://rustfs.lonk-mirfak.ts.net"
               BUCKET="velero-homelab"
               if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
@@ -60,10 +71,26 @@ spec:
                 sed 's/=.*/=***/' "$CRED_FILE" || cat "$CRED_FILE" || true
                 exit 1
               fi
+              # Wait for MagicDNS to resolve (operator wave -1 must be Healthy)
+              echo "[bucket-init] Waiting for DNS rustfs.lonk-mirfak.ts.net (max 120s, hostNetwork)..."
+              DNS_WAIT=0
+              DNS_MAX=120
+              while [ $DNS_WAIT -lt $DNS_MAX ]; do
+                if nslookup rustfs.lonk-mirfak.ts.net >/dev/null 2>&1 || getent hosts rustfs.lonk-mirfak.ts.net >/dev/null 2>&1; then
+                  echo "[bucket-init] DNS resolved for rustfs.lonk-mirfak.ts.net"
+                  break
+                fi
+                echo "[bucket-init] DNS not yet resolved ($DNS_WAIT/$DNS_MAX s)..."
+                sleep 5
+                DNS_WAIT=$((DNS_WAIT + 5))
+              done
+              if [ $DNS_WAIT -ge $DNS_MAX ]; then
+                echo "[bucket-init] WARNING: DNS still not resolved after $DNS_MAX s — proceeding anyway (may fail, Argo will retry)"
+              fi
+
               echo "[bucket-init] Creating bucket $BUCKET at $ENDPOINT (region $AWS_DEFAULT_REGION)..."
 
               # RustFS via Tailscale funnel uses a Tailscale-issued cert not in public CA bundle.
-              # The aws-cli container has no Tailscale CA, so skip TLS verify (same as Velero's insecureSkipTLSVerify).
               AWS_S3_EXTRA="--no-verify-ssl"
 
               set +e
@@ -85,7 +112,6 @@ spec:
               echo "[bucket-init] Verifying bucket with head-bucket..."
               aws s3api head-bucket --bucket "$BUCKET" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" $AWS_S3_EXTRA
               echo "[bucket-init] Verification OK — bucket $BUCKET is accessible."
-              # Optional: list to confirm write permission (non-fatal).
               aws s3 ls "s3://$BUCKET/" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" $AWS_S3_EXTRA || true
               echo "[bucket-init] Done."
           volumeMounts:
