@@ -32,6 +32,13 @@ spec:
     - /spec/selector
     - /spec/template/metadata/labels
     - /spec/template/metadata/annotations
+  - group: ""
+    kind: Service
+    name: rustfs-egress
+    namespace: velero
+    jsonPointers:
+    - /spec/type
+    - /spec/externalName
   syncPolicy:
     automated:
       prune: true
@@ -39,5 +46,6 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
+      - RespectIgnoreDifferences=true
       - Retry=true
 {{- end }}
