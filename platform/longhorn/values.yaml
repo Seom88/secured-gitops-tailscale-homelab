@@ -1,6 +1,6 @@
 longhorn:
   defaultSettings:
-    defaultReplicaCount: 3
+    defaultReplicaCount: 2
     replicaSoftAntiAffinity: false
     replicaAutoBalance: "least-effort"
     storageReservedPercentageForDefaultDisk: 5
@@ -19,7 +19,7 @@ longhorn:
     upgradeVersionCheck: false
   persistence:
     defaultClass: true
-    defaultClassReplicaCount: 3
+    defaultClassReplicaCount: 2
     migratable: true
     reclaimPolicy: Delete
   ingress:
