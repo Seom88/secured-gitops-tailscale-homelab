@@ -138,8 +138,10 @@ spec:
               echo " Created!"
 
               # Wait for all pods to be Running (not Ready — sealed pods fail readinessProbe)
-              echo -n "  [Vault] Waiting for all pods to be running..."
               DESIRED_REPLICAS=$(kubectl get statefulset -n "$VAULT_NAMESPACE" -l app.kubernetes.io/name=vault -o jsonpath='{.items[0].spec.replicas}' 2>/dev/null || echo "0")
+              QUORUM=$(( DESIRED_REPLICAS / 2 + 1 ))
+              if [ "$QUORUM" -lt 1 ]; then QUORUM=1; fi
+              echo -n "  [Vault] Waiting for quorum ($QUORUM/$DESIRED_REPLICAS) pods to be running..."
               RETRY_ERRORS=0
               MAX_ERRORS=3
               while true; do
@@ -156,13 +158,13 @@ spec:
                 RETRY_ERRORS=0
                 RUNNING_COUNT=$(echo "$RUNNING_OUTPUT" | grep -c "pod/" || true)
                 DESIRED_REPLICAS=$(kubectl get statefulset -n "$VAULT_NAMESPACE" -l app.kubernetes.io/name=vault -o jsonpath='{.items[0].spec.replicas}' 2>/dev/null || echo "0")
-                if [ "$RUNNING_COUNT" -eq "$DESIRED_REPLICAS" ] && [ "$DESIRED_REPLICAS" -gt 0 ]; then
+                if [ "$RUNNING_COUNT" -ge "$QUORUM" ] && [ "$RUNNING_COUNT" -le "$DESIRED_REPLICAS" ] && [ "$DESIRED_REPLICAS" -gt 0 ]; then
                   break
                 fi
                 echo -n "."
                 sleep 5
               done
-              echo " All $DESIRED_REPLICAS pods running!"
+              echo " Quorum reached: $RUNNING_COUNT/$DESIRED_REPLICAS pods running (quorum $QUORUM)!"
 
               VAULT_POD=$(kubectl get pod -n "$VAULT_NAMESPACE" -l app.kubernetes.io/name=vault,component=server -o jsonpath="{.items[0].metadata.name}")
               RELEASE_NAME=$(kubectl get pod "$VAULT_POD" -n "$VAULT_NAMESPACE" -o jsonpath="{.metadata.labels['app\.kubernetes\.io/instance']}")
