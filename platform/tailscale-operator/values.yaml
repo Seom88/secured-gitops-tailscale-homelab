@@ -1,0 +1,15 @@
+# tailscale-operator subchart values — wave -1 healthy gate
+# Secret tailscale/operator-oauth is created externally via CI (deploy.yaml) and bootstrap/init-gitops.sh
+#   keys: client_id + client_secret (matches spec oauthSecretName: operator-oauth, secretKeyRef)
+# The chart mounts the pre-created Secret `operator-oauth` by default when oauth.clientId/clientSecret are unset.
+tailscale-operator:
+  # oauthSecretName: operator-oauth  # implicit default — chart mounts Secret `operator-oauth` when oauth.* is empty
+  oauth:
+    clientId: ""
+    clientSecret: ""
+  operatorConfig:
+    hostname: "tailscale-operator"
+    defaultTags:
+      - "tag:k8s-operator"
+  proxyConfig:
+    defaultTags: "tag:k8s"

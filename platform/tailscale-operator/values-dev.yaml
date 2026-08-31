@@ -1,0 +1,8 @@
+# dev overrides — mirrors platform/tailscale/values-dev.yaml tail before split
+tailscale-operator:
+  operatorConfig:
+    hostname: "dev-tailscale-operator"
+    defaultTags:
+      - "tag:k8s-operator-dev"
+  proxyConfig:
+    defaultTags: "tag:k8s-dev"
