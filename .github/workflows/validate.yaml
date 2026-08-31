@@ -1,4 +1,4 @@
-# Validate — fast feedback, no cluster
+# Validate — fast feedback, no cluster (read-only: deploy is sole mutating on main push; validate runs lint/template only and may run parallel)
 name: Validate
 
 on:

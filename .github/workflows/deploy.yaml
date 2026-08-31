@@ -2,6 +2,12 @@
 name: Deploy GitOps
 
 on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - '**/*.md'
   workflow_dispatch:
     inputs:
       environment:
@@ -18,7 +24,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-${{ github.ref_name }}
+  group: deploy-main
   cancel-in-progress: false
 
 env:
@@ -131,6 +137,23 @@ jobs:
           KUBECONFIG=/tmp/kubeconfig.yaml kubectl cluster-info --request-timeout=10s
           KUBECONFIG=/tmp/kubeconfig.yaml kubectl get nodes --request-timeout=10s || echo "::warning::kubectl get nodes failed — cluster may still be initializing"
 
+      - name: Ensure Tailscale Operator Secret
+        env:
+          KUBECONFIG: /tmp/kubeconfig.yaml
+        run: |
+          set -e
+          echo "Ensuring namespace tailscale and Secret operator-oauth..."
+          kubectl create namespace tailscale --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret generic operator-oauth \
+            -n tailscale \
+            --from-literal=client_id="${{ secrets.TS_OAUTH_CLIENT_ID }}" \
+            --from-literal=client_secret="${{ secrets.TS_OAUTH_SECRET }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          echo "Tailscale Secret applied — restarting operator to pick up rotation..."
+          kubectl rollout restart deployment/tailscale-operator -n tailscale 2>/dev/null || \
+            kubectl rollout restart deployment/operator -n tailscale 2>/dev/null || true
+          echo "Tailscale operator Secret ready."
+
       - name: Bootstrap (delegates to init-gitops.sh — single source of truth)
         env:
           KUBECONFIG: /tmp/kubeconfig.yaml
@@ -138,6 +161,8 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           VELERO_AWS_ACCESS_KEY_ID: ${{ secrets.VELERO_AWS_ACCESS_KEY_ID }}
           VELERO_AWS_SECRET_ACCESS_KEY: ${{ secrets.VELERO_AWS_SECRET_ACCESS_KEY }}
+          TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
         run: |
           set -e
           ENV="${{ inputs.environment || 'prod' }}"
@@ -148,7 +173,6 @@ jobs:
           fi
 
           chmod +x bootstrap/init-gitops.sh
-          chmod +x platform/vault/scripts/bootstrap-vault.sh
           ./bootstrap/init-gitops.sh "$ENV" $FORCE
 
       - name: Cleanup kubeconfig
