@@ -34,6 +34,14 @@ spec:
               set -e
               echo "[bucket-init] Starting RustFS bucket init..."
               CRED_FILE="/etc/velero/cloud"
+              # Wait up to 60s for Secret volume to appear (optional:true + race with ensureVeleroCredentials)
+              WAIT_SECS=0
+              WAIT_MAX=60
+              while [ ! -f "$CRED_FILE" ] && [ $WAIT_SECS -lt $WAIT_MAX ]; do
+                echo "[bucket-init] Waiting for credentials file $CRED_FILE ($WAIT_SECS/$WAIT_MAX s)..."
+                sleep 5
+                WAIT_SECS=$((WAIT_SECS + 5))
+              done
               if [ ! -f "$CRED_FILE" ]; then
                 echo "[bucket-init] ERROR: credentials file not found at $CRED_FILE (Secret velero/cloud-credentials missing?)"
                 echo "[bucket-init] Hint: ensure bootstrap/init-gitops.sh ensureVeleroCredentials() ran with VELERO_AWS_* or AWS_*."
@@ -84,6 +92,7 @@ spec:
         - name: cloud-credentials
           secret:
             secretName: cloud-credentials
+            optional: true
             items:
               - key: cloud
                 path: cloud
