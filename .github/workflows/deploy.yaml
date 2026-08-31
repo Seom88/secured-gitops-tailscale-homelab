@@ -134,6 +134,10 @@ jobs:
       - name: Bootstrap (delegates to init-gitops.sh — single source of truth)
         env:
           KUBECONFIG: /tmp/kubeconfig.yaml
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          VELERO_AWS_ACCESS_KEY_ID: ${{ secrets.VELERO_AWS_ACCESS_KEY_ID }}
+          VELERO_AWS_SECRET_ACCESS_KEY: ${{ secrets.VELERO_AWS_SECRET_ACCESS_KEY }}
         run: |
           set -e
           ENV="${{ inputs.environment || 'prod' }}"
