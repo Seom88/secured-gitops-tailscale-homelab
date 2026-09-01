@@ -1,6 +1,6 @@
 # ADR-010: Tailscale OAuth — CI-Generated Secret, Two-Chart Wave Split
 
-**Status:** Accepted · **Date:** 2026-08-31 · **Supersedes:** [ADR-004](004-tailscale-oauth-seed-strategy.md)
+**Status:** Accepted · **Date:** 2026-08-31 · **Supersedes:** [ADR-004](004-tailscale-oauth-seed-strategy.md) · **Follow-up:** [ADR-011](011-tailscale-dns-np.md) removes `hostNetwork` fallback and scopes DNS via `coredns-patch` + NetworkPolicy (2026-09-01)
 
 ## Context
 
@@ -10,7 +10,7 @@ Three problems converged:
 
 1. **Vault UI clickops for an OAuth secret.** Every fresh cluster or secret rotation required opening Vault UI to write `secret/tailscale/auth` before the operator could authenticate — friction that ADR-004 documented as deliberate but that no longer fits a CI-driven homelab with `tag:cicd` Tailscale OAuth and GitHub Actions as source of truth.
 2. **Wave ordering fragility.** `platform/tailscale` was wave `4` (`sync-only`) but internally contained an `ExternalSecret` at wave `-1` and a dependency on `vault-tailscale` at wave `2`. The chart mixed concerns (operator lifecycle vs. ingress exposure) and leaked Helm dependency validation into every `helm template platform/tailscale` that only cared about ingresses.
-3. **Velero bucket-init race.** `platform/velero/templates/job-bucket-init.yaml` was a plain wave `-1` `Job` reaching `https://rustfs.lonk-mirfak.ts.net` via Tailscale MagicDNS. If the operator was not yet `Healthy`, the `aws s3api head-bucket` hit an unresolved DNS name and the Job failed. Moving the Job to a Sync hook at wave `0` with `hostNetwork` fallback serializes it *after* the operator is `Healthy`, removing the race without coupling to Talos host Tailscale only.
+3. **Velero bucket-init race.** `platform/velero/templates/job-bucket-init.yaml` was a plain wave `-1` `Job` reaching `https://rustfs.lonk-mirfak.ts.net` via Tailscale MagicDNS. If the operator was not yet `Healthy`, the `aws s3api head-bucket` hit an unresolved DNS name and the Job failed. Moving the Job to a Sync hook at wave `0` serializes it *after* the operator is `Healthy` (via `coredns-patch` wave `0` stub), removing the race without `hostNetwork` coupling — see ADR-011.
 
 The homelab is starting from zero VMs (no backward compatibility required), so an atomic, git-revertable cutover is acceptable.
 
@@ -44,11 +44,11 @@ Split into:
 
 - **Secret lifecycle:** source of truth is GitHub Secrets `TS_OAUTH_CLIENT_ID` / `TS_OAUTH_SECRET` (Tailscale OAuth client with `tag:cicd`) plus local env fallback `TS_OAUTH_CLIENT_ID` / `TS_OAUTH_SECRET` (and alias `TS_OAUTH_CLIENT_SECRET`). CI `deploy.yaml` (push `main` + `workflow_dispatch`, `concurrency: deploy-main`, `paths-ignore: docs/**, *.md`) runs *after* Tailscale connect + kubeconfig restore: `kubectl create namespace tailscale --dry-run=client -o yaml | kubectl apply -f -` → `kubectl create secret generic operator-oauth -n tailscale --from-literal=client_id --from-literal=client_secret --dry-run=client -o yaml | kubectl apply -f -` → `kubectl rollout restart deployment/tailscale-operator -n tailscale || kubectl rollout restart deployment/operator -n tailscale || true` (rotation auto-restart; starting from zero, no checksum backward compat needed). Local idempotent mirror: `bootstrap/init-gitops.sh:ensureTailscaleCredentials()` (mirrors `ensureVeleroCredentials()`) ensures `ns tailscale` + same Secret idempotently; `--check` warns and exits `0` without mutation.
 
-- **Velero wave serialization:** `platform/velero/templates/job-bucket-init.yaml` refactored from plain wave `-1` `Job` to **`argocd.argoproj.io/hook: Sync`**, `sync-wave: "0"`, `sync-options: Prune=false`, `hook-weight: "-1"` (`helm.sh/hook-weight` retained), `ttlSecondsAfterFinished: 600`, `activeDeadlineSeconds: 600`, `hostNetwork: true`, `dnsPolicy: ClusterFirstWithHostNet`, `env: AWS_EC2_METADATA_DISABLED=true`, `AWS_S3_ADDRESSING_STYLE=path` (+ `aws configure set default.s3.addressing_style path`), `--no-verify-ssl` and `AWS_EC2_METADATA_DISABLED` preserved, plus 60 s Secret-volume wait and **120 s `nslookup`/`getent hosts` MagicDNS probe** for `rustfs.lonk-mirfak.ts.net` before `aws s3api create-bucket/head-bucket`. Wave `0` hook executes *after* wave `-1` operator is `Healthy`, guaranteeing `head-bucket velero-homelab` sees MagicDNS.
+- **Velero wave serialization:** `platform/velero/templates/job-bucket-init.yaml` refactored from plain wave `-1` `Job` to **`argocd.argoproj.io/hook: Sync`**, `sync-wave: "0"`, `sync-options: Prune=false`, `hook-weight: "-1"` (`helm.sh/hook-weight` retained), `ttlSecondsAfterFinished: 600`, `activeDeadlineSeconds: 600`, `dnsPolicy: ClusterFirst`, `env: AWS_EC2_METADATA_DISABLED=true`, `AWS_S3_ADDRESSING_STYLE=path` (+ `aws configure set default.s3.addressing_style path`), `--no-verify-ssl` preserved, plus 60 s Secret-volume wait and **120 s `nslookup`/`getent hosts` MagicDNS probe** for `rustfs.lonk-mirfak.ts.net` before `aws s3api create-bucket/head-bucket`. Wave `0` hook executes *after* wave `-1` operator Healthy and `coredns-patch` `ts.net:53` stub, guaranteeing `head-bucket velero-homelab` sees MagicDNS (ADR-011).
 
-**Pros:** No Vault UI on bootstrap or rotation; operator Healthy gate blocks waves `0..4` deterministically; ingress chart lints/renders without operator dependency; Vault bridge deleted atomically (git-revert is the rollback); bucket-init serializes after operator Ready without requiring Talos host Tailscale as primary path (`hostNetwork` is fallback); CI and bootstrap share the same `--dry-run|apply` idempotent primitive; rotation automatically `rollout restart`s the operator.
+**Pros:** No Vault UI on bootstrap or rotation; operator Healthy gate blocks waves `0..4` deterministically; ingress chart lints/renders without operator dependency; Vault bridge deleted atomically (git-revert is the rollback); bucket-init serializes after operator Ready + `coredns-patch` `ts.net:53` stub (no `hostNetwork` needed); CI and bootstrap share the same `--dry-run|apply` idempotent primitive; rotation automatically `rollout restart`s the operator.
 
-**Cons:** Operator `Degraded` (bad `client_id`/`secret` or `tag:cicd` mis-scope) blocks *all* subsequent waves `0..4` until the Secret is fixed (mitigated by `deploy.yaml` `kubectl get secret` fast-fail and `--check` warning); `hostNetwork` fallback couples to Talos host network when `ProxyGroup`/`Connector` CRDs are not used (mitigated by wave `0` healthy gate so fallback is rarely needed); Secret rotation no longer versioned in Vault (intentional — source is CI Secrets).
+**Cons:** Operator `Degraded` (bad `client_id`/`secret` or `tag:cicd` mis-scope) blocks *all* subsequent waves `0..4` until the Secret is fixed (mitigated by `deploy.yaml` `kubectl get secret` fast-fail and `--check` warning); `coredns-patch` adds a wave `0` Job that must stay healthy (mitigated by `backoffLimit:3` and reload idempotency); Secret rotation no longer versioned in Vault (intentional — source is CI Secrets).
 
 ## Decision
 
@@ -59,7 +59,7 @@ Ordering (Argo `sync-wave`):
 | Wave | Application(s) | Policy | Notes |
 |------|----------------|--------|-------|
 | `-1` | `tailscale-operator` (`platform/tailscale-operator`) | `healthy` | Operator must be `Healthy` before anything else; gates `0..4` |
-| `0`  | `longhorn`, `velero` (`platform/velero` + hook `velero-bucket-init`) | `healthy` / `hook: Sync` | Storage + backup; bucket-init hook waits 120 s for MagicDNS after operator Healthy |
+| `0`  | `coredns-patch` (`platform/coredns-patch` `ts.net:53` stub), `longhorn`, `velero` (`platform/velero` + hook `velero-bucket-init`) | `healthy` / `hook: Sync` | `coredns-patch` patches `kube-system/coredns` from `DNSConfig.status.nameserver.ip`; storage + backup; bucket-init hook waits 120 s for MagicDNS after stub (ADR-011) |
 | `1`  | `vault` | `healthy` | Depends on Longhorn PVCs |
 | `2`  | `seaweedfs` | `healthy` | Internal S3 (unrelated to Velero RustFS) |
 | `3`  | `monitoring` | `sync-only` | Tolerates degraded |
@@ -78,7 +78,7 @@ Secrets matrix after this change:
 
 - **No clickops.** Fresh cluster from zero: `TS_OAUTH_CLIENT_ID/SECRET` in repo Secrets + `deploy.yaml` push to `main` (or `workflow_dispatch` `prod|dev`) is sufficient; `bootstrap/init-gitops.sh prod` locally also works with env vars. No Vault UI write of `secret/tailscale/auth` ever required.
 - **Explicit dependency graph.** Argo wave `-1` healthy gate is declarative; `helm lint`/`helm template` on `platform/tailscale` no longer validates the operator subchart; `platform/tailscale-operator` lints independently with its single dependency `1.102.3`.
-- **Velero MagicDNS race eliminated.** Bucket-init as wave-`0` `Sync` hook (`BeforeHookCreation`, `hostNetwork:true`, 120 s probe) cannot start before operator `Healthy`; falls back to Talos host network only if needed; `s3ForcePathStyle: "true"` + `--no-verify-ssl` + `AWS_S3_ADDRESSING_STYLE=path` handled in one place.
+- **Velero MagicDNS race eliminated.** Bucket-init as wave-`0` `Sync` hook (`BeforeHookCreation`, `ClusterFirst`, 120 s probe) cannot start before `coredns-patch` `ts.net:53` stub is Healthy; `s3ForcePathStyle: "true"` + `--no-verify-ssl` + `AWS_S3_ADDRESSING_STYLE=path` handled in one place (ADR-011).
 - **Rotation without clickops.** Re-applying `TS_OAUTH_SECRET` via `deploy.yaml` or `init-gitops.sh` automatically `kubectl rollout restart` the operator so new `client_secret` is picked up (no stale Secret pod).
 - **Atomic deletion.** Vault ESO bridge (`ClusterSecretStore`, `Job`, `ExternalSecret`) and the `tailscale:8200` `NetworkPolicy` egress are deleted; reverse `4→-1` prune order is safe (tested: `git revert` restores them, deleting `Application -1-tailscale-operator` first, then re-seeding Vault if needed).
 
@@ -86,7 +86,7 @@ Secrets matrix after this change:
 
 - **Operator is now on the critical path.** Bad OAuth (`client_id`/`secret` typo, `tag:cicd` missing on the Tailscale ACL) → `tailscale-operator` `CrashLoop` → Argo marks `-1-tailscale-operator` `Degraded` and *blocks* waves `0..4` indefinitely. Operators must fix `tailscale/operator-oauth` and `kubectl rollout restart deployment/tailscale-operator -n tailscale`; `deploy.yaml` should surface the Secret existence check soon after connect.
 - **No Vault audit trail for this secret.** CI Secrets have no Vault version history; rotation visibility moves to GitHub audit log + `kubectl get secret operator-oauth -n tailscale -o yaml`.
-- **Host-network coupling (fallback only).** If `ProxyGroup`/`Connector` CRDs are adopted later, `hostNetwork:true` + `ClusterFirstWithHostNet` could be downgraded to standard `ClusterFirst`; today it is the safe fallback for non-Talos extensions.
+- **No hostNetwork coupling.** `hostNetwork`/`ClusterFirstWithHostNet` fallback removed (ADR-011); `ClusterFirst` + CoreDNS `ts.net:53` stub is the sole path. If `ProxyGroup`/`Connector` CRDs are adopted later, evaluate HA proxy, not host network.
 
 ## Migration / Rollout
 
@@ -124,12 +124,12 @@ Steps (starting from zero, no backward compat):
 | Deleted | `platform/vault/templates/eso/vault-config-tailscale.yaml` — `Job vault-config-tailscale` wave `1` (`ChangeMeSecret`) |
 | Modified | `platform/vault/values.yaml` — remove `server.networkPolicy.egress` stanza `to: tailscale:8200` |
 | Modified | `gitops/templates/apps/04-tailscale.yaml` — remains wave `4` `sync-only` (ingress-only `path: platform/tailscale`) |
-| Modified | `platform/velero/templates/job-bucket-init.yaml` — `hook: Sync` wave `0` `Prune=false` `hook-weight -1` `ttl 600` `hostNetwork:true` `ClusterFirstWithHostNet` `AWS_S3_ADDRESSING_STYLE=path` `--no-verify-ssl` + 120 s `nslookup` MagicDNS wait |
+| Modified | `platform/velero/templates/job-bucket-init.yaml` — `hook: Sync` wave `0` `Prune=false` `hook-weight -1` `ttl 600` `dnsPolicy: ClusterFirst` `AWS_S3_ADDRESSING_STYLE=path` `--no-verify-ssl` + 120 s `nslookup` MagicDNS wait (hostNetwork removed, ADR-011) |
 | Modified | `bootstrap/init-gitops.sh` — add `ensureTailscaleCredentials()` before `ensureVeleroCredentials()` and `helm upgrade --install gitops`, `--check` warn-only |
 | Modified | `.github/workflows/deploy.yaml` — `push: branches:[main]` `paths-ignore: docs/**, *.md` + `workflow_dispatch`, `concurrency: deploy-main`, step `Ensure Tailscale Operator Secret` (`kubectl create ns/secret --dry-run|apply` + `rollout restart`) before `Bootstrap` |
 | Modified | `.github/workflows/validate.yaml` — comment `deploy is sole mutating on main push; validate lint/template only` |
 | Modified | `docs/secrets-structure.md` — replace Vault `secret/tailscale/auth` + ESO section with CI `TS_OAUTH_*` → `tailscale/operator-oauth` plain Secret, note `bootstrap/init-gitops.sh` + `deploy.yaml` source |
-| Modified | `docs/velero.md` — wave table `tailscale-operator -1`, `velero 0` hook, `tailscale 4`; bucket-init section updated to Sync hook wave `0` `hostNetwork` + DNS wait; operator Healthy gate serializes MagicDNS |
+| Modified | `docs/velero.md` — wave table `tailscale-operator -1`, `coredns-patch 0`, `velero 0` hook, `tailscale 4`; bucket-init section updated to Sync hook wave `0` `ClusterFirst` + DNS wait; operator Healthy + `coredns-patch` stub gate serializes MagicDNS (ADR-011) |
 | Created | `docs/adrs/010-tailscale-oauth-ci-generated.md` — this ADR (supersedes ADR-004) |
 
 ## References

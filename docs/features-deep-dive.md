@@ -120,10 +120,15 @@ GitOps ensures:
 ### App Dependency Graph
 
 ```
+Wave -1 (Healthy required):
+  └── tailscale-operator  ← Must be healthy; gates 0..4; publishes DNSConfig status
+
 Wave 0 (Healthy required):
   ├── 00-cert-manager     ← Must be ready
   ├── 00-external-secrets ← Must be ready
-  └── 00-longhorn         ← Must be healthy + CSI-gated
+  ├── 00-longhorn         ← Must be healthy + CSI-gated
+  ├── 00-coredns-patch     ← Patches kube-system/coredns with ts.net:53 stub from DNSConfig (ADR-011)
+  └── 05-velero            ← Backup; bucket-init hook waits for ts.net DNS; NPs scope egress to velero only
 
 Wave 1 (Healthy required):
   └── 01-vault            ← Depends on wave 0

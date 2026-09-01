@@ -19,7 +19,7 @@ The main entry point is `gitops/templates/root-prod-app.yaml`, which uses the `r
 
 By default, the `prod` environment targets the `main` branch, while the `dev` environment targets the `dev` branch. You can change this behavior in `gitops/templates/root-prod-app.yaml` and in each `gitops/templates/apps/00-*.yaml` (via `targetRevision`).
 
-To add a new ordered app, create a new `gitops/templates/apps/0N-name.yaml` as a plain `Application` with the correct `argocd.argoproj.io/sync-wave` annotation and `wave-policy` label (`healthy` to block the next wave until `Synced + Healthy`, `sync-only` to require only `Synced`). Use the existing `00-*.yaml` → `04-*.yaml` files as templates: waves `0` cert-manager/external-secrets/longhorn → `1` vault → `2` seaweedfs → `3` monitoring (`sync-only`) → `4` tailscale (`sync-only`, always last).
+To add a new ordered app, create a new `gitops/templates/apps/0N-name.yaml` as a plain `Application` with the correct `argocd.argoproj.io/sync-wave` annotation and `wave-policy` label (`healthy` to block the next wave until `Synced + Healthy`, `sync-only` to require only `Synced`). Use the existing `00-*.yaml` → `04-*.yaml` files as templates: wave `-1` tailscale-operator → `0` cert-manager/external-secrets/longhorn/coredns-patch/velero → `1` vault → `2` seaweedfs → `3` monitoring (`sync-only`) → `4` tailscale (`sync-only`, always last) — see ADRs 010/011.
 
 ## 2. Tailscale Configuration
 

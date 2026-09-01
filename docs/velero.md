@@ -57,7 +57,7 @@ flowchart LR
 | `3` | `monitoring` | `sync-only` | Puede tolerar degraded |
 | `4` | `tailscale` (`platform/tailscale` ingress-only) | `sync-only` | Siempre último, expone 11 Ingress; operador ya está en wave `-1` |
 
-`tailscale-operator` en wave `-1` `healthy` es el gate que serializa MagicDNS (`rustfs.lonk-mirfak.ts.net`) antes del `velero-bucket-init` (hook wave `0`). Velero en wave `0` junto a Longhorn garantiza que `BackupStorageLocation` y `node-agent` estén listos antes de que Vault cree PVCs.
+`tailscale-operator` en wave `-1` `healthy` + `coredns-patch` en wave `0` `healthy` serializan MagicDNS (`rustfs.lonk-mirfak.ts.net`) antes del `velero-bucket-init` (hook wave `0`). Velero en wave `0` junto a Longhorn garantiza que `BackupStorageLocation` y `node-agent` estén listos antes de que Vault cree PVCs. Ver ADR-011 para el parche `ts.net:53` y NetworkPolicies.
 
 ## 3. Bucket — creación automática vía Job wave -1 (idempotente)
 
@@ -68,14 +68,14 @@ Velero no crea el bucket por sí mismo. En este repo el bucket `velero-homelab` 
 `platform/velero/templates/job-bucket-init.yaml` despliega un `Job` (`batch/v1`) **hook ArgoCD** que se ejecuta **después** de que `tailscale-operator` wave `-1` esté `Healthy`:
 
 - **Hook:** `argocd.argoproj.io/hook: Sync` `argocd.argoproj.io/hook-delete-policy: BeforeHookCreation` `argocd.argoproj.io/sync-wave: "0"` `argocd.argoproj.io/sync-options: Prune=false` + `hook-weight: "-1"` (`helm.sh/hook-weight: "-1"`), `ttlSecondsAfterFinished: 600`, `activeDeadlineSeconds: 600` — Argo lo crea como hook de wave `0`; Kubernetes lo GC pasados 10 min.
-- **Red:** `hostNetwork: true`, `dnsPolicy: ClusterFirstWithHostNet` — fallback que permite resolver `rustfs.lonk-mirfak.ts.net` via MagicDNS del host incluso sin `ProxyGroup`/`Connector`; serializado tras operator `Healthy`, el DNS ya debería resolver, pero el fallback cubre Talos sin CRD.
+- **Red:** `dnsPolicy: ClusterFirst` — resuelve `rustfs.lonk-mirfak.ts.net` vía `coredns-patch` `ts.net:53` stub (`forward . <DNSConfig.status.nameserver.ip>`) aplicado en wave `0`; sin `hostNetwork` (ADR-011). CoreDNS `reload` recarga el stub en caliente.
 - **DNS wait:** antes de `create-bucket`, espera hasta 120 s (`nslookup` / `getent hosts` loop) a que `rustfs.lonk-mirfak.ts.net` resuelva — gate que cubre la propagación de MagicDNS tras el operator Ready.
 - **S3 compat:** `AWS_EC2_METADATA_DISABLED=true`, `AWS_S3_ADDRESSING_STYLE=path` (env + `aws configure set default.s3.addressing_style path`), `--no-verify-ssl` para cert Tailscale funnel, `region: us-east-1`, `s3ForcePathStyle` via `--endpoint-url` path-style.
 - **Imagen:** `amazon/aws-cli:2.15.0` (oficial, liviana; alternativa `bitnami/aws-cli:latest`).
 - **Credenciales:** monta el mismo `Secret velero/cloud-credentials` (key `cloud` con formato `[default]\naws_access_key_id=...\naws_secret_access_key=...`) creado por `bootstrap/init-gitops.sh:ensureVeleroCredentials()` en `/etc/velero/cloud` y lo parsea con `grep`/`cut` para exportar `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` + `AWS_DEFAULT_REGION=us-east-1`. No requiere `envFrom` ni duplicar el Secret.
 - **Idempotente:** `aws s3api create-bucket --bucket velero-homelab --endpoint-url https://rustfs.lonk-mirfak.ts.net --region us-east-1 --no-verify-ssl 2>&1 || true`; si el error es `BucketAlreadyOwnedByYou` / `BucketAlreadyExists` / `already exists` lo considera éxito. Luego verifica con `aws s3api head-bucket` y loguea el resultado. `s3ForcePathStyle` es path-style via `--endpoint-url`.
 - **Reintentos:** `restartPolicy: OnFailure`, `backoffLimit: 3`. Usa `serviceAccountName: default` en wave `0` para evitar chicken-egg con el `ServiceAccount velero` del subchart (puedes cambiarlo a `velero` si añades RBAC propio).
-- **Dependencia:** requiere que `ensureVeleroCredentials()` haya creado `cloud-credentials` antes del sync (el bootstrap lo hace siempre); si el Secret no existe el Job falla con mensaje explícito, pero **también** requiere que `tailscale-operator` wave `-1` esté `Healthy` — Argo garantiza el orden, y el DNS wait de 120 s absorbe la propagación.
+- **Dependencia:** requiere que `ensureVeleroCredentials()` haya creado `cloud-credentials` antes del sync y que `coredns-patch` haya parcheado `kube-system/coredns` (`ts.net:53` stub) — Argo garantiza el orden `-1` → `0`; el DNS wait de 120 s absorbe la propagación. NetworkPolicies `velero-allow-dns`/`velero-allow-tailscale-egress` limitan el egreso tailnet solo a `velero` (ADR-011).
 
 No necesitas instalar `aws-cli` localmente ni añadir steps en `.github/workflows/deploy.yaml` — el Job reutiliza las credenciales que ya inyecta `deploy.yaml` → `init-gitops.sh`.
 
@@ -223,6 +223,8 @@ velero schedule get
 | `PermanentRedirect` / `SignatureDoesNotMatch` | `s3ForcePathStyle` o `s3Url` incorrectos | Chart debe tener `s3ForcePathStyle: "true"` y `s3Url: https://rustfs.lonk-mirfak.ts.net` (no virtual-hosted style) |
 | `BackupStorageLocation default is not in Ready state` | Credenciales inválidas o RustFS inaccesible vía Tailscale | Validar `aws s3 ls --endpoint-url ...` desde cluster, y que `cloud` key sea exactamente `[default]\naws_access_key_id=...\naws_secret_access_key=...` (sin espacios extra) |
 | `defaultVolumesToFsBackup` no respalda PVC | `nodeAgent.enabled: false` | Debe estar `true` en `values.yaml`; verificar DaemonSet `node-agent` en `velero` |
+| `nslookup rustfs.lonk-mirfak.ts.net` falla en velero | `coredns-patch` no aplicado o `ts.net:53` ausente | Ver `kubectl -n kube-system get cm coredns -o yaml \| grep -A2 ts.net` (debe estar antes de `.:53`); logs `kubectl -n coredns-patch logs job/coredns-patch` |
+| Velero `curl` 443 bloqueado por NP | `velero-default-deny-egress` muy estricto | Ver `kubectl -n velero get networkpolicy velero-allow-tailscale-egress -o yaml` permite `tailscale:443`; `velero-allow-dns` permite `kube-system:53` |
 | Velero `ImagePullBackOff` para `velero-plugin-for-aws` | Tag inexistente | Fijar `velero/velero-plugin-for-aws:v1.10.2` (compatible Velero 1.14) |
 
 **Relación con Vault DR:** el backup VM de Proxmox **no es atómico** para Raft (§1 del runbook). Velero complementa pero no reemplaza `vault operator raft snapshot save/restore`. Para recuperación de Vault seguir [`docs/runbook-vault-restore.md`](runbook-vault-restore.md) (regla de oro: restaurar 1 sola VM `vault-2` y re-join de seguidores vacíos, autocuración cada 2 min via `vault-autounseal`).
