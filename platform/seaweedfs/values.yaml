@@ -50,7 +50,7 @@ seaweedfs:
     logs:
       type: "emptyDir"
 
-  # Admin UI (weed admin) — consolidated management console
+  # Admin UI — consolidated management console
   admin:
     enabled: true
     secret:

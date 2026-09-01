@@ -21,8 +21,8 @@ seaweedfs:
   s3:
     enabled: true
   master:
-    enabled: true
+    enabled: false
   filer:
-    enabled: true
+    enabled: false
   admin:
     enabled: true
