@@ -6,7 +6,6 @@ dnsConfigPollInterval: 5
 image:
   repository: bitnami/kubectl
   tag: "latest"
-  digest: sha256:5e4cba8ea3a130758c964dc10198d3d4daeb93b7fb1f8d79040a94cb988f694f
   pullPolicy: IfNotPresent
 namespace: kube-system
 coredns:
