@@ -87,17 +87,59 @@ spec:
                   fi
                 done
                 if ! kubectl get configmap "$COREDNS_CM" -n "$COREDNS_NS" -o yaml > /tmp/cm.yaml 2> /tmp/cm.err; then
-                  echo "[coredns-patch] ERROR: ConfigMap $COREDNS_CM not found in $COREDNS_NS even after auto-discovery"
+                  echo "[coredns-patch] WARN: ConfigMap $COREDNS_CM not found in $COREDNS_NS even after auto-discovery — will CREATE $COREDNS_NS/$COREDNS_CM with base Talos Corefile + ts.net stub"
                   cat /tmp/cm.err || true
-                  echo "[coredns-patch] Diagnostics: available configmaps and Corefile keys"
-                  kubectl get configmap -n "$COREDNS_NS" -o yaml 2>/dev/null | grep -E "name:|Corefile" | head -n 40 || true
                   echo "[coredns-patch] Available configmaps:"
                   cat /tmp/list.out || true
-                  echo "[coredns-patch] Hint: Talos may use a different ConfigMap name (e.g. coredns-custom, kube-dns). Set coredns.name accordingly or ensure auto-discovery matched."
-                  echo "[coredns-patch] RBAC diagnostics:"
-                  kubectl auth can-i get configmaps -n "$COREDNS_NS" || true
-                  kubectl auth can-i patch configmaps -n "$COREDNS_NS" || true
-                  exit 1
+                  echo "[coredns-patch] Creating ConfigMap $COREDNS_NS/$COREDNS_CM from base Talos v1.14.6 Corefile with ts.net:53 stub..."
+                  printf '%s\n' '.:53 {' \
+                    '    errors' \
+                    '    health {' \
+                    '        lameduck 5s' \
+                    '    }' \
+                    '    ready' \
+                    '    kubernetes cluster.local in-addr.arpa ip6.arpa {' \
+                    '        pods insecure' \
+                    '        fallthrough in-addr.arpa ip6.arpa' \
+                    '        ttl 30' \
+                    '    }' \
+                    '    prometheus :9153' \
+                    '    forward . /etc/resolv.conf' \
+                    '    cache 30' \
+                    '    loop' \
+                    '    reload' \
+                    '    loadbalance' \
+                    '}' > /tmp/base.Corefile
+                  TMPFILE="/tmp/base.Corefile"
+                  PATCHED="$(mktemp)"
+                  NEW_BLOCK="ts.net:53 {\n    errors\n    cache 30\n    forward . $NS_IP\n}"
+                  awk -v block="$NEW_BLOCK" '
+                    /^\.:53/ && !inserted { print block; print ""; inserted=1 }
+                    { print }
+                  ' "$TMPFILE" > "$PATCHED"
+                  if ! grep -q "ts.net:53" "$PATCHED"; then
+                    echo "[coredns-patch] ERROR: created Corefile missing ts.net:53 block"
+                    cat "$PATCHED"
+                    exit 1
+                  fi
+                  if ! grep -q "forward . $NS_IP" "$PATCHED"; then
+                    echo "[coredns-patch] ERROR: created Corefile missing forward . $NS_IP"
+                    cat "$PATCHED"
+                    exit 1
+                  fi
+                  echo "[coredns-patch] Created Corefile preview (first 40 lines):"
+                  head -n 40 "$PATCHED" || true
+                  echo "[coredns-patch] Creating ConfigMap $COREDNS_NS/$COREDNS_CM..."
+                  kubectl create configmap "$COREDNS_CM" -n "$COREDNS_NS" --from-file=Corefile="$PATCHED" --dry-run=client -o yaml | kubectl apply -f -
+                  echo "[coredns-patch] ConfigMap $COREDNS_NS/$COREDNS_CM created/updated successfully"
+                  echo "[coredns-patch] Rolling out restart for deployment/$COREDNS_DEP in $COREDNS_NS..."
+                  if kubectl rollout restart deployment "$COREDNS_DEP" -n "$COREDNS_NS" 2>/dev/null; then
+                    echo "[coredns-patch] Rollout restart triggered"
+                  else
+                    echo "[coredns-patch] WARN: rollout restart failed (RBAC or deployment not found) — relying on CoreDNS reload plugin"
+                  fi
+                  echo "[coredns-patch] Done (create path)"
+                  exit 0
                 fi
               fi
               echo "[coredns-patch] ConfigMap $COREDNS_NS/$COREDNS_CM found — data keys:"
