@@ -24,6 +24,7 @@ spec:
       # Use `default` SA to avoid chicken-egg with velero SA (created by subchart in same release).
       serviceAccountName: default
       restartPolicy: OnFailure
+      dnsPolicy: ClusterFirst
       containers:
         - name: bucket-init
           image: amazon/aws-cli:2.15.0
