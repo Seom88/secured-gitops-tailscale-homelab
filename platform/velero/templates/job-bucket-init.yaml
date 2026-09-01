@@ -21,7 +21,6 @@ spec:
         app.kubernetes.io/name: velero-bucket-init
         app.kubernetes.io/component: bucket-init
     spec:
-      # Use `default` SA to avoid chicken-egg with velero SA (created by subchart in same release).
       serviceAccountName: default
       restartPolicy: OnFailure
       dnsPolicy: ClusterFirst
@@ -40,7 +39,6 @@ spec:
               set -e
               echo "[bucket-init] Starting RustFS bucket init..."
               CRED_FILE="/etc/velero/cloud"
-              # Wait up to 60s for Secret volume to appear (optional:true + race with ensureVeleroCredentials)
               WAIT_SECS=0
               WAIT_MAX=60
               while [ ! -f "$CRED_FILE" ] && [ $WAIT_SECS -lt $WAIT_MAX ]; do
