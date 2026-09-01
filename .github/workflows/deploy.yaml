@@ -2,12 +2,10 @@
 name: Deploy GitOps
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Validate"]
+    types: [completed]
     branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - '**/*.md'
   workflow_dispatch:
     inputs:
       environment:
@@ -34,6 +32,7 @@ env:
 
 jobs:
   deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: ${{ inputs.environment || 'prod' }}

@@ -5,7 +5,52 @@
   "timezone": "Europe/Madrid",
   "labels": ["dependencies"],
   "ignorePaths": ["**/charts/*.tgz"],
+  "minimumReleaseAge": "1 day",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "k8s Job/CronJob images harcodeadas",
+      "managerFilePatterns": ["^platform/.*/templates/.*\\.yaml$"],
+      "matchStrings": ["image:\\s*['\"]?(?<depName>[^:'\"\\s]+):(?<currentValue>[^@'\"\\s]+)(?:@(?<currentDigest>sha256:[a-f0-9]+))?['\"]?"],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "coredns-patch values split repo/tag",
+      "managerFilePatterns": ["^platform/coredns-patch/values\\.yaml$"],
+      "matchStrings": ["repository:\\s*['\"]?(?<depName>[^\\s'\";]+)['\"]?\\s*\\n\\s*tag:\\s*['\"]?(?<currentValue>[^'\"\\s]+)['\"]?"],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "tailscale DNSConfig + velero initContainers",
+      "managerFilePatterns": ["^platform/velero/values\\.yaml$", "^platform/velero/templates/.*\\.yaml$", "^platform/tailscale-operator/templates/.*\\.yaml$"],
+      "matchStrings": ["image:\\s*['\"]?(?<depName>[^:'\"\\s]+):(?<currentValue>[^@'\"\\s]+)['\"]?", "repo:\\s*['\"]?(?<depName>[^\\s'\";]+)['\"]?\\s*\\n\\s*tag:\\s*['\"]?(?<currentValue>[^'\"\\s]+)['\"]?"],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "HELM_VERSION env in workflows",
+      "managerFilePatterns": ["^\\.github/workflows/.*\\.ya?ml$"],
+      "matchStrings": ["HELM_VERSION:\\s*v(?<currentValue>[\\d.]+)"],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "helm/helm"
+    }
+  ],
   "packageRules": [
+    {
+      "description": "Nunca usar release con menos de 1 día - global ya lo hace, excepto pinDigest",
+      "matchDatasources": ["docker"],
+      "minimumReleaseAge": "1 day"
+    },
+    {
+      "description": "kubectl - agrupar los 6 jobs, pin digest",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["bitnami/kubectl"],
+      "groupName": "kubectl jobs",
+      "groupSlug": "kubectl-jobs",
+      "pinDigests": true
+    },
     {
       "description": "Vault HA Raft + TLS + auto-unseal — wave 1 healthy — needs manual review",
       "matchDatasources": ["helm"],
