@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: coredns-patch
+  namespace: coredns-patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: coredns-patch
+  namespace: kube-system
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "patch", "update"]
+    resourceNames: ["coredns"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "patch"]
+    resourceNames: ["coredns"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: coredns-patch-dnsconfig
+rules:
+  - apiGroups: ["tailscale.com"]
+    resources: ["dnsconfigs"]
+    verbs: ["get", "list"]
+  - apiGroups: ["tailscale.com"]
+    resources: ["dnsconfigs/status"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: coredns-patch
+  namespace: kube-system
+subjects:
+  - kind: ServiceAccount
+    name: coredns-patch
+    namespace: coredns-patch
+roleRef:
+  kind: Role
+  name: coredns-patch
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: coredns-patch-dnsconfig
+subjects:
+  - kind: ServiceAccount
+    name: coredns-patch
+    namespace: coredns-patch
+roleRef:
+  kind: ClusterRole
+  name: coredns-patch-dnsconfig
+  apiGroup: rbac.authorization.k8s.io

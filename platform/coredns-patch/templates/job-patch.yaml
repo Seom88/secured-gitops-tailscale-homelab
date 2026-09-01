@@ -1,0 +1,159 @@
+{{- $imageTag := .Values.image.tag -}}
+{{- $imageRepo := .Values.image.repository -}}
+{{- $imageDigest := .Values.image.digest -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: coredns-patch
+  namespace: coredns-patch
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 600
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: coredns-patch
+        app.kubernetes.io/component: patch
+    spec:
+      serviceAccountName: coredns-patch
+      restartPolicy: OnFailure
+      containers:
+        - name: patch
+          image: "{{ $imageRepo }}:{{ $imageTag }}{{ if $imageDigest }}@{{ $imageDigest }}{{ end }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              DNSCONFIG="{{ .Values.dnsConfigName }}"
+              COREDNS_CM="{{ .Values.coredns.name }}"
+              COREDNS_NS="{{ .Values.coredns.namespace }}"
+              COREDNS_DEP="{{ .Values.coredns.deployment }}"
+              POLL_MAX="{{ .Values.dnsConfigPollSeconds }}"
+              POLL_INTERVAL="{{ .Values.dnsConfigPollInterval }}"
+              echo "[coredns-patch] Waiting for DNSConfig/$DNSCONFIG status.nameserver.ip (max ${POLL_MAX}s)..."
+
+              ELAPSED=0
+              NS_IP=""
+              while [ "$ELAPSED" -lt "$POLL_MAX" ]; do
+                NS_IP="$(kubectl get dnsconfig "$DNSCONFIG" -o jsonpath='{.status.nameserver.ip}' 2>/dev/null || true)"
+                if [ -n "$NS_IP" ]; then
+                  echo "[coredns-patch] Found nameserver IP: $NS_IP"
+                  break
+                fi
+                echo "[coredns-patch] DNSConfig status empty ($ELAPSED/$POLL_MAX s)..."
+                sleep "$POLL_INTERVAL"
+                ELAPSED=$((ELAPSED + POLL_INTERVAL))
+              done
+
+              if [ -z "$NS_IP" ]; then
+                echo "[coredns-patch] ERROR: DNSConfig $DNSCONFIG status.nameserver.ip not populated after ${POLL_MAX}s"
+                exit 1
+              fi
+
+              # Validate IP format (basic IPv4)
+              if ! echo "$NS_IP" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+                echo "[coredns-patch] ERROR: nameserver IP does not look like IPv4: $NS_IP"
+                exit 1
+              fi
+
+              echo "[coredns-patch] Fetching current Corefile from $COREDNS_NS/$COREDNS_CM..."
+              COREFILE="$(kubectl get configmap "$COREDNS_CM" -n "$COREDNS_NS" -o jsonpath='{.data.Corefile}' 2>/dev/null || true)"
+              if [ -z "$COREFILE" ]; then
+                echo "[coredns-patch] ERROR: failed to get Corefile from $COREDNS_NS/$COREDNS_CM"
+                exit 1
+              fi
+
+              EXPECTED_BLOCK="ts.net:53 {"
+              EXPECTED_FORWARD="forward . $NS_IP"
+
+              # Check idempotent: already contains ts.net:53 with correct IP
+              if echo "$COREFILE" | grep -q "ts.net:53" && echo "$COREFILE" | grep -q "forward . $NS_IP"; then
+                # Verify sibling order: ts.net:53 appears before .:53
+                TS_LINE="$(echo "$COREFILE" | grep -n "ts.net:53" | head -1 | cut -d: -f1)"
+                DOT_LINE="$(echo "$COREFILE" | grep -n "^\.:53" | head -1 | cut -d: -f1)"
+                if [ -n "$TS_LINE" ] && [ -n "$DOT_LINE" ] && [ "$TS_LINE" -lt "$DOT_LINE" ]; then
+                  echo "[coredns-patch] Corefile already contains correct ts.net:53 sibling before .:53 — no patch needed"
+                  exit 0
+                fi
+                echo "[coredns-patch] ts.net block exists but order is wrong — will re-patch"
+              fi
+
+              echo "[coredns-patch] Building patched Corefile..."
+              TMPFILE="$(mktemp)"
+              PATCHED="$(mktemp)"
+              printf '%s' "$COREFILE" > "$TMPFILE"
+
+              # Remove any existing ts.net:53 block (idempotent)
+              # Use awk to strip ts.net:53 { ... } block if present
+              awk '
+                BEGIN { skip=0; brace=0 }
+                /ts\.net:53[[:space:]]*\{/ { skip=1; brace=1; next }
+                skip==1 {
+                  if (/\{/) brace++
+                  if (/\}/) brace--
+                  if (brace==0) { skip=0; next }
+                  next
+                }
+                { print }
+              ' "$TMPFILE" > "$PATCHED"
+              mv "$PATCHED" "$TMPFILE"
+
+              # Insert ts.net:53 block before .:53
+              NEW_BLOCK="ts.net:53 {\n    errors\n    cache 30\n    forward . $NS_IP\n}"
+              awk -v block="$NEW_BLOCK" '
+                /^\.:53/ && !inserted { print block; print ""; inserted=1 }
+                { print }
+              ' "$TMPFILE" > "$PATCHED"
+
+              if ! grep -q "ts.net:53" "$PATCHED"; then
+                echo "[coredns-patch] ERROR: patched Corefile missing ts.net:53 block"
+                cat "$PATCHED"
+                exit 1
+              fi
+
+              if ! grep -q "forward . $NS_IP" "$PATCHED"; then
+                echo "[coredns-patch] ERROR: patched Corefile missing forward . $NS_IP"
+                cat "$PATCHED"
+                exit 1
+              fi
+
+              echo "[coredns-patch] Patched Corefile preview (first 40 lines):"
+              head -n 40 "$PATCHED" || true
+
+              echo "[coredns-patch] Applying patch to ConfigMap $COREDNS_NS/$COREDNS_CM..."
+              # Use kubectl patch with file content via dry-run + apply would need create, so use kubectl patch via json
+              # Escape Corefile for JSON patch: use python3 if available, else kubectl replace via file
+              if command -v python3 >/dev/null 2>&1; then
+                python3 <<PY
+              import json, pathlib
+              corefile = pathlib.Path("$PATCHED").read_text()
+              patch = {"data": {"Corefile": corefile}}
+              print(json.dumps(patch))
+              PY
+              else
+                echo "[coredns-patch] python3 not found — falling back to kubectl create configmap dry-run"
+              fi > /tmp/patch.json
+
+              # Apply patch
+              if [ -s /tmp/patch.json ]; then
+                kubectl patch configmap "$COREDNS_CM" -n "$COREDNS_NS" --type merge --patch "$(cat /tmp/patch.json)"
+              else
+                kubectl create configmap "$COREDNS_CM" -n "$COREDNS_NS" --from-file=Corefile="$PATCHED" --dry-run=client -o yaml | kubectl apply -f -
+              fi
+
+              echo "[coredns-patch] ConfigMap patched successfully"
+
+              # Trigger rollout restart so new Corefile is picked up immediately (reload plugin also watches)
+              echo "[coredns-patch] Rolling out restart for deployment/$COREDNS_DEP in $COREDNS_NS..."
+              if kubectl rollout restart deployment "$COREDNS_DEP" -n "$COREDNS_NS" 2>/dev/null; then
+                echo "[coredns-patch] Rollout restart triggered"
+              else
+                echo "[coredns-patch] WARN: rollout restart failed (RBAC or deployment not found) — relying on CoreDNS reload plugin"
+              fi
+
+              echo "[coredns-patch] Done"

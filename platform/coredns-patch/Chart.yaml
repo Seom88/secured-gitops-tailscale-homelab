@@ -1,0 +1,12 @@
+apiVersion: v2
+name: coredns-patch
+description: GitOps patch adding ts.net:53 stub to kube-system/coredns via DNSConfig status
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+home: https://tailscale.com/kb/1236/kubernetes-operator
+sources:
+  - https://github.com/tailscale/tailscale
+maintainers:
+  - name: Seom88
+    url: https://github.com/Seom88
