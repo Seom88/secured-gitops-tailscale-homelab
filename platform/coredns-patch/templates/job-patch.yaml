@@ -221,25 +221,7 @@ spec:
               head -n 40 "$PATCHED" || true
 
               echo "[coredns-patch] Applying patch to ConfigMap $COREDNS_NS/$COREDNS_CM..."
-              # Use kubectl patch with file content via dry-run + apply would need create, so use kubectl patch via json
-              # Escape Corefile for JSON patch: use python3 if available, else kubectl replace via file
-              if command -v python3 >/dev/null 2>&1; then
-                python3 <<PY
-              import json, pathlib
-              corefile = pathlib.Path("$PATCHED").read_text()
-              patch = {"data": {"Corefile": corefile}}
-              print(json.dumps(patch))
-              PY
-              else
-                echo "[coredns-patch] python3 not found — falling back to kubectl create configmap dry-run"
-              fi > /tmp/patch.json
-
-              # Apply patch
-              if [ -s /tmp/patch.json ]; then
-                kubectl patch configmap "$COREDNS_CM" -n "$COREDNS_NS" --type merge --patch "$(cat /tmp/patch.json)"
-              else
-                kubectl create configmap "$COREDNS_CM" -n "$COREDNS_NS" --from-file=Corefile="$PATCHED" --dry-run=client -o yaml | kubectl apply -f -
-              fi
+              kubectl create configmap "$COREDNS_CM" -n "$COREDNS_NS" --from-file=Corefile="$PATCHED" --dry-run=client -o yaml | kubectl apply -f -
 
               echo "[coredns-patch] ConfigMap patched successfully"
 
