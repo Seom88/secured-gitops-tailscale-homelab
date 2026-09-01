@@ -12,12 +12,10 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["configmaps"]
-    verbs: ["get", "patch", "update"]
-    resourceNames: ["coredns"]
+    verbs: ["get", "list", "watch", "patch", "update"]
   - apiGroups: ["apps"]
     resources: ["deployments"]
-    verbs: ["get", "patch"]
-    resourceNames: ["coredns"]
+    verbs: ["get", "list", "watch", "patch", "update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

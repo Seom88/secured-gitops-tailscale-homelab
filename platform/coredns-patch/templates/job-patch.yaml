@@ -62,9 +62,33 @@ spec:
               fi
 
               echo "[coredns-patch] Fetching current Corefile from $COREDNS_NS/$COREDNS_CM..."
-              COREFILE="$(kubectl get configmap "$COREDNS_CM" -n "$COREDNS_NS" -o jsonpath='{.data.Corefile}' 2>/dev/null || true)"
+              echo "[coredns-patch] Pre-check: kubectl get configmap $COREDNS_CM -n $COREDNS_NS (no jsonpath)..."
+              if ! kubectl get configmap "$COREDNS_CM" -n "$COREDNS_NS" -o yaml > /tmp/cm.yaml 2> /tmp/cm.err; then
+                echo "[coredns-patch] ERROR: kubectl get configmap $COREDNS_CM -n $COREDNS_NS failed (RBAC denied or ConfigMap not found)"
+                cat /tmp/cm.err || true
+                echo "[coredns-patch] RBAC diagnostics:"
+                kubectl auth can-i get configmaps -n "$COREDNS_NS" --as=system:serviceaccount:coredns-patch:coredns-patch || true
+                kubectl auth can-i list configmaps -n "$COREDNS_NS" --as=system:serviceaccount:coredns-patch:coredns-patch || true
+                kubectl auth can-i get configmaps --as=system:serviceaccount:coredns-patch:coredns-patch -n "$COREDNS_NS" || true
+                exit 1
+              fi
+              echo "[coredns-patch] ConfigMap $COREDNS_NS/$COREDNS_CM found — data keys:"
+              kubectl get configmap "$COREDNS_CM" -n "$COREDNS_NS" -o yaml | grep -E "^  [A-Za-z0-9_-]+:" | head -n 20 || true
+              COREFILE_ERR="$(mktemp)"
+              COREFILE="$(kubectl get configmap "$COREDNS_CM" -n "$COREDNS_NS" -o jsonpath='{.data.Corefile}' 2> "$COREFILE_ERR" || true)"
               if [ -z "$COREFILE" ]; then
-                echo "[coredns-patch] ERROR: failed to get Corefile from $COREDNS_NS/$COREDNS_CM"
+                echo "[coredns-patch] ERROR: failed to get Corefile from $COREDNS_NS/$COREDNS_CM (empty jsonpath '{.data.Corefile}')"
+                echo "[coredns-patch] kubectl stderr:"
+                cat "$COREFILE_ERR" || true
+                echo "[coredns-patch] ConfigMap yaml (first 100 lines):"
+                head -n 100 /tmp/cm.yaml || true
+                echo "[coredns-patch] Diagnostics: RBAC check & key existence"
+                kubectl auth can-i get configmaps -n "$COREDNS_NS" --as=system:serviceaccount:coredns-patch:coredns-patch || true
+                if grep -q "Corefile:" /tmp/cm.yaml; then
+                  echo "[coredns-patch] Hint: key 'Corefile' exists but jsonpath returned empty — check casing or value emptiness"
+                else
+                  echo "[coredns-patch] Hint: .data.Corefile key NOT found in ConfigMap — check Talos/CoreDNS naming (expected key 'Corefile')"
+                fi
                 exit 1
               fi
 
