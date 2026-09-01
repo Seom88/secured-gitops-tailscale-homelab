@@ -7,7 +7,8 @@ longhorn:
     storageMinimalAvailablePercentage: 15
     storageOverProvisioningPercentage: 200
     nodeDownPodDeletionPolicy: delete-both-statefulset-and-deployment-pod
-    defaultDataPath: /var/mnt/data # must match UserVolumeConfig name=data -> /var/mnt/data
+    # must match UserVolumeConfig name=data -> /var/mnt/data
+    defaultDataPath: /var/mnt/data
     defaultLonghornStaticStorageClass: longhorn-static
   preUpgradeChecker:
     # ArgoCD/GitOps: disable pre-upgrade hook Job (requires CRDs + ClusterRole that are
