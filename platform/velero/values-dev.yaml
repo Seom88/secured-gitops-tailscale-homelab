@@ -1,0 +1,7 @@
+developmentApp:
+  enabled: true
+
+velero:
+  configuration:
+    backupStorageLocation:
+      prefix: velero-dev

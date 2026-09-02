@@ -25,11 +25,13 @@ velero:
 
   configuration:
     # BackupStorageLocation — single default location on RustFS.
+    # Prefix is per-environment: velero-dev on dev branch keeps backups isolated from prod.
+    # Full S3 path: s3://velero-homelab/velero-dev/
     backupStorageLocation:
       - name: default
         provider: aws
         bucket: velero-homelab
-        prefix: velero
+        prefix: velero-dev
         caCert: ""
         config:
           region: us-east-1

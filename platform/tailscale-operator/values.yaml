@@ -1,3 +1,6 @@
+developmentApp:
+  enabled: false
+
 ciliumNetworkPolicy:
   enabled: true
 

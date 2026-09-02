@@ -7,7 +7,7 @@ apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
   name: tailscale-operator-allow-dns
-  namespace: tailscale-operator
+  namespace: tailscale
 spec:
   endpointSelector: {}
   egress:
@@ -30,7 +30,7 @@ apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
   name: tailscale-operator-allow-egress
-  namespace: tailscale-operator
+  namespace: tailscale
 spec:
   endpointSelector: {}
   egress:
@@ -91,7 +91,7 @@ apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
   name: tailscale-operator-allow-ingress
-  namespace: tailscale-operator
+  namespace: tailscale
 spec:
   endpointSelector: {}
   ingress:

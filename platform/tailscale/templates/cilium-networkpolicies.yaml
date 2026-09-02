@@ -100,7 +100,7 @@ spec:
             - port: "6443"
               protocol: TCP
 ---
-# 3) Egress for all pods in tailscale (covers future Ingress-managed pods) — DNS + kube-apiserver + tailscale operator
+# 3) Egress for all pods in tailscale (covers future Ingress-managed pods) — DNS + kube-apiserver + Tailscale control + operator egress
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -116,6 +116,25 @@ spec:
             - port: "443"
               protocol: TCP
             - port: "6443"
+              protocol: TCP
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "41641"
+              protocol: UDP
+            - port: "41641"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: tailscale
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+            - port: "443"
               protocol: TCP
     - toEntities:
         - host
