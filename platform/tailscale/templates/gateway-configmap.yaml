@@ -45,15 +45,18 @@ data:
         }
 
 {{- if .Values.argocd.enabled }}
-        # ArgoCD — preserve /argocd prefix, backend expects same prefix via --basehref
+        # ArgoCD — requires server.basehref=/argocd in infra-talos-homelab (see ADR-012)
+        # Grafana/Prometheus style: backend expects /argocd prefix when basehref is set.
+        # Keep prefix-forwarding so assets resolve as /argocd/assets/*
         location /argocd/ {
-          proxy_pass https://argocd-server.argocd.svc.cluster.local:443/argocd/;
+          proxy_pass https://argocd-server.argocd.svc.cluster.local:443;
           proxy_ssl_verify off;
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
           proxy_set_header X-Forwarded-Proto $scheme;
           proxy_set_header X-Forwarded-Host $host;
+          proxy_set_header X-Forwarded-Prefix /argocd;
           proxy_redirect off;
           proxy_buffering off;
         }
@@ -63,13 +66,15 @@ data:
 {{- end }}
 {{- if .Values.grafana.enabled }}
         # Grafana — serve_from_sub_path=true, root_url=https://{{ .Values.hostname }}.lonk-mirfak.ts.net/grafana/
+        # Preserve /grafana prefix — stripping (proxy_pass .../ ) causes infinite 301 loop.
         location /grafana/ {
-          proxy_pass http://monitoring-grafana.monitoring.svc.cluster.local:80/;
+          proxy_pass http://monitoring-grafana.monitoring.svc.cluster.local:80;
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
           proxy_set_header X-Forwarded-Proto $scheme;
           proxy_set_header X-Forwarded-Host $host;
+          proxy_set_header X-Forwarded-Prefix /grafana;
           proxy_redirect off;
         }
         location = /grafana {
@@ -78,11 +83,12 @@ data:
 {{- end }}
 {{- if .Values.prometheus.enabled }}
         location /prometheus/ {
-          proxy_pass http://monitoring-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090/prometheus/;
+          proxy_pass http://monitoring-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090;
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
           proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_set_header X-Forwarded-Prefix /prometheus;
           proxy_redirect off;
         }
         location = /prometheus {
@@ -90,21 +96,45 @@ data:
         }
 {{- end }}
 {{- if .Values.vault.enabled }}
+        # Vault UI does NOT support subpath — assets/redirects are absolute /ui/, /v1/.
+        # Rewrite redirects and HTML so /ui/ → /vault/ui/ and /v1/ → /vault/v1/ stay inside prefix.
         location /vault/ {
-          proxy_pass https://vault.vault.svc.cluster.local:8200/vault/;
+          proxy_pass https://vault.vault.svc.cluster.local:8200/;
+          proxy_ssl_verify off;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_set_header X-Forwarded-Host $host;
+          proxy_redirect / /vault/;
+          proxy_redirect /ui/ /vault/ui/;
+          # Vault health uses 307 → /ui/ ; preserve it under /vault
+          sub_filter 'href="/ui/' 'href="/vault/ui/';
+          sub_filter 'src="/ui/' 'src="/vault/ui/';
+          sub_filter 'action="/' 'action="/vault/';
+          sub_filter '"\/ui\/' '"/vault/ui/';
+          sub_filter "'\/ui\/'" "'/vault/ui/'";
+          # API calls from UI to /v1/
+          sub_filter '"/v1/' '"/vault/v1/';
+          sub_filter "'/v1/'" "'/vault/v1/'";
+          sub_filter_types *;
+          sub_filter_once off;
+        }
+        location = /vault {
+          return 302 /vault/;
+        }
+        location = /vault/ui {
+          return 302 /vault/ui/;
+        }
+        # Vault API under same prefix — keep functional for UI XHRs that already use /vault/v1
+        location /vault/v1/ {
+          proxy_pass https://vault.vault.svc.cluster.local:8200/v1/;
           proxy_ssl_verify off;
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
           proxy_set_header X-Forwarded-Proto $scheme;
           proxy_redirect off;
-        }
-        location = /vault {
-          return 302 /vault/;
-        }
-        # Vault UI redirect helper
-        location = /vault/ui {
-          return 302 /vault/ui/;
         }
 {{- end }}
 {{- if .Values.longhorn.enabled }}
@@ -136,13 +166,22 @@ data:
         }
 {{- end }}
 {{- if .Values.seaweedfs.admin.enabled }}
+        # SeaweedFS admin redirects / → /login and serves /static/* — keep under prefix
         location /seaweedfs-admin/ {
           proxy_pass http://seaweedfs-admin.seaweedfs.svc.cluster.local:23646/;
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
           proxy_set_header X-Forwarded-Proto $scheme;
-          proxy_redirect off;
+          proxy_set_header X-Forwarded-Host $host;
+          proxy_redirect / /seaweedfs-admin/;
+          proxy_redirect /login /seaweedfs-admin/login;
+          sub_filter 'href="/' 'href="/seaweedfs-admin/';
+          sub_filter 'src="/' 'src="/seaweedfs-admin/';
+          sub_filter 'action="/' 'action="/seaweedfs-admin/';
+          sub_filter 'url("/' 'url("/seaweedfs-admin/';
+          sub_filter_types *;
+          sub_filter_once off;
         }
         location = /seaweedfs-admin {
           return 302 /seaweedfs-admin/;
