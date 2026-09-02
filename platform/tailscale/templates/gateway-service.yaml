@@ -1,0 +1,19 @@
+{{- if .Values.gateway.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: cluster-gateway
+  namespace: tailscale
+  labels:
+    app.kubernetes.io/name: cluster-gateway
+    app.kubernetes.io/part-of: tailscale
+spec:
+  selector:
+    app.kubernetes.io/name: cluster-gateway
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+  type: ClusterIP
+{{- end }}

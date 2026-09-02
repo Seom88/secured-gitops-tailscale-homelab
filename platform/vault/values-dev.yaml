@@ -1,8 +1,8 @@
 developmentApp:
   enabled: true
 
-# vaultAddress points to the Vault service in the dev cluster
-vaultAddress: "https://vault-dev.vault.svc:8200"
+# vaultAddress — unified service name (no -dev suffix after ADR-012)
+vaultAddress: "https://vault.vault.svc:8200"
 
 vault:
   server:

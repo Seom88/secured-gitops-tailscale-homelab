@@ -1,0 +1,159 @@
+{{- if .Values.gateway.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-gateway-nginx
+  namespace: tailscale
+  labels:
+    app.kubernetes.io/name: cluster-gateway
+    app.kubernetes.io/part-of: tailscale
+data:
+  nginx.conf: |
+    worker_processes auto;
+    events { worker_connections 1024; }
+    http {
+      include       /etc/nginx/mime.types;
+      default_type  application/octet-stream;
+      sendfile on;
+      keepalive_timeout 65;
+      server_tokens off;
+      access_log /dev/stdout;
+      error_log /dev/stderr warn;
+
+      # Upstream timeouts tuned for homelab
+      proxy_connect_timeout 10s;
+      proxy_read_timeout 60s;
+      proxy_send_timeout 60s;
+
+      # Trust X-Forwarded-* from Tailscale proxy
+      real_ip_header X-Forwarded-For;
+      set_real_ip_from 0.0.0.0/0;
+
+      server {
+        listen 80;
+        server_name _;
+
+        # Health probe for k8s
+        location = /healthz {
+          access_log off;
+          return 200 "ok\n";
+          add_header Content-Type text/plain;
+        }
+
+        location = / {
+          return 302 /argocd/;
+        }
+
+{{- if .Values.argocd.enabled }}
+        # ArgoCD — preserve /argocd prefix, backend expects same prefix via --basehref
+        location /argocd/ {
+          proxy_pass https://argocd-server.argocd.svc.cluster.local:443/argocd/;
+          proxy_ssl_verify off;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_set_header X-Forwarded-Host $host;
+          proxy_redirect off;
+          proxy_buffering off;
+        }
+        location = /argocd {
+          return 302 /argocd/;
+        }
+{{- end }}
+{{- if .Values.grafana.enabled }}
+        # Grafana — serve_from_sub_path=true, root_url=https://{{ .Values.hostname }}.lonk-mirfak.ts.net/grafana/
+        location /grafana/ {
+          proxy_pass http://monitoring-grafana.monitoring.svc.cluster.local:80/;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_set_header X-Forwarded-Host $host;
+          proxy_redirect off;
+        }
+        location = /grafana {
+          return 302 /grafana/;
+        }
+{{- end }}
+{{- if .Values.prometheus.enabled }}
+        location /prometheus/ {
+          proxy_pass http://monitoring-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090/prometheus/;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_redirect off;
+        }
+        location = /prometheus {
+          return 302 /prometheus/;
+        }
+{{- end }}
+{{- if .Values.vault.enabled }}
+        location /vault/ {
+          proxy_pass https://vault.vault.svc.cluster.local:8200/vault/;
+          proxy_ssl_verify off;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_redirect off;
+        }
+        location = /vault {
+          return 302 /vault/;
+        }
+        # Vault UI redirect helper
+        location = /vault/ui {
+          return 302 /vault/ui/;
+        }
+{{- end }}
+{{- if .Values.longhorn.enabled }}
+        location /longhorn/ {
+          proxy_pass http://longhorn-frontend.longhorn-system.svc.cluster.local:80/;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_set_header Upgrade $http_upgrade;
+          proxy_set_header Connection "upgrade";
+          proxy_redirect off;
+        }
+        location = /longhorn {
+          return 302 /longhorn/;
+        }
+{{- end }}
+{{- if .Values.seaweedfs.s3.enabled }}
+        location /seaweedfs-s3/ {
+          proxy_pass http://seaweedfs-s3.seaweedfs.svc.cluster.local:8333/;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_redirect off;
+        }
+        location = /seaweedfs-s3 {
+          return 302 /seaweedfs-s3/;
+        }
+{{- end }}
+{{- if .Values.seaweedfs.admin.enabled }}
+        location /seaweedfs-admin/ {
+          proxy_pass http://seaweedfs-admin.seaweedfs.svc.cluster.local:23646/;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_redirect off;
+        }
+        location = /seaweedfs-admin {
+          return 302 /seaweedfs-admin/;
+        }
+{{- end }}
+
+        # Fallback — list available paths
+        location / {
+          default_type text/html;
+          return 404 '<h1>my-cluster gateway</h1><p>Available paths: /argocd/ /grafana/ /prometheus/ /vault/ /longhorn/ /seaweedfs-s3/ /seaweedfs-admin/</p>';
+        }
+      }
+    }
+{{- end }}

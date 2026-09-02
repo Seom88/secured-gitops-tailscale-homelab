@@ -185,7 +185,7 @@ This keeps the service chart clean: it declares what secrets it needs, not how t
 
 - **Positive:** Clean separation of concerns, least-privilege roles, PR-visible changes, no more shared `ClusterSecretStore`, each service independently deployable.
 - **Positive:** Sync-wave ordering removes the timing race between Vault role creation and ESO store processing.
-- **Negative:** More Kubernetes resources (one Job + one ClusterSecretStore per service). The `vaultAddress` Helm value must be configured per-service chart (default: vault.vault.svc:8200, override for dev: vault-dev.vault.svc:8200).
+- **Negative:** More Kubernetes resources (one Job + one ClusterSecretStore per service). The `vaultAddress` Helm value must be configured per-service chart (default: vault.vault.svc:8200, override for dev via `values-dev.yaml`). After ADR-012, service names are unified (no `-dev` suffix) — use `vault.vault.svc:8200` for both envs; hostname/env differs via `my-cluster` / `dev-my-cluster` at the gateway layer, not Vault service names.
 - **NetworkPolicy:** Currently open to all namespaces (`namespaceSelector: {}`). A future change will restrict access to only `vault` and `external-secrets` namespaces.
 
 ## Files

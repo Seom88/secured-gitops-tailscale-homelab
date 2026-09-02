@@ -2,7 +2,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: tailscale{{- if .Values.developmentApp.enabled }}-dev{{- end }}
+  name: tailscale
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "4"

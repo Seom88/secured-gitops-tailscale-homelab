@@ -83,6 +83,13 @@ kube-prometheus-stack:
       userKey: admin-user
       passwordKey: admin-password
 
+    # Single-host gateway subpath — ADR-012: Grafana served at /grafana via my-cluster.lonk-mirfak.ts.net
+    grafana.ini:
+      server:
+        domain: my-cluster.lonk-mirfak.ts.net
+        root_url: https://my-cluster.lonk-mirfak.ts.net/grafana/
+        serve_from_sub_path: true
+
     # Add Loki as a data source
     additionalDataSources:
       - name: Loki
@@ -113,6 +120,9 @@ kube-prometheus-stack:
     prometheusSpec:
       retention: 15d
       retentionSize: 25GB
+      # Single-host gateway subpath — ADR-012
+      externalUrl: https://my-cluster.lonk-mirfak.ts.net/prometheus
+      routePrefix: /prometheus
       storageSpec:
         volumeClaimTemplate:
           spec:

@@ -2,7 +2,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: coredns-patch{{- if .Values.developmentApp.enabled }}-dev{{- end }}
+  name: coredns-patch
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "0"

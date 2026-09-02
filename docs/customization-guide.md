@@ -19,14 +19,14 @@ The main entry point is `gitops/templates/root-prod-app.yaml`, which uses the `r
 
 By default, the `prod` environment targets the `main` branch, while the `dev` environment targets the `dev` branch. You can change this behavior in `gitops/templates/root-prod-app.yaml` and in each `gitops/templates/apps/00-*.yaml` (via `targetRevision`).
 
-To add a new ordered app, create a new `gitops/templates/apps/0N-name.yaml` as a plain `Application` with the correct `argocd.argoproj.io/sync-wave` annotation and `wave-policy` label (`healthy` to block the next wave until `Synced + Healthy`, `sync-only` to require only `Synced`). Use the existing `00-*.yaml` → `04-*.yaml` files as templates: wave `-1` tailscale-operator → `0` cert-manager/external-secrets/longhorn/coredns-patch/velero → `1` vault → `2` seaweedfs → `3` monitoring (`sync-only`) → `4` tailscale (`sync-only`, always last) — see ADRs 010/011.
+To add a new ordered app, create a new `gitops/templates/apps/0N-name.yaml` as a plain `Application` with the correct `argocd.argoproj.io/sync-wave` annotation and `wave-policy` label (`healthy` to block the next wave until `Synced + Healthy`, `sync-only` to require only `Synced`). Use the existing `00-*.yaml` → `04-*.yaml` files as templates: wave `-1` tailscale-operator → `0` cert-manager/external-secrets/longhorn/coredns-patch/velero → `1` vault → `2` seaweedfs → `3` monitoring (`sync-only`) → `4` tailscale single-host gateway (`my-cluster` Ingress + `cluster-gateway` Deployment/Service, `sync-only`, always last) — see ADRs 010/011/012.
 
 ## 2. Tailscale Configuration
 
 This homelab integrates with Tailscale for secure networking:
 
 1.  **Auth Credentials**: Tailscale credentials are seeded into Vault and consumed by the Tailscale Operator — see the [Secrets Structure guide](secrets-structure.md) for the expected secret layout. The bootstrap script does not prompt for them.
-2.  **Operator**: The Tailscale Operator is managed as a platform app. You can find its configuration in `platform/tailscale/`. No distro-specific setup is required here — any cluster with ArgoCD (installed by the infra platform layer) works; Longhorn is deployed by this repo as a wave-0 app.
+2.  **Operator**: The Tailscale Operator is managed as a platform app in `platform/tailscale-operator/` (wave `-1`). Platform exposure is a **single-host gateway** in `platform/tailscale/` (`hostname: my-cluster` → `my-cluster.lonk-mirfak.ts.net/{argocd,grafana,prometheus,vault,longhorn,seaweedfs-*}` via `cluster-gateway` NGINX) — see [ADR-012](adrs/012-single-host-cluster-gateway.md). No distro-specific setup is required here — any cluster with ArgoCD (installed by the infra platform layer) works; Longhorn is deployed by this repo as a wave-0 app. Works with Flannel (NetworkPolicy is Cilium-compatible but no-op on Flannel).
 
 
 ## 3. Vault & Secrets Management

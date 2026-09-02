@@ -51,7 +51,7 @@ This is **not just another Kubernetes homelab** — it's a reference implementat
 |------|------------------|----------|
 | **Secrets Management** | Vault HA (3-node Raft), auto-unseal, per-service auth | [`platform/vault/`](./platform/vault/), [Docs](./docs/skills-demonstrated.md#-secrets-management--security) |
 | **GitOps & Orchestration** | ArgoCD App-of-Apps, sync-wave ordering, custom health checks | [`gitops/templates/apps/`](./gitops/templates/apps/), [ADR-006](./docs/adrs/006-app-health-and-vault-ordering.md) |
-| **Zero-Trust Networking** | Tailscale operator, secure ingress without port exposure | [`platform/tailscale/`](./platform/tailscale/), [ADR-001](./docs/adrs/001-tailscale-ingress-placement.md) |
+| **Zero-Trust Networking** | Tailscale operator, single-host gateway (`my-cluster.lonk-mirfak.ts.net` + path routing) — 1 device | [`platform/tailscale/`](./platform/tailscale/), [ADR-001](./docs/adrs/001-tailscale-ingress-placement.md), [ADR-012](./docs/adrs/012-single-host-cluster-gateway.md) |
 | **High-Availability** | Vault Raft quorum, multi-node Kubernetes, Longhorn distributed storage | [`platform/vault/templates/`](./platform/vault/templates/), [Features](./docs/features-deep-dive.md#-storage-longhorn--seaweedfs) |
 | **Observability** | Prometheus + Grafana + Loki stack with Vault metrics | [`platform/monitoring/`](./platform/monitoring/) |
 | **Storage & Data** | Longhorn CSI, SeaweedFS S3, persistent volume management | [`platform/seaweedfs/`](./platform/seaweedfs/), [ADR-005](./docs/adrs/005-longhorn-back-to-gitops.md) |
@@ -101,7 +101,7 @@ graph TD
         W1[01 vault<br/>wave 1 healthy<br/>3-node Raft]
         W2[02 seaweedfs<br/>wave 2 healthy]
         W3[03 monitoring<br/>wave 3 sync-only]
-        W4[04 tailscale<br/>wave 4 sync-only<br/>always last]
+        W4[04 tailscale<br/>wave 4 sync-only<br/>single-host gateway<br/>my-cluster + cluster-gateway]
 
         ROOT --> W0A & W0B & W0C
         W0A & W0B & W0C --> W1
@@ -124,7 +124,7 @@ graph TD
 
 - **GitOps Automation** — ArgoCD (installed by the infra repo) manages everything declaratively via App-of-Apps. The bootstrap script deploys the root app and configures Vault in one idempotent step.
 - **Cluster-Agnostic Platform** — This layer runs on any Kubernetes distro. Talos Linux in the companion repo, but works with EKS, GKE, or any CNCF cluster once ArgoCD is pre-installed.
-- **Zero-Trust Networking** — Tailscale operator provides `.tailnet` secure ingress without exposing ports. Every admin access goes through Tailscale mesh VPN.
+- **Zero-Trust Networking** — Tailscale operator provides single-host secure ingress (`my-cluster.lonk-mirfak.ts.net/{argocd,grafana,prometheus,vault,longhorn,seaweedfs-*}` via in-namespace `cluster-gateway` NGINX) — 1 MagicDNS device, 1 cert. Every admin access goes through Tailscale mesh VPN. See [ADR-012](./docs/adrs/012-single-host-cluster-gateway.md).
 - **Enterprise Secrets Management** — Vault HA (3-node Raft) with auto-unseal, External Secrets Operator syncs to native K8s Secrets, per-service ClusterSecretStores for least-privilege access.
 - **Distributed Storage** — Longhorn CSI (wave-0) provides persistent volumes; SeaweedFS adds S3-compatible object storage for logs and backups.
 - **Complete Observability** — Prometheus + Grafana + Loki stack with Vault, ArgoCD, and cluster metrics. All dashboards secured behind Tailscale.

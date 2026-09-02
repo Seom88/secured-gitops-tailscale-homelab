@@ -49,9 +49,9 @@ Vault is the industry standard for secrets management. Implementing it from scra
 
 ### What's Implemented
 
-**Tailscale Operator** for mesh VPN ingress:
-- Secure `.tailnet` domain for every service (e.g., `vault.user-tailnet.ts.net`)
-- No public port exposure — ingress only via Tailscale mesh
+**Tailscale Operator** for mesh VPN ingress — single-host gateway:
+- One MagicDNS device/hostname `my-cluster.lonk-mirfak.ts.net` (prod) / `dev-my-cluster...` (dev) with path routing (`/argocd`, `/grafana`, `/prometheus`, `/vault`, `/longhorn`, `/seaweedfs-*`) via in-namespace NGINX `cluster-gateway` — see [ADR-012](./adrs/012-single-host-cluster-gateway.md)
+- No public port exposure — ingress only via Tailscale mesh (1 cert, not 7)
 - Per-user access control — OAuth scopes integrated with Tailscale
 - Subnet routing — cluster pods accessible directly from Tailscale network
 - MeshVPN — encrypted point-to-point tunnels between admin device and cluster
@@ -75,18 +75,20 @@ Zero-trust networking is the modern security boundary model. This replaces:
 
 ```bash
 # No firewall rules, no public IP exposure
-# Device must be part of Tailscale network
-open https://grafana.user-tailnet.ts.net
+# Device must be part of Tailscale network — single-host path routing
+open https://my-cluster.lonk-mirfak.ts.net/grafana/
+open https://my-cluster.lonk-mirfak.ts.net/argocd/
+open https://my-cluster.lonk-mirfak.ts.net/prometheus/
 ```
 
 ### Key Files
 
-- Operator deployment: [`platform/tailscale/Chart.yaml`](../platform/tailscale/Chart.yaml)
-- Ingress templates: [`platform/tailscale/templates/`](../platform/tailscale/templates/)
-  - Reusable ingress pattern: `ingress.yaml`
-  - Service exposure config: `servicemonitor.yaml`
-- Configuration: [`platform/tailscale/values.yaml`](../platform/tailscale/values.yaml)
-- ADR: [ADR-001: Tailscale Ingress Placement](./adrs/001-tailscale-ingress-placement.md)
+- Operator deployment: [`platform/tailscale-operator/Chart.yaml`](../platform/tailscale-operator/Chart.yaml) (wave `-1`)
+- Gateway + single Ingress: [`platform/tailscale/templates/`](../platform/tailscale/templates/)
+  - Gateway: `gateway-configmap.yaml` / `gateway-deployment.yaml` / `gateway-service.yaml`
+  - Single Ingress: `ingress.yaml` (`my-cluster` → `cluster-gateway`)
+- Configuration: [`platform/tailscale/values.yaml`](../platform/tailscale/values.yaml) (`hostname: my-cluster` / `dev-my-cluster`)
+- ADRs: [ADR-001: Tailscale Ingress Placement](./adrs/001-tailscale-ingress-placement.md), [ADR-012: Single-Host Cluster Gateway](./adrs/012-single-host-cluster-gateway.md)
 
 ---
 
@@ -140,7 +142,7 @@ Wave 3 (Sync-only):
   └── 03-monitoring       ← Logs to SeaweedFS, depends on wave 2
 
 Wave 4 (Sync-only):
-  └── 04-tailscale        ← Ingress for everything, always last
+  └── 04-tailscale        ← Single-host gateway (my-cluster Ingress + cluster-gateway NGINX), always last — ADR-012
 ```
 
 ### Key Files
@@ -188,7 +190,7 @@ Observability is non-negotiable in production:
 
 ### Example Dashboard
 
-Grafana dashboard accessible at: `https://grafana.user-tailnet.ts.net` (via Tailscale)
+Grafana dashboard accessible at: `https://my-cluster.lonk-mirfak.ts.net/grafana/` (via Tailscale single-host gateway)
 
 Includes:
 - Vault: Sealed state, rekey progress, auth method usage

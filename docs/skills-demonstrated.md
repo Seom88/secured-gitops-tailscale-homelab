@@ -81,8 +81,8 @@ You understand GitOps as a paradigm, not just a tool. Sync-wave ordering and hea
 - Custom observability exporting
 
 **Evidence:**
-- **Tailscale Integration** — Mesh VPN operator deployed for secure ingress. See [`platform/tailscale/`](../platform/tailscale/) and ADR-001
-- **Platform Ingress Templates** — Reusable ingress pattern for services (Grafana, Prometheus, Vault, ArgoCD). See [`platform/tailscale/templates/ingress.yaml`](../platform/tailscale/templates/ingress.yaml)
+- **Tailscale Integration** — Mesh VPN operator (wave `-1`) + single-host gateway (`my-cluster.lonk-mirfak.ts.net` path routing via `cluster-gateway` NGINX). See [`platform/tailscale/`](../platform/tailscale/) and ADRs 001/012
+- **Platform Ingress Templates** — Single-host gateway pattern (1 Ingress `my-cluster` → `cluster-gateway` → per-service locations). See [`platform/tailscale/templates/ingress.yaml`](../platform/tailscale/templates/ingress.yaml) and `gateway-*.yaml`
 - **Network Policies** — Vault server/injector egress policies. See [`platform/vault/templates/networkpolicy.yaml`](../platform/vault/templates/networkpolicy.yaml)
 - **Monitoring Stack** — Prometheus (metrics), Grafana (dashboards), Loki (logs). See [`platform/monitoring/`](../platform/monitoring/)
 - **Vault Metrics Export** — Prometheus endpoints for Vault health, sealed state, replication status

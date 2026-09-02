@@ -1,7 +1,25 @@
 developmentApp:
   enabled: false
 
-# Ingress toggles for services to be exposed via Tailscale
+# Single-host gateway — 1 Tailscale device (my-cluster) with path routing.
+# See ADR-012. Each backend is gated by its own enabled toggle below.
+hostname: my-cluster
+gateway:
+  enabled: true
+  replicas: 1
+  image:
+    repository: nginx
+    tag: "1.27-alpine"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# Per-service toggles — each controls a /<service> location in the gateway ConfigMap.
 argocd:
   enabled: true
 

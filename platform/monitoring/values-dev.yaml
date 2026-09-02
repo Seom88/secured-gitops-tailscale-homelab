@@ -1,17 +1,19 @@
 developmentApp:
   enabled: true
 
-# Loki S3 endpoint override for dev (uses seaweedfs-dev release)
+# Loki S3 endpoint — unified service name (no -dev suffix after ADR-012 simplification)
 loki:
   loki:
     storage:
       s3:
-        endpoint: http://seaweedfs-dev-s3.seaweedfs.svc:8333
+        endpoint: http://seaweedfs-s3.seaweedfs.svc:8333
 
 # Configuration for the Kube-Prometheus-Stack subchart
 kube-prometheus-stack:
   prometheus:
     prometheusSpec:
+      externalUrl: https://dev-my-cluster.lonk-mirfak.ts.net/prometheus
+      routePrefix: /prometheus
       storageSpec:
         volumeClaimTemplate:
           spec:
@@ -23,11 +25,16 @@ kube-prometheus-stack:
 
   # Grafana configuration
   grafana:
-    # Add Loki as a data source
+    grafana.ini:
+      server:
+        domain: dev-my-cluster.lonk-mirfak.ts.net
+        root_url: https://dev-my-cluster.lonk-mirfak.ts.net/grafana/
+        serve_from_sub_path: true
+    # Add Loki as a data source — unified release name (no -dev suffix)
     additionalDataSources:
       - name: Loki
         type: loki
-        url: http://monitoring-dev-loki-gateway.monitoring.svc.cluster.local/
+        url: http://monitoring-loki-gateway.monitoring.svc.cluster.local/
         access: proxy
         jsonData:
           httpHeaderName1: "X-Scope-OrgID"

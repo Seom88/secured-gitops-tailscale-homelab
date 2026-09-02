@@ -1,11 +1,17 @@
-{{- if .Values.longhorn.enabled }}
+{{- if .Values.gateway.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: longhorn
-  namespace: longhorn-system
+  name: my-cluster
+  namespace: tailscale
+  labels:
+    app.kubernetes.io/name: my-cluster
+    app.kubernetes.io/part-of: tailscale
 spec:
   ingressClassName: tailscale
+  tls:
+    - hosts:
+        - {{ .Values.hostname }}
   rules:
     - http:
         paths:
@@ -13,10 +19,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: longhorn-frontend
+                name: cluster-gateway
                 port:
                   number: 80
-  tls:
-    - hosts:
-        - {{ if .Values.developmentApp.enabled }}dev-longhorn{{- else }}longhorn{{- end }}
 {{- end }}
