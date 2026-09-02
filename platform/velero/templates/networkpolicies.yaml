@@ -49,6 +49,28 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  name: velero-allow-apiserver
+  namespace: velero
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # kube-apiserver Service IP (10.96.0.1) + in-cluster endpoints — Velero MUST talk to API to list CRDs/backups
+    - to:
+        - ipBlock:
+            cidr: 10.96.0.1/32
+        - ipBlock:
+            cidr: 10.10.20.0/24
+      ports:
+        - port: 443
+          protocol: TCP
+        - port: 6443
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
   name: velero-default-deny-egress
   namespace: velero
 spec:
