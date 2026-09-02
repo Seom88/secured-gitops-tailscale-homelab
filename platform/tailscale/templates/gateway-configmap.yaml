@@ -55,6 +55,7 @@ data:
           proxy_set_header X-Forwarded-Proto $scheme;
           proxy_set_header X-Forwarded-Host $host;
           proxy_set_header X-Forwarded-Prefix /argocd;
+          proxy_set_header Accept-Encoding "";
           proxy_redirect off;
           proxy_buffering off;
           sub_filter '<base href="/">' '<base href="/argocd/">';
@@ -102,6 +103,7 @@ data:
 {{- if .Values.vault.enabled }}
         # Vault UI does NOT support subpath — assets/redirects are absolute /ui/, /v1/.
         # Rewrite redirects and HTML so /ui/ → /vault/ui/ and /v1/ → /vault/v1/ stay inside prefix.
+        # Must disable gzip from backend so sub_filter can rewrite.
         location /vault/ {
           proxy_pass https://vault.vault.svc.cluster.local:8200/;
           proxy_ssl_verify off;
@@ -110,6 +112,7 @@ data:
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
           proxy_set_header X-Forwarded-Proto $scheme;
           proxy_set_header X-Forwarded-Host $host;
+          proxy_set_header Accept-Encoding "";
           proxy_redirect / /vault/;
           proxy_redirect /ui/ /vault/ui/;
           # Vault health uses 307 → /ui/ ; preserve it under /vault
@@ -121,6 +124,9 @@ data:
           # API calls from UI to /v1/
           sub_filter '"/v1/' '"/vault/v1/';
           sub_filter "'/v1/'" "'/vault/v1/'";
+          # Encoded rootURL in Ember meta (e.g. %2Fui%2F)
+          sub_filter '%2Fui%2F' '%2Fvault%2Fui%2F';
+          sub_filter '%2Fv1%2F' '%2Fvault%2Fv1%2F';
           sub_filter_types *;
           sub_filter_once off;
         }
@@ -178,6 +184,7 @@ data:
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
           proxy_set_header X-Forwarded-Proto $scheme;
           proxy_set_header X-Forwarded-Host $host;
+          proxy_set_header Accept-Encoding "";
           proxy_redirect / /seaweedfs-admin/;
           proxy_redirect /login /seaweedfs-admin/login;
           sub_filter 'href="/' 'href="/seaweedfs-admin/';
