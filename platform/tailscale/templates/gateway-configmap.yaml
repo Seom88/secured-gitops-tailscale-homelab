@@ -1,3 +1,4 @@
+# Hybrid gateway: 2 Tailscale devices — my-cluster (gateway) for 5 services + vault-my-cluster (Vault dedicated) via vault-ingress.yaml — see ADR-012 + Amendment 2026-09-02
 {{- if .Values.gateway.enabled }}
 apiVersion: v1
 kind: ConfigMap
@@ -100,53 +101,7 @@ data:
           return 302 /prometheus/;
         }
 {{- end }}
-{{- if .Values.vault.enabled }}
-        # Vault UI does NOT support subpath — assets/redirects are absolute /ui/, /v1/.
-        # Rewrite redirects and HTML so /ui/ → /vault/ui/ and /v1/ → /vault/v1/ stay inside prefix.
-        # Must disable gzip from backend so sub_filter can rewrite.
-        location /vault/ {
-          proxy_pass https://vault.vault.svc.cluster.local:8200/;
-          proxy_ssl_verify off;
-          proxy_set_header Host $host;
-          proxy_set_header X-Real-IP $remote_addr;
-          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-          proxy_set_header X-Forwarded-Proto $scheme;
-          proxy_set_header X-Forwarded-Host $host;
-          proxy_set_header Accept-Encoding "";
-          proxy_redirect / /vault/;
-          proxy_redirect /ui/ /vault/ui/;
-          # Vault health uses 307 → /ui/ ; preserve it under /vault
-          sub_filter 'href="/ui/' 'href="/vault/ui/';
-          sub_filter 'src="/ui/' 'src="/vault/ui/';
-          sub_filter 'action="/' 'action="/vault/';
-          sub_filter '"\/ui\/' '"/vault/ui/';
-          sub_filter "'\/ui\/'" "'/vault/ui/'";
-          # API calls from UI to /v1/
-          sub_filter '"/v1/' '"/vault/v1/';
-          sub_filter "'/v1/'" "'/vault/v1/'";
-          # Encoded rootURL in Ember meta (e.g. %2Fui%2F)
-          sub_filter '%2Fui%2F' '%2Fvault%2Fui%2F';
-          sub_filter '%2Fv1%2F' '%2Fvault%2Fv1%2F';
-          sub_filter_types *;
-          sub_filter_once off;
-        }
-        location = /vault {
-          return 302 /vault/;
-        }
-        location = /vault/ui {
-          return 302 /vault/ui/;
-        }
-        # Vault API under same prefix — keep functional for UI XHRs that already use /vault/v1
-        location /vault/v1/ {
-          proxy_pass https://vault.vault.svc.cluster.local:8200/v1/;
-          proxy_ssl_verify off;
-          proxy_set_header Host $host;
-          proxy_set_header X-Real-IP $remote_addr;
-          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-          proxy_set_header X-Forwarded-Proto $scheme;
-          proxy_redirect off;
-        }
-{{- end }}
+{{- /* Vault is served via dedicated Tailscale device vault-my-cluster (vault-ingress.yaml), not via gateway — see ADR-012 Amendment */ -}}
 {{- if .Values.longhorn.enabled }}
         location /longhorn/ {
           proxy_pass http://longhorn-frontend.longhorn-system.svc.cluster.local:80/;
@@ -199,10 +154,10 @@ data:
         }
 {{- end }}
 
-        # Fallback — list available paths
+        # Fallback — list available paths (Vault is on vault-my-cluster device, not here)
         location / {
           default_type text/html;
-          return 404 '<h1>my-cluster gateway</h1><p>Available paths: /argocd/ /grafana/ /prometheus/ /vault/ /longhorn/ /seaweedfs-s3/ /seaweedfs-admin/</p>';
+          return 404 '<h1>my-cluster gateway</h1><p>Available paths: /argocd/ /grafana/ /prometheus/ /longhorn/ /seaweedfs-s3/ /seaweedfs-admin/ (vault on vault-my-cluster.lonk-mirfak.ts.net)</p>';
         }
       }
     }

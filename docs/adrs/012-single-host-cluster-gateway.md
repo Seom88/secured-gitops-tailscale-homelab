@@ -79,3 +79,33 @@ Kubernetes constraint: an `Ingress` backend `Service` must be in the same namesp
 - Tailscale KB 1236: https://tailscale.com/kb/1236/kubernetes-operator — `ingressClassName: tailscale`, `tailscale serve`, `TLS hosts` single label
 - Tailscale operator `ingress-for-pg.go:validateIngress()` — duplicate hostname + `ValidLabel` checks
 - Tailscale issue #10330, #20604 — single-host funnel workaround and shared-identity FR
+
+---
+
+## Amendment 2026-09-02: Vault Moved to Dedicated Device (Supersedes /vault Path)
+
+**Status:** Accepted · **Amends:** Decision section `gateway /vault` location · **Reason:** Vault UI has no subpath support.
+
+Vault's UI and API assume root (`/ui/`, `/v1/`). Serving it under a gateway prefix `/vault/` required fragile `sub_filter` HTML/JS rewriting, disabling backend gzip, and shimming absolute `/v1/`/`/ui/` fallbacks. This broke on Vault upgrades and left `JSON.parse` HTML errors on missed rewrites. Upstream confirms subpath is unsupported:
+
+- hashicorp/vault#9221 — "Vault UI does not support running under a subpath / prefix" (closed, won't fix)
+- hashicorp/vault/discussions/12719 — community workarounds for subpath / `X-Forwarded-Prefix` remain fragile; no official `root_url` / `base_href` equivalent
+
+**Amended Decision:**
+
+- Remove `vault` `location` blocks (`/vault/`, `/vault/v1/`, `/v1/`, `/ui/` shims) from `platform/tailscale/templates/gateway-configmap.yaml`. Gateway now routes 5 services: `argocd`, `grafana`, `prometheus`, `longhorn`, `seaweedfs-*` via `my-cluster.lonk-mirfak.ts.net`.
+- Add `platform/tailscale/templates/vault-ingress.yaml` (`namespace: vault`, `ingressClassName: tailscale`, `service: vault:https`, `tls.hosts: vault-my-cluster` / `dev-vault-my-cluster` gated by `vault.enabled` + `developmentApp.enabled`). This restores the pre-ADR-012 dedicated `Ingress` pattern for Vault only, at `https://vault-my-cluster.lonk-mirfak.ts.net` (dev: `dev-vault-my-cluster`).
+- `platform/tailscale/values.yaml` keeps `vault.enabled: true` but now documents it as the dedicated-device toggle, not a gateway prefix. `Chart.yaml` description updated to "Hybrid: 1 gateway device my-cluster for 5 services + dedicated vault-my-cluster device for Vault (2 devices total)".
+- Tailnet footprint becomes **2 devices / 2 certs** (`my-cluster`, `vault-my-cluster`) instead of 1. This is an intentional trade-off: correctness and upgrade safety for Vault outweighs the single-device ideal. All other services retain the single-host gateway benefit.
+
+**Consequences of Amendment:**
+
+- Vault is no longer reachable at `https://my-cluster.../vault/` (gateway returns updated 404 listing 5 paths + vault hint). Direct hostname `vault-my-cluster.lonk-mirfak.ts.net` is the canonical Vault URL; update docs/runbooks.
+- No `sub_filter` or `proxy_ssl_verify off` complexity in gateway for Vault; gateway `nginx.conf` is simpler and not coupled to Vault release.
+- Rollback: re-add vault locations to gateway ConfigMap and delete `vault-ingress.yaml` (or keep both, but duplicate Vault exposure is not intended).
+
+**Updated Verification (amended):**
+
+- `helm template tailscale platform/tailscale --values platform/tailscale/values.yaml` renders **2** Ingresses (`my-cluster` in `tailscale` + `vault` in `vault`) and gateway `nginx.conf` contains no `/vault/` location.
+- `helm template tailscale platform/tailscale --values platform/tailscale/values-dev.yaml` renders hosts `dev-my-cluster` + `dev-vault-my-cluster`.
+- `helm lint platform/tailscale` + `just validate` pass.

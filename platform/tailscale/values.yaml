@@ -1,11 +1,11 @@
 developmentApp:
   enabled: false
 
-# Single-host gateway — 1 Tailscale device (my-cluster) with path routing.
-# See ADR-012. Each backend is gated by its own enabled toggle below.
+# Hybrid gateway — 2 Tailscale devices: my-cluster (gateway for 5 services) + vault-my-cluster (Vault dedicated via vault-ingress.yaml).
+# See ADR-012 + Amendment 2026-09-02 (Vault moved off gateway due to no subpath support). Each gateway location gated by enabled toggle below.
 hostname: my-cluster
 gateway:
-  enabled: true
+  enabled: true  # set false to disable the my-cluster gateway device; vault device controlled by vault.enabled below
   replicas: 1
   image:
     repository: nginx
@@ -19,12 +19,13 @@ gateway:
       cpu: 200m
       memory: 128Mi
 
-# Per-service toggles — each controls a /<service> location in the gateway ConfigMap.
+# Per-service toggles — argocd/grafana/prometheus/longhorn/seaweedfs control gateway ConfigMap locations.
+# vault.enabled controls the dedicated vault-my-cluster Tailscale device (vault-ingress.yaml), not a gateway location.
 argocd:
   enabled: true
 
 vault:
-  enabled: true
+  enabled: true  # dedicated device vault-my-cluster.lonk-mirfak.ts.net (dev: dev-vault-my-cluster); gateway no longer serves /vault
 
 grafana:
   enabled: true

@@ -1,6 +1,6 @@
 apiVersion: v2
 name: tailscale
-description: Single-host Tailscale gateway (1 device my-cluster) with path-based routing to platform services (operator in platform/tailscale-operator wave -1) — see ADR-012
+description: "Hybrid: 1 gateway device my-cluster for 5 services + dedicated vault-my-cluster device for Vault (2 devices total) — see ADR-012"
 type: application
 version: 1.0.0
 appVersion: "1.96.5"
