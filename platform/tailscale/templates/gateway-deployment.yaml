@@ -14,6 +14,8 @@ spec:
       app.kubernetes.io/name: cluster-gateway
   template:
     metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/gateway-configmap.yaml") . | sha256sum }}
       labels:
         app.kubernetes.io/name: cluster-gateway
         app.kubernetes.io/part-of: tailscale
