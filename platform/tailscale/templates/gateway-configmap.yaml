@@ -45,12 +45,10 @@ data:
         }
 
 {{- if .Values.argocd.enabled }}
-        # ArgoCD — requires server.basehref=/argocd in infra-talos-homelab (see ADR-012)
-        # Grafana/Prometheus style: backend expects /argocd prefix when basehref is set.
-        # Keep prefix-forwarding so assets resolve as /argocd/assets/*
+        # ArgoCD — backend serves at / (no basehref needed); strip /argocd prefix and rewrite HTML
+        # so assets/base href stay under /argocd/. Tested: ARGOCD_SERVER_BASEHREF not reliably rewrites HTML base on v3.4.4.
         location /argocd/ {
-          proxy_pass https://argocd-server.argocd.svc.cluster.local:443;
-          proxy_ssl_verify off;
+          proxy_pass http://argocd-server.argocd.svc.cluster.local:80/;
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -59,6 +57,12 @@ data:
           proxy_set_header X-Forwarded-Prefix /argocd;
           proxy_redirect off;
           proxy_buffering off;
+          sub_filter '<base href="/">' '<base href="/argocd/">';
+          sub_filter 'href="/' 'href="/argocd/';
+          sub_filter 'src="/' 'src="/argocd/';
+          sub_filter 'action="/' 'action="/argocd/';
+          sub_filter_types *;
+          sub_filter_once off;
         }
         location = /argocd {
           return 302 /argocd/;
