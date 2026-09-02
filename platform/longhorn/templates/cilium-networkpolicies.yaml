@@ -1,0 +1,127 @@
+{{- if .Values.ciliumNetworkPolicy.enabled }}
+# CiliumNetworkPolicies for longhorn-system — complement to chart's native NetworkPolicies
+# Chart already provides 6 K8s NPs (manager, webhook, conversion, etc.) but no Cilium-aware DNS/FQDN or Hubble.
+# This adds DNS-aware egress, Hubble, and explicit intra-longhorn allowlists to match Cilium identity semantics.
+
+# 1) DNS
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: longhorn-allow-dns
+  namespace: longhorn-system
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+# 2) Egress — intra-longhorn + kube-apiserver + host + Hubble
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: longhorn-allow-egress
+  namespace: longhorn-system
+spec:
+  endpointSelector: {}
+  egress:
+    # Intra-longhorn (manager 9500, admission webhook 9502, recovery 9503, instance-managers, CSI)
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: longhorn-system
+      toPorts:
+        - ports:
+            - port: "9500"
+              protocol: TCP
+            - port: "9501"
+              protocol: TCP
+            - port: "9502"
+              protocol: TCP
+            - port: "9503"
+              protocol: TCP
+            - port: "9504"
+              protocol: TCP
+            - port: "3260"
+              protocol: TCP
+            - port: "10010"
+              protocol: TCP
+            - port: "8500"
+              protocol: TCP
+            - port: "8501"
+              protocol: TCP
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+    - toEntities:
+        - host
+        - remote-node
+      toPorts:
+        - ports:
+            - port: "9500"
+              protocol: TCP
+    # Tailscale gateway -> longhorn-frontend (80) is ingress direction; egress from longhorn to world not needed
+    # Hubble observability
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: hubble-relay
+      toPorts:
+        - ports:
+            - port: "4244"
+              protocol: TCP
+---
+# 3) Ingress — allow scrapes from monitoring + tailscale gateway + kube-apiserver (webhooks) + intra + host
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: longhorn-allow-ingress
+  namespace: longhorn-system
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: longhorn-system
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - port: "9500"
+              protocol: TCP
+            - port: "9502"
+              protocol: TCP
+            - port: "9942"
+              protocol: TCP
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: tailscale
+            k8s:app.kubernetes.io/name: cluster-gateway
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+            - port: "9500"
+              protocol: TCP
+    - fromEntities:
+        - kube-apiserver
+        - host
+        - remote-node
+        - cluster
+{{- end }}

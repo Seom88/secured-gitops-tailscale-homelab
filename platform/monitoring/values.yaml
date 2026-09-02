@@ -157,6 +157,9 @@ kube-prometheus-stack:
 # It needs NO PVC/storage (WAL disabled by default, uses /tmp/alloy which is ephemeral).
 # RBAC (ServiceAccount + ClusterRole/ClusterRoleBinding for pods/nodes discovery) is
 # created automatically by the alloy chart (rbac.create=true, default). No manual RBAC needed.
+ciliumNetworkPolicy:
+  enabled: true
+
 alloy:
   # Pass-through to alloy subchart (Helm: parent key `alloy` nests all alloy chart values)
   alloy:

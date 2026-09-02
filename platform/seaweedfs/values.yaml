@@ -67,5 +67,8 @@ seaweedfs:
   allInOne:
     enabled: false
 
+ciliumNetworkPolicy:
+  enabled: true
+
 developmentApp:
   enabled: false

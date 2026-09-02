@@ -1,0 +1,135 @@
+{{- if .Values.ciliumNetworkPolicy.enabled }}
+# CiliumNetworkPolicies for seaweedfs namespace — intra-component + DNS + ingress from monitoring/tailscale
+
+# 1) DNS
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: seaweedfs-allow-dns
+  namespace: seaweedfs
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+# 2) Egress — intra-seaweedfs (master 9333/19333, volume 8080/18080, filer 8888/18888, s3 8333, admin 23646) + kube-apiserver for liveness?
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: seaweedfs-allow-egress
+  namespace: seaweedfs
+spec:
+  endpointSelector: {}
+  egress:
+    # Intra-seaweedfs — all components must talk to each other
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: seaweedfs
+      toPorts:
+        - ports:
+            - port: "8333"
+              protocol: TCP
+            - port: "9333"
+              protocol: TCP
+            - port: "19333"
+              protocol: TCP
+            - port: "9444"
+              protocol: TCP
+            - port: "8888"
+              protocol: TCP
+            - port: "18888"
+              protocol: TCP
+            - port: "8080"
+              protocol: TCP
+            - port: "18080"
+              protocol: TCP
+            - port: "23646"
+              protocol: TCP
+            - port: "33646"
+              protocol: TCP
+            - port: "9327"
+              protocol: TCP
+    # Optional: reach kube-apiserver for service discovery (not strictly required)
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+---
+# 3) Ingress — intra-seaweedfs + monitoring scrapes (9327) + tailscale gateway + Loki S3 + Hubble
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: seaweedfs-allow-ingress
+  namespace: seaweedfs
+spec:
+  endpointSelector: {}
+  ingress:
+    # Intra-seaweedfs
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: seaweedfs
+    # Prometheus scraping (kube-prometheus-stack) — metrics on 9327 + 8080 + 9333
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - port: "9327"
+              protocol: TCP
+            - port: "8080"
+              protocol: TCP
+            - port: "18080"
+              protocol: TCP
+            - port: "9333"
+              protocol: TCP
+            - port: "8888"
+              protocol: TCP
+    # Tailscale gateway -> S3 (8333) and Admin (23646) — read-only anon + admin UI via prefix proxy
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: tailscale
+            k8s:app.kubernetes.io/name: cluster-gateway
+      toPorts:
+        - ports:
+            - port: "8333"
+              protocol: TCP
+            - port: "23646"
+              protocol: TCP
+            - port: "33646"
+              protocol: TCP
+    # Loki (monitoring) writing chunks to S3 — from Loki gateway / Loki single-binary
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - port: "8333"
+              protocol: TCP
+    # Hubble / host health
+    - fromEntities:
+        - host
+        - remote-node
+      toPorts:
+        - ports:
+            - port: "9327"
+              protocol: TCP
+            - port: "8333"
+              protocol: TCP
+{{- end }}

@@ -1,0 +1,118 @@
+{{- if .Values.ciliumNetworkPolicy.enabled }}
+# CiliumNetworkPolicies for velero — Cilium-native mirror of existing K8s NetworkPolicies
+# Keeps portfolio consistency: every platform chart now has Cilium policy (websearch-verified spec).
+
+# 1) DNS (Cilium DNS-aware, mirroring velero-allow-dns)
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: velero-allow-dns-cilium
+  namespace: velero
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+# 2) Egress — RustFS S3 (velero-homelab bucket) + Tailscale proxy + kube-apiserver + Hubble
+# RustFS lives behind Tailscale gateway DNS (rustfs.lonk-mirfak.ts.net) on 443
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: velero-allow-egress-cilium
+  namespace: velero
+spec:
+  endpointSelector: {}
+  egress:
+    # S3 via Tailscale (RustFS at rustfs.lonk-mirfak.ts.net:443) — use FQDN + world with 443
+    - toFQDNs:
+        - matchName: rustfs.lonk-mirfak.ts.net
+        - matchPattern: "*.lonk-mirfak.ts.net"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*.ts.net"
+              - matchPattern: "*.lonk-mirfak.ts.net"
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # Tailscale gateway (for DNS via ts.net stub)
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: tailscale
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+            - port: "443"
+              protocol: TCP
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+    # Hubble
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: hubble-relay
+      toPorts:
+        - ports:
+            - port: "4244"
+              protocol: TCP
+    # Cluster-internal backups (PVC snapshots via kubelet/API)
+    - toEntities:
+        - host
+        - remote-node
+        - cluster
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+---
+# 3) Ingress — from monitoring (ServiceMonitor scraping) + host + Hubble
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: velero-allow-ingress-cilium
+  namespace: velero
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - port: "8085"
+              protocol: TCP
+            - port: "8080"
+              protocol: TCP
+    - fromEntities:
+        - host
+        - remote-node
+        - kube-apiserver
+{{- end }}

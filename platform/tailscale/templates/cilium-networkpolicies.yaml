@@ -1,0 +1,170 @@
+{{- if .Values.ciliumNetworkPolicy.enabled }}
+# CiliumNetworkPolicies for tailscale namespace — gateway nginx (my-cluster)
+# Gateway proxies to: argocd, grafana, prometheus, longhorn-frontend, seaweedfs-s3/admin — all via ClusterIP
+
+# 1) DNS egress
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: tailscale-allow-dns
+  namespace: tailscale
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+# 2) Egress — gateway upstreams + kube-apiserver + Tailscale control (optional via world)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: tailscale-allow-egress
+  namespace: tailscale
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: cluster-gateway
+  egress:
+    # ArgoCD
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: argocd
+            k8s:app.kubernetes.io/name: argocd-server
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+            - port: "443"
+              protocol: TCP
+    # Grafana (monitoring)
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+            k8s:app.kubernetes.io/name: grafana
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+    # Prometheus (monitoring)
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+            k8s:app.kubernetes.io/name: prometheus
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+            - port: "8080"
+              protocol: TCP
+    # Longhorn frontend
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: longhorn-system
+            k8s:app: longhorn-ui
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+    # SeaweedFS S3 + admin
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: seaweedfs
+      toPorts:
+        - ports:
+            - port: "8333"
+              protocol: TCP
+            - port: "23646"
+              protocol: TCP
+            - port: "33646"
+              protocol: TCP
+    # Vault is NOT via gateway (dedicated device vault-my-cluster) — explicitly NOT allowed here
+    # Kube API for health? Not needed but allow DNS already covers; gateway occasionally checks svc discovery
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+---
+# 3) Egress for all pods in tailscale (covers future Ingress-managed pods) — DNS + kube-apiserver + tailscale operator
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: tailscale-default-egress
+  namespace: tailscale
+spec:
+  endpointSelector: {}
+  egress:
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+    - toEntities:
+        - host
+        - remote-node
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+            - port: "443"
+              protocol: TCP
+---
+# 4) Ingress — allow from Tailscale operator proxy + host + world (IngressClass tailscale forwards external)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: tailscale-allow-ingress
+  namespace: tailscale
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: cluster-gateway
+  ingress:
+    # Tailscale Ingress proxy is run by tailscale-operator; its pods live in tailscale-operator namespace
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: tailscale-operator
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+    # Cilium host / remote-node (kube-proxy-replacement, health probes)
+    - fromEntities:
+        - host
+        - remote-node
+        - cluster
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+    # Allow world (Tailscale encrypted tunnel terminates externally, but inside cluster allow explicit)
+    # Restricted to port 80 only; L7 proxy handles auth via Tailscale ACLs
+    - fromEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+    # Intra-namespace health
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: tailscale
+{{- end }}

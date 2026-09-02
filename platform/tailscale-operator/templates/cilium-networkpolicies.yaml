@@ -1,0 +1,119 @@
+{{- if .Values.ciliumNetworkPolicy.enabled }}
+# CiliumNetworkPolicies for tailscale-operator namespace — operator + Ingress proxies
+
+# 1) DNS
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: tailscale-operator-allow-dns
+  namespace: tailscale-operator
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+# 2) Egress — kube-apiserver + Tailscale control plane (443) + DNS + webhook to kubelets
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: tailscale-operator-allow-egress
+  namespace: tailscale-operator
+spec:
+  endpointSelector: {}
+  egress:
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+    # Tailscale control plane (controlplane.tailscale.com, log.tailscale.com) — use world on 443 with DNS interception
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*.tailscale.com"
+              - matchPattern: "*.ts.net"
+              - matchPattern: "controlplane.tailscale.com"
+    # DNS already allowed above, but add FQDN rule to world for control plane
+    - toFQDNs:
+        - matchName: controlplane.tailscale.com
+        - matchPattern: "*.controlplane.tailscale.com"
+        - matchPattern: "*.tailscale.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # Proxies forward to in-cluster services (operator creates Service per Ingress) — allow to cluster
+    - toEntities:
+        - cluster
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+            - port: "443"
+              protocol: TCP
+            - port: "8200"
+              protocol: TCP
+            - port: "9090"
+              protocol: TCP
+    # Hubble
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: hubble-relay
+      toPorts:
+        - ports:
+            - port: "4244"
+              protocol: TCP
+---
+# 3) Ingress — API server webhook + host probes + hubble
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: tailscale-operator-allow-ingress
+  namespace: tailscale-operator
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEntities:
+        - kube-apiserver
+        - host
+        - remote-node
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "9443"
+              protocol: TCP
+            - port: "8080"
+              protocol: TCP
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: tailscale-operator
+    - fromEntities:
+        - cluster
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+{{- end }}

@@ -1,0 +1,63 @@
+{{- if .Values.ciliumNetworkPolicy.enabled }}
+# CiliumNetworkPolicies for coredns-patch namespace — short-lived Job that patches CoreDNS
+# Job runs: kubectl get/dnsconfig + get/patch ConfigMap in kube-system + rollout restart deployment/coredns
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: coredns-patch-allow-dns
+  namespace: coredns-patch
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: coredns-patch-allow-egress
+  namespace: coredns-patch
+spec:
+  endpointSelector: {}
+  egress:
+    # kube-apiserver — Job polls DNSConfig (tailscale.com CRD) and patches ConfigMap/Rollout
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+    # Allow egress to kube-system for ConfigMap/Deployment ops (via kube-apiserver entity already covers, but add world deny exception)
+    # No direct pod-to-pod needed — all via API server
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: coredns-patch-allow-ingress
+  namespace: coredns-patch
+spec:
+  endpointSelector: {}
+  ingress:
+    # Only host/health; Job does not expose service
+    - fromEntities:
+        - host
+        - remote-node
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+{{- end }}

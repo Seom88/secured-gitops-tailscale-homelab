@@ -1,0 +1,105 @@
+{{- if .Values.ciliumNetworkPolicy.enabled }}
+# CiliumNetworkPolicies for vault — complement to Helm-managed K8s NetworkPolicies (vault Helm: server + injector NPs)
+# Adds Hubble visibility + Cilium DNS-aware + explicit allow for ExternalSecretsOperator.
+
+# 1) Hubble-aware DNS (mirrors Helm NP but Cilium-aware)
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: vault-allow-dns-cilium
+  namespace: vault
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+# 2) Egress complement — Hubble, ESO, and Vault replication
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: vault-allow-egress-cilium
+  namespace: vault
+spec:
+  endpointSelector: {}
+  egress:
+    # Vault HA raft (8200/8201 within vault namespace) — already in Helm NP, mirrored here Cilium-native
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: vault
+      toPorts:
+        - ports:
+            - port: "8200"
+              protocol: TCP
+            - port: "8201"
+              protocol: TCP
+    # ExternalSecretsOperator -> Vault
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: external-secrets
+      toPorts:
+        - ports:
+            - port: "8200"
+              protocol: TCP
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+    # Hubble
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: hubble-relay
+      toPorts:
+        - ports:
+            - port: "4244"
+              protocol: TCP
+---
+# 3) Ingress complement — Hubble + dedicated Tailscale device (vault-my-cluster)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: vault-allow-ingress-cilium
+  namespace: vault
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: vault
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: external-secrets
+      toPorts:
+        - ports:
+            - port: "8200"
+              protocol: TCP
+    # Vault dedicated Tailscale Ingress proxy lives in tailscale-operator (per ADR-012 Amendment)
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: tailscale-operator
+      toPorts:
+        - ports:
+            - port: "8200"
+              protocol: TCP
+    - fromEntities:
+        - host
+        - remote-node
+        - kube-apiserver
+{{- end }}

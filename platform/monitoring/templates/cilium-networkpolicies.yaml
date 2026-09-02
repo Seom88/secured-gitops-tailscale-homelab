@@ -1,0 +1,168 @@
+{{- if .Values.ciliumNetworkPolicy.enabled }}
+# CiliumNetworkPolicies for monitoring namespace — portfolio-grade default-deny with scoped allowlists
+# Covers: Alloy DaemonSet -> kube-api + Loki gateway + DNS, Prometheus scraping, Grafana ingress, Loki -> SeaweedFS S3, Hubble
+
+# 1) DNS egress — allow all pods in monitoring to resolve via kube-dns (Cilium DNS-aware)
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: monitoring-allow-dns
+  namespace: monitoring
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+# 2) Egress allowlist — kube-apiserver, intra-monitoring, SeaweedFS S3, Hubble, and cluster scraping
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: monitoring-allow-egress
+  namespace: monitoring
+spec:
+  endpointSelector: {}
+  egress:
+    # Alloy & prometheus-operator need kube-apiserver (discovery, ServiceMonitors)
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+    # Intra-monitoring: alloy -> loki-gateway (80), prometheus (9090), grafana (80), alertmanager (9093)
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+            - port: "3100"
+              protocol: TCP
+            - port: "9090"
+              protocol: TCP
+            - port: "9093"
+              protocol: TCP
+            - port: "9094"
+              protocol: TCP
+            - port: "8080"
+              protocol: TCP
+            - port: "3000"
+              protocol: TCP
+    # Loki -> SeaweedFS S3 (8333) — bucketNames loki-chunks / loki-ruler
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: seaweedfs
+            k8s:app.kubernetes.io/component: s3
+      toPorts:
+        - ports:
+            - port: "8333"
+              protocol: TCP
+    # Prometheus scraping: allow egress to any pod in cluster on scrape ports (9100 node-exporter, 8080 kube-state-metrics, 9090, 9153 coredns, 10250 kubelet)
+    # Uses toEntities cluster to avoid enumerating every namespace/selector — Hubble will show flows per-identity
+    - toEntities:
+        - cluster
+      toPorts:
+        - ports:
+            - port: "9100"
+              protocol: TCP
+            - port: "8080"
+              protocol: TCP
+            - port: "9090"
+              protocol: TCP
+            - port: "9153"
+              protocol: TCP
+            - port: "10250"
+              protocol: TCP
+            - port: "3100"
+              protocol: TCP
+            - port: "7946"
+              protocol: TCP
+            - port: "3500"
+              protocol: TCP
+    # Hubble relay (optional observability)
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: hubble-relay
+      toPorts:
+        - ports:
+            - port: "4244"
+              protocol: TCP
+            - port: "4245"
+              protocol: TCP
+---
+# 3) Ingress allowlist — intra-monitoring + scrape from Prometheus + Tailscale gateway to Grafana, plus Hubble
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: monitoring-allow-ingress
+  namespace: monitoring
+spec:
+  endpointSelector: {}
+  ingress:
+    # Intra-monitoring (prometheus, alloy, loki, grafana talk among themselves)
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+    # Allow scraping from prometheus pods anywhere in cluster (node-exporter, kube-state-metrics, loki, coredns)
+    # Prometheus lives in monitoring, but Cilium identity is cluster-scoped — use cluster entity for health checks
+    - fromEntities:
+        - cluster
+      toPorts:
+        - ports:
+            - port: "9100"
+              protocol: TCP
+            - port: "8080"
+              protocol: TCP
+            - port: "9153"
+              protocol: TCP
+            - port: "10250"
+              protocol: TCP
+            - port: "3100"
+              protocol: TCP
+            - port: "9095"
+              protocol: TCP
+            - port: "7946"
+              protocol: TCP
+    # Grafana / Prometheus via Tailscale gateway (tailscale namespace) — ports 80, 9090 ingress
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: tailscale
+            k8s:app.kubernetes.io/name: cluster-gateway
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+            - port: "9090"
+              protocol: TCP
+    # Hubble / Cilium health checks
+    - fromEntities:
+        - host
+        - remote-node
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+            - port: "80"
+              protocol: TCP
+            - port: "8080"
+              protocol: TCP
+            - port: "3000"
+              protocol: TCP
+{{- end }}
