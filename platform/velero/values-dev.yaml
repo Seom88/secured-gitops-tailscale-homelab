@@ -4,4 +4,13 @@ developmentApp:
 velero:
   configuration:
     backupStorageLocation:
-      prefix: velero-dev
+      - name: default
+        provider: aws
+        bucket: velero-homelab
+        prefix: velero-dev
+        caCert: ""
+        config:
+          region: us-east-1
+          s3ForcePathStyle: "true"
+          s3Url: https://rustfs.lonk-mirfak.ts.net
+          insecureSkipTLSVerify: "true"
