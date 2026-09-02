@@ -36,9 +36,9 @@ metadata:
 spec:
   endpointSelector: {}
   egress:
-    # S3 via Tailscale (RustFS at rustfs.lonk-mirfak.ts.net:443) — use FQDN + world with 443
+    # S3 via Tailscale (RustFS at {{ .Values.rustfs.tailnetFqdn | default "rustfs.lonk-mirfak.ts.net" }}:443) — use FQDN + world with 443
     - toFQDNs:
-        - matchName: rustfs.lonk-mirfak.ts.net
+        - matchName: {{ .Values.rustfs.tailnetFqdn | default "rustfs.lonk-mirfak.ts.net" }}
         - matchPattern: "*.lonk-mirfak.ts.net"
       toPorts:
         - ports:

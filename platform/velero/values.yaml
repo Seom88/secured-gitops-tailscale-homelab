@@ -1,6 +1,10 @@
 ciliumNetworkPolicy:
   enabled: true
 
+rustfs:
+  tailnetFqdn: rustfs.lonk-mirfak.ts.net
+  hostname: velero-rustfs-egress
+
 developmentApp:
   enabled: false
 

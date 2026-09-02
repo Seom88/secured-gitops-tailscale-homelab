@@ -5,7 +5,10 @@ metadata:
   name: rustfs-egress
   namespace: velero
   annotations:
-    tailscale.com/tailnet-fqdn: rustfs.lonk-mirfak.ts.net
+    tailscale.com/tailnet-fqdn: {{ .Values.rustfs.tailnetFqdn | default "rustfs.lonk-mirfak.ts.net" }}
+    {{- with .Values.rustfs.hostname }}
+    tailscale.com/hostname: {{ . }}
+    {{- end }}
 spec:
   type: ExternalName
   externalName: placeholder

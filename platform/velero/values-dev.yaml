@@ -1,3 +1,7 @@
+rustfs:
+  hostname: velero-rustfs-egress-dev
+  tailnetFqdn: rustfs.lonk-mirfak.ts.net
+
 developmentApp:
   enabled: true
 
