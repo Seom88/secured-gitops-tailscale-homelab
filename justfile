@@ -2,6 +2,10 @@
 #  Secured GitOps Homelab — ujust / just recipes
 # ──────────────────────────────────────────────
 
+# Auto-load .env if present — secrets for k8s (see .env.example)
+# .env is gitignored; every recipe inherits K8S_TS_OAUTH_* / VELERO_AWS_*
+set dotenv-load
+
 # ── Default ───────────────────────────────────
 _default:
     @just --list
@@ -10,19 +14,149 @@ _default:
 
 # Full bootstrap (production) — idempotent; rerun for status check, --force to reapply
 init-prod:
+    just secrets-apply
     ./bootstrap/init-gitops.sh prod
 
 # Force reapply App-of-Apps (production)
 init-prod-force:
+    just secrets-apply
     ./bootstrap/init-gitops.sh prod --force
 
 # Full bootstrap (development mode) — idempotent; rerun for status check, --force to reapply
 init-dev:
+    just secrets-apply
     ./bootstrap/init-gitops.sh dev
 
 # Force reapply App-of-Apps (development)
 init-dev-force:
+    just secrets-apply
     ./bootstrap/init-gitops.sh dev --force
+
+# ── Secrets (.env → k8s) ────────────────────────
+
+# Init .env from .env.example (no overwrite)
+secrets-init:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -f .env ]; then
+      echo "✅ .env ya existe — no se sobrescribe (borralo primero si querés regenerarlo)"
+      exit 0
+    fi
+    if [ ! -f .env.example ]; then
+      echo "❌ .env.example no encontrado" >&2; exit 1
+    fi
+    cp .env.example .env
+    echo "✅ .env creado desde .env.example — completá los valores y luego: just secrets-apply"
+
+# Check .env vs .env.example — keys faltantes / valores vacíos / placeholders
+secrets-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -f .env.example ]; then
+      echo "❌ .env.example no encontrado" >&2; exit 1
+    fi
+    if [ ! -f .env ]; then
+      echo "❌ .env no encontrado — crealo con: just secrets-init  (o cp .env.example .env)" >&2
+      exit 1
+    fi
+    echo "==> .env vs .env.example"
+    missing=0; empty=0; placeholder=0
+    while IFS='=' read -r key _; do
+      [[ "$key" =~ ^#.*$ || -z "$key" ]] && continue
+      key=$(echo "$key" | xargs)
+      [ -z "$key" ] && continue
+      if ! grep -q "^${key}=" .env; then
+        echo "  ❌ falta en .env: $key"; missing=$((missing+1))
+      else
+        val=$(grep "^${key}=" .env | cut -d'=' -f2-)
+        if [ -z "$val" ]; then
+          echo "  ⚠️  vacío en .env: $key"; empty=$((empty+1))
+        elif [ "$val" = "..." ] || [ "$val" = "changeme" ] || [ "$val" = "CHANGEME" ]; then
+          echo "  ⚠️  placeholder sin completar en .env: $key=$val"; placeholder=$((placeholder+1))
+        fi
+      fi
+    done < .env.example
+    if [ "$missing" = 0 ] && [ "$empty" = 0 ] && [ "$placeholder" = 0 ]; then
+      echo "✅ .env OK — todas las keys de .env.example presentes y con valor"
+    else
+      echo ""
+      echo "Resumen: $missing faltantes, $empty vacías, $placeholder placeholders"
+      [ "$missing" != 0 ] && exit 1 || true
+      [ "$placeholder" != 0 ] && exit 1 || true
+    fi
+
+# Carga .env → k8s Secrets (idempotente, re-ejecutable)
+#   tailscale/operator-oauth  {client_id, client_secret}  <- K8S_TS_OAUTH_*
+# velero/cloud-credentials  {cloud: "[default]\\naws_access_key_id=..."} <- VELERO_AWS_*
+secrets-apply:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Carga explícita de .env por si just se invoca con --no-dotenv o fuera de just
+    if [ -f .env ]; then
+      set -a; source .env; set +a
+    fi
+    if [ ! -f .env ]; then
+      echo "⚠️  .env no encontrado — usando env del shell / CI (GitHub Secrets)" >&2
+    fi
+    echo "==> secrets-apply (.env → k8s)"
+
+    # ── Tailscale ──────────────────────────────────
+    TS_ID="${K8S_TS_OAUTH_CLIENT_ID:-}"
+    TS_SECRET="${K8S_TS_OAUTH_SECRET:-}"
+    if [ -z "$TS_ID" ] || [ -z "$TS_SECRET" ] || [ "$TS_ID" = "..." ] || [ "$TS_SECRET" = "..." ]; then
+      echo "  ⏭️  Tailscale: sin credenciales válidas (K8S_TS_OAUTH_CLIENT_ID / K8S_TS_OAUTH_SECRET) — skip"
+      echo "     Tip: completá .env y reintentá, o exportá las vars en el shell"
+    else
+      echo "  🔐 Tailscale: creando/actualizando Secret tailscale/operator-oauth..."
+      kubectl get namespace tailscale >/dev/null 2>&1 || kubectl create namespace tailscale >/dev/null 2>&1
+      kubectl create secret generic operator-oauth \
+        --namespace tailscale \
+        --from-literal=client_id="$TS_ID" \
+        --from-literal=client_secret="$TS_SECRET" \
+        --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+      echo "  ✅ Tailscale: Secret tailscale/operator-oauth listo"
+      kubectl rollout restart deployment/tailscale-operator -n tailscale >/dev/null 2>&1 || \
+        kubectl rollout restart deployment/operator -n tailscale >/dev/null 2>&1 || true
+    fi
+
+    # ── Velero (RustFS S3) ─────────────────────────
+    VELERO_ID="${VELERO_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}"
+    VELERO_SECRET_VAL="${VELERO_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}"
+    if [ -z "$VELERO_ID" ] || [ -z "$VELERO_SECRET_VAL" ] || [ "$VELERO_ID" = "..." ] || [ "$VELERO_SECRET_VAL" = "..." ]; then
+      echo "  ⏭️  Velero: sin credenciales S3 válidas (VELERO_AWS_ACCESS_KEY_ID / VELERO_AWS_SECRET_ACCESS_KEY) — skip"
+    else
+      echo "  🛡️  Velero: creando/actualizando Secret velero/cloud-credentials..."
+      kubectl get namespace velero >/dev/null 2>&1 || kubectl create namespace velero >/dev/null 2>&1
+      CLOUD_CONTENT="[default]
+    aws_access_key_id=${VELERO_ID}
+    aws_secret_access_key=${VELERO_SECRET_VAL}"
+      kubectl create secret generic cloud-credentials \
+        --namespace velero \
+        --from-literal=cloud="$CLOUD_CONTENT" \
+        --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+      echo "  ✅ Velero: Secret velero/cloud-credentials listo"
+    fi
+
+    echo "✅ secrets-apply: done (revisá con: just secrets-status)"
+
+# Estado de los Secrets en k8s (sin exponer valores)
+secrets-status:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "==> k8s Secrets (masked)"
+    echo "  tailscale/operator-oauth:"
+    if kubectl get secret operator-oauth -n tailscale >/dev/null 2>&1; then
+      echo "    ✅ existe — keys: $(kubectl get secret operator-oauth -n tailscale -o jsonpath='{.data}' | tr ',' '\\n' | cut -d'\"' -f2 | paste -sd ', ' -)"
+      echo "    client_id len: $(kubectl get secret operator-oauth -n tailscale -o jsonpath='{.data.client_id}' | base64 -d | wc -c | xargs) chars"
+    else
+      echo "    ❌ no existe"
+    fi
+    echo "  velero/cloud-credentials:"
+    if kubectl get secret cloud-credentials -n velero >/dev/null 2>&1; then
+      echo "    ✅ existe — key 'cloud' presente: $(kubectl get secret cloud-credentials -n velero -o jsonpath='{.data.cloud}' | base64 -d | head -1)"
+    else
+      echo "    ❌ no existe"
+    fi
 
 # ── Vault ─────────────────────────────────────
 
