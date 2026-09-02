@@ -42,27 +42,28 @@ spec:
               protocol: TCP
             - port: "6443"
               protocol: TCP
-    # Tailscale control plane (controlplane.tailscale.com, log.tailscale.com) — use world on 443 with DNS interception
+    # Tailscale control plane — plain world egress (no DNS L7 on world; DNS already allowed via kube-dns)
     - toEntities:
         - world
       toPorts:
         - ports:
             - port: "443"
               protocol: TCP
-          rules:
-            dns:
-              - matchPattern: "*.tailscale.com"
-              - matchPattern: "*.ts.net"
-              - matchPattern: "controlplane.tailscale.com"
-    # DNS already allowed above, but add FQDN rule to world for control plane
+            - port: "41641"
+              protocol: UDP
+            - port: "41641"
+              protocol: TCP
     - toFQDNs:
         - matchName: controlplane.tailscale.com
         - matchPattern: "*.controlplane.tailscale.com"
         - matchPattern: "*.tailscale.com"
+        - matchPattern: "*.ts.net"
       toPorts:
         - ports:
             - port: "443"
               protocol: TCP
+            - port: "41641"
+              protocol: UDP
     # Proxies forward to in-cluster services (operator creates Service per Ingress) — allow to cluster
     - toEntities:
         - cluster

@@ -2,7 +2,7 @@ developmentApp:
   enabled: true
 
 # Dev hostname — single device for dev env. Keep distinct from prod to avoid MagicDNS collision.
-hostname: dev-my-cluster
+hostname: my-cluster-dev
 gateway:
   enabled: true
 
