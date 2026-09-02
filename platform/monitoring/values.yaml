@@ -151,3 +151,40 @@ kube-prometheus-stack:
   alertmanager:
     alertmanagerSpec:
       replicas: 1
+
+# Grafana Alloy — single log shipper for Loki (replaces Promtail by design decision)
+# Alloy is stateless DaemonSet tailing via Kubernetes API (loki.source.kubernetes).
+# It needs NO PVC/storage (WAL disabled by default, uses /tmp/alloy which is ephemeral).
+# RBAC (ServiceAccount + ClusterRole/ClusterRoleBinding for pods/nodes discovery) is
+# created automatically by the alloy chart (rbac.create=true, default). No manual RBAC needed.
+alloy:
+  # Pass-through to alloy subchart (Helm: parent key `alloy` nests all alloy chart values)
+  alloy:
+    configMap:
+      content: |-
+        logging {
+          level  = "info"
+          format = "logfmt"
+        }
+
+        discovery.kubernetes "pods" {
+          role = "pod"
+        }
+
+        loki.source.kubernetes "pods" {
+          targets    = discovery.kubernetes.pods.targets
+          forward_to = [loki.write.grafana_loki.receiver]
+        }
+
+        loki.write "grafana_loki" {
+          endpoint {
+            url = "http://monitoring-loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push"
+            headers = {
+              "X-Scope-OrgID" = "fake",
+            }
+          }
+        }
+  controller:
+    type: daemonset
+  # Optional: keep default serviceAccount.create=true, rbac.create=true (auto)
+  # No mounts.varlog / dockercontainers needed — loki.source.kubernetes uses the API, not host filesystem.

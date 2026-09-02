@@ -1,6 +1,8 @@
 # Velero + RustFS — Backup & Restore
 
-> **Stack:** Velero `9.0.2` → RustFS S3 `velero-homelab` (`https://rustfs.lonk-mirfak.ts.net`) · **Namespace:** `velero` · **Wave:** `0`
+> **Stack:** Velero `1.18.1` (chart `12.1.0` via `vmware-tanzu/velero`) → RustFS S3 `velero-homelab` (`https://rustfs.lonk-mirfak.ts.net`) · **Namespace:** `velero` · **Wave:** `0` · **Status:** ✅ Deployed (not planned — see [README Tech Stack](../README.md#🛠-tech-stack))
+>
+> Loki also uses S3 but on a **different backend** — Loki → SeaweedFS (`seaweedfs-s3.seaweedfs:8333`, buckets `loki-chunks`/`loki-ruler`), Velero → RustFS (`rustfs.lonk-mirfak.ts.net`, bucket `velero-homelab`). Both are S3-compatible, but they are separate stores.
 
 ## 1. Why a bootstrap Secret
 
@@ -77,4 +79,5 @@ Vault DR: Velero complements but does not replace `vault operator raft snapshot`
 ## 7. References
 
 - ADR-004 option A, ADR-011 (DNS/NetworkPolicy)
-- Chart: `platform/velero/Chart.yaml` (vmware-tanzu/velero `9.0.2`)
+- Chart: `platform/velero/Chart.yaml` (vmware-tanzu/velero `12.1.0`, app `1.18.1`) + `platform/velero/values.yaml` (schedules `daily-full`/`vault-hourly`, RustFS `s3Url`/`s3ForcePathStyle`)
+- App: `gitops/templates/apps/05-velero.yaml` (sync-wave `0`, `wave-policy: healthy`, `CreateNamespace=true`)

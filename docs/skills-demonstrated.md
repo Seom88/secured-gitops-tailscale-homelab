@@ -77,16 +77,17 @@ You understand GitOps as a paradigm, not just a tool. Sync-wave ordering and hea
 - Network policies and RBAC
 - Ingress as a security boundary
 - Prometheus metrics collection and dashboarding
-- Log aggregation and correlation
+- Log aggregation and correlation (Loki + Grafana Alloy, LogQL, Explore)
+- Kubernetes log collection at scale (DaemonSet, `discovery.kubernetes` → `loki.source.kubernetes` → `loki.write`)
 - Custom observability exporting
 
 **Evidence:**
 - **Tailscale Integration** — Mesh VPN operator (wave `-1`) + single-host gateway (`my-cluster.lonk-mirfak.ts.net` path routing via `cluster-gateway` NGINX). See [`platform/tailscale/`](../platform/tailscale/) and ADRs 001/012
 - **Platform Ingress Templates** — Single-host gateway pattern (1 Ingress `my-cluster` → `cluster-gateway` → per-service locations). See [`platform/tailscale/templates/ingress.yaml`](../platform/tailscale/templates/ingress.yaml) and `gateway-*.yaml`
 - **Network Policies** — Vault server/injector egress policies. See [`platform/vault/templates/networkpolicy.yaml`](../platform/vault/templates/networkpolicy.yaml)
-- **Monitoring Stack** — Prometheus (metrics), Grafana (dashboards), Loki (logs). See [`platform/monitoring/`](../platform/monitoring/)
+- **Monitoring Stack** — Prometheus (metrics), Grafana (dashboards), Loki (SingleBinary + S3/SeaweedFS + gateway) + Alloy (stateless DaemonSet log collector via `discovery.kubernetes` → `loki.source.kubernetes` → `loki.write` to `http://monitoring-loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push` with `X-Scope-OrgID: fake`; no PVC, RBAC auto-created; replaces Promtail — deprecated). See [`platform/monitoring/`](../platform/monitoring/) and [`platform/monitoring/values.yaml`](../platform/monitoring/values.yaml) (`loki` + `alloy` blocks, chart `alloy:1.12.1`)
 - **Vault Metrics Export** — Prometheus endpoints for Vault health, sealed state, replication status
-- **Log Aggregation** — Loki with S3 backend (SeaweedFS) for centralized logging. See [`platform/monitoring/templates/loki-datasource.yaml`](../platform/monitoring/templates/loki-datasource.yaml)
+- **Log Aggregation** — Loki with S3 backend (SeaweedFS) for centralized logging, shipped by Alloy. Grafana Explore + LogQL and dashboard Logs panels. See [`platform/monitoring/templates/loki-datasource.yaml`](../platform/monitoring/templates/loki-datasource.yaml)
 
 **What Recruiters See:**
 Zero-trust isn't just a buzzword for you — you've implemented it. Metrics collection and observability show maturity in ops thinking.
@@ -207,7 +208,7 @@ This isn't a one-off project. You're building for growth and learning continuous
 
 **What's Planned Next:**
 - **Phase 5 (v2.0)** — Python ops layer: CLI automation, infrastructure tests, custom metrics, image security scanning
-- **Velero Integration** — Backup/restore testing to SeaweedFS
+- **Velero Restore Drills** — RTO/RPO validation (Velero already deployed on RustFS S3 `velero-homelab`; Loki uses separate SeaweedFS S3)
 - **Real Application Examples** — Demonstrating stateful workload patterns
 
 See [Roadmap](./roadmap.md) for detailed phase breakdown and timeline.

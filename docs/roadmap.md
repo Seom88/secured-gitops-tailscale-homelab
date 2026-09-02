@@ -1,8 +1,8 @@
 # Roadmap
 
-**Status:** v0.9 (pre-release) · Actively developed · Last updated: 29 August 2026
+**Status:** v0.9 (pre-release) · v1.0.0 planned to include Cilium CNI migration (CNI replacement, breaking change); subsequent releases are expected to be additive · Last updated: 29 August 2026
 
-This document tracks what's actually running in the cluster today, what's left to close out for the **v1.0** release, and what's planned as a later enterprise-automation phase (**v2.0**). It's the detailed, phase-by-phase view; the [README](./README.md) keeps only a short summary and a link here.
+This document tracks what is currently deployed in the cluster, what is required to complete the **v1.0.0** release, and what is planned for **v2.0**. v1.0.0 will include the Cilium CNI migration (CNI replacement, breaking change). Subsequent releases are expected to be additive. The [README](./README.md) contains a short summary and links here.
 
 ---
 
@@ -21,7 +21,7 @@ That's already a real, guided CI/CD foundation — not a full DevSecOps pipeline
 
 ## Path to v1.0 — Phases 1 through 4
 
-The real scope for v1.0 stops at Phase 4. Everything that used to be labeled "Phase 5" or "Phase 1.2" has been moved to the v2.0 section below.
+The scope for v1.0 is defined as Phases 1 through 4. Items previously labeled "Phase 5" or "Phase 1.2" are tracked under v2.0 below.
 
 ### Phase 1 — Foundation ✅ Complete
 
@@ -38,8 +38,8 @@ The real scope for v1.0 stops at Phase 4. Everything that used to be labeled "Ph
 
 ### Phase 2 — Automation & Observability ✅ Complete
 
-- [x] Monitoring stack deployed (Prometheus + Grafana + Loki)
-- [x] Dashboards reachable via Tailscale ingress
+- [x] Monitoring stack deployed (Prometheus + Grafana + Loki + Alloy — Alloy `chart 1.12.1` DaemonSet via `discovery.kubernetes` → `loki.source.kubernetes` → `loki.write` to Loki gateway; stateless, RBAC auto-created; replaces Promtail — deprecated)
+- [x] Dashboards reachable via Tailscale ingress (Grafana at `/grafana`, Prometheus at `/prometheus`; Loki datasource with `X-Scope-OrgID: fake`, Explore + LogQL)
 - [x] CI pipeline — `validate.yaml` (lint, render, ShellCheck, sanity checks) + `deploy.yaml` (guided, manual deploy)
 - [x] Renovate — weekly updates with mandatory manual review for critical components (Vault, Longhorn, cert-manager) and grouped automerge for the rest
 
@@ -47,33 +47,36 @@ The real scope for v1.0 stops at Phase 4. Everything that used to be labeled "Ph
 
 - [x] Longhorn — distributed block storage
 - [x] SeaweedFS — S3-compatible object storage
-- [x] Loki → SeaweedFS integration for centralized logging
-- [ ] Velero — automated backup/restore
+- [x] Loki → SeaweedFS integration for centralized logging (SingleBinary + gateway, buckets `loki-chunks`/`loki-ruler`)
+- [x] Velero — automated backup/restore (Wave 0, RustFS S3 `velero-homelab` at `https://rustfs.lonk-mirfak.ts.net`, schedules `daily-full` (02:00, all namespaces, 30d TTL) + `vault-hourly` (hourly, vault only, 7d TTL); chart `12.1.0` / app `1.18.1`) — deployed
 
-### Phase 4 — Hardening & Developer Experience 🟡 In progress
+### Phase 4 — Hardening & Developer Experience (in progress, v1.0)
 
-This is the phase that's left to close out for v1.0. It folds in what used to be a separate "Phase 1.1 — Critical Security Gates":
+Remaining scope for v1.0.0. The Cilium CNI migration is a breaking change at the infrastructure layer.
 
-**Security (release-blocking gates):**
-- [ ] Container image vulnerability scanning (Trivy) integrated into CI
-- [ ] Git secrets detection (`detect-secrets`) before every commit/push
-- [ ] Complete NetworkPolicies (default deny-all + explicit allows)
+**CNI migration (v1.0.0, breaking change):**
+- [ ] Cilium CNI migration (Flannel -> Cilium; enables NetworkPolicy enforcement, Hubble observability, and WireGuard encryption) — planned for v1.0.0
+
+**Security hardening (requires Cilium, planned for v1.0.0):**
+- [ ] Complete NetworkPolicies (default deny-all + explicit allows) — requires Cilium
 - [ ] Pod Security Admission in `restricted` mode
 - [ ] Centralized audit logging (Kubernetes API + Vault → Loki)
-- [ ] Security architecture documentation (threat model, attack surface, incident response)
+- [ ] Container image vulnerability scanning (Trivy) integrated into CI
+- [ ] Git secrets detection (`detect-secrets`) before every commit/push
+- [ ] Security architecture documentation (minimal threat model, attack surface, incident response)
 
-**Developer experience:**
+**Developer experience (v1.0):**
 - [x] Bootstrap guard with `--force` flag for safe reapply
 - [x] Status verifier (rerun bootstrap to check cluster health)
 - [x] `just validate` as a local mirror of CI validation
-- [ ] Real application example deployed (Immich or similar)
+- [ ] Real application example deployed (Homarr — lightweight dashboard as first real app)
 - [ ] Customization guide tested end-to-end
 
 ---
 
-## v2.0 — Enterprise automation (future vision)
+## v2.0 — Enterprise automation (beyond v1.0)
 
-Everything below is intentionally **beyond v1.0** — maturity improvements that don't block the first stable release, but show where the project is headed.
+Items planned after v1.0.0. Expected to be additive; no CNI or storage re-architecture is planned.
 
 ### Compliance & policy
 
@@ -105,19 +108,26 @@ Everything below is intentionally **beyond v1.0** — maturity improvements that
 - [x] External Secrets Operator
 - [x] Zero-trust ingress via Tailscale
 - [x] Longhorn + SeaweedFS
-- [x] Prometheus + Grafana + Loki
+- [x] Prometheus + Grafana + Loki + Alloy (DaemonSet log collector)
+- [x] Velero — backup/restore (Wave 0, RustFS S3, chart `12.1.0`)
 - [x] Validation CI (GitHub Actions)
 - [x] Architecture Decision Records
 
 **Still pending for v1.0:**
+- [ ] Cilium CNI migration (Flannel -> Cilium; enables NetworkPolicy enforcement, Hubble, WireGuard encryption)
+- [ ] Complete NetworkPolicies (requires Cilium)
+- [ ] Pod Security Admission `restricted`
+- [ ] Centralized audit logging (K8s API + Vault → Loki)
 - [ ] Trivy in CI
-- [ ] Git secrets detection
-- [ ] Complete NetworkPolicies
-- [ ] Pod Security Admission
-- [ ] Audit logging
-- [ ] Security architecture documentation
-- [ ] Real application example
-- [ ] Velero (backup/restore)
+- [ ] Git secrets detection (`detect-secrets`)
+- [ ] Security architecture documentation (minimal threat model)
+- [ ] Real application example (Homarr)
+- [ ] Customization guide tested end-to-end
+
+**Planned for v2.0:**
+- [ ] Compliance & policy (Kyverno, CIS Benchmark, RBAC audit, compliance dashboard)
+- [ ] Operational excellence (automated secrets rotation, supply chain hardening, Velero restore drills)
+- [ ] Python automation & image security (Ops CLI, infrastructure tests, observability exporter, compliance scanning)
 
 ---
 

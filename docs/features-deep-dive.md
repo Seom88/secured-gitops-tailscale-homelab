@@ -139,7 +139,7 @@ Wave 2 (Healthy required):
   └── 02-seaweedfs        ← Depends on wave 1
 
 Wave 3 (Sync-only):
-  └── 03-monitoring       ← Logs to SeaweedFS, depends on wave 2
+  └── 03-monitoring       ← Prometheus + Grafana + Loki (SeaweedFS S3) + Alloy DaemonSet (stateless, RBAC auto); depends on wave 2
 
 Wave 4 (Sync-only):
   └── 04-tailscale        ← Single-host gateway (my-cluster Ingress + cluster-gateway NGINX), always last — ADR-012
@@ -157,16 +157,17 @@ Wave 4 (Sync-only):
 
 ---
 
-## 📊 Observability: Prometheus + Grafana + Loki
+## 📊 Observability: Prometheus + Grafana + Loki + Alloy
 
 ### What's Implemented
 
 **Complete observability stack:**
 - **Prometheus** — Metrics collection and storage (time-series database)
 - **Grafana** — Dashboard and visualization engine
-- **Loki** — Log aggregation (logs as a dimension, not indexed text)
-- **Integration** — Vault metrics, ArgoCD health, Longhorn status
-- **Secure Ingress** — All dashboards behind Tailscale zero-trust
+- **Loki** — Log aggregation (logs as a dimension, not indexed text) — SingleBinary with S3 (SeaweedFS) backend and gateway (`monitoring-loki-gateway`)
+- **Grafana Alloy** — Stateless DaemonSet log collector (`discovery.kubernetes` → `loki.source.kubernetes` → `loki.write` to `http://monitoring-loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push` with `X-Scope-OrgID: fake`). No PVC (WAL disabled, ephemeral `/tmp/alloy`), RBAC auto-created by the alloy chart, **replaces Promtail (deprecated)**
+- **Integration** — Vault metrics, ArgoCD health, Longhorn status; Loki datasource in Grafana with `X-Scope-OrgID` header
+- **Secure Ingress** — All dashboards behind Tailscale zero-trust (single-host gateway)
 
 ### Why This Matters
 
@@ -186,7 +187,8 @@ Observability is non-negotiable in production:
    - Vault status (sealed/unsealed, replication, lease count)
    - ArgoCD app sync status and drift
    - Longhorn replication and volume usage
-5. **Logs** — Loki aggregates pod logs, backed by SeaweedFS S3
+5. **Logs** — Alloy (DaemonSet) discovers pods via Kubernetes API (`discovery.kubernetes` role `pod`), tails logs via `loki.source.kubernetes`, and pushes to Loki via `loki.write` (`/loki/api/v1/push` with `X-Scope-OrgID: fake`). Loki (SingleBinary, S3/SeaweedFS) stores chunks via gateway. No host `varlog` mounts — Alloy uses the API, not the filesystem.
+6. **Explore & LogQL** — Grafana Explore queries Loki via LogQL; dashboard Logs panels correlate metrics and logs for the same workload
 
 ### Example Dashboard
 
@@ -197,16 +199,20 @@ Includes:
 - ArgoCD: App health, sync time, missed syncs
 - Kubernetes: Node CPU/memory, pod count, error rates
 - Longhorn: Replica count, rebuild progress, volume usage
+- **Logs (Loki + Alloy):** Explore with LogQL (`{namespace="vault"}` etc.), dashboard Logs panels backed by Alloy-shipped pod logs stored in SeaweedFS S3
+
+> Alloy is stateless — no PVC, no WAL. RBAC (`ServiceAccount` + `ClusterRole`/`ClusterRoleBinding` for pods/nodes discovery) is created automatically by the `alloy` chart (`rbac.create=true`). It replaces Promtail by design decision.
 
 ### Key Files
 
-- Chart: [`platform/monitoring/Chart.yaml`](../platform/monitoring/Chart.yaml)
-- Values: [`platform/monitoring/values.yaml`](../platform/monitoring/values.yaml)
+- Chart: [`platform/monitoring/Chart.yaml`](../platform/monitoring/Chart.yaml) — dependencies: `loki:7.3.0`, `kube-prometheus-stack:88.6.1`, `alloy:1.12.1`
+- Values: [`platform/monitoring/values.yaml`](../platform/monitoring/values.yaml) — Loki SingleBinary + S3 (SeaweedFS), Grafana Loki datasource (`X-Scope-OrgID: fake`), Alloy `discovery.kubernetes`/`loki.source.kubernetes`/`loki.write` pipeline
 - Templates: [`platform/monitoring/templates/`](../platform/monitoring/templates/)
   - Prometheus config: `prometheus-configmap.yaml`
   - Grafana datasources: `grafana-datasources.yaml`
   - Loki S3 config: `loki-config.yaml`
 - Application: [`gitops/templates/apps/03-monitoring.yaml`](../gitops/templates/apps/03-monitoring.yaml)
+- Log collector: Alloy DaemonSet (stateless, no PVC, RBAC auto-created; replaces Promtail — deprecated) — see `platform/monitoring/values.yaml` `alloy:` block
 
 ---
 
