@@ -1,15 +1,4 @@
 # Production values — modular mode (separate StatefulSets)
-
-# Enable SeaweedFS metrics scraping: the chart generates ServiceMonitors for
-# master, filer, volume and S3. The kube-prometheus-stack Prometheus (release
-# "monitoring") selects ServiceMonitors via the "release: monitoring" label.
-global:
-  seaweedfs:
-    monitoring:
-      enabled: true
-      additionalLabels:
-        release: monitoring
-
 seaweedfs:
   master:
     enabled: true
