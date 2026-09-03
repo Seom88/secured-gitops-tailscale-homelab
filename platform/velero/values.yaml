@@ -21,7 +21,7 @@ velero:
   # AWS plugin — required for RustFS S3 (S3-compatible) backend.
   initContainers:
     - name: velero-plugin-for-aws
-      image: velero/velero-plugin-for-aws:v1.13.1
+      image: velero/velero-plugin-for-aws:v1.14.2
       imagePullPolicy: IfNotPresent
       volumeMounts:
         - mountPath: /target
