@@ -5,7 +5,14 @@ developmentApp:
 vaultAddress: "https://vault.vault.svc:8200"
 
 vault:
+  injector:
+    replicas: 1
+    affinity: ""
   server:
+    affinity: ""
+    ha:
+      enabled: true
+      replicas: 1
     # Persistent storage
     dataStorage:
       enabled: true

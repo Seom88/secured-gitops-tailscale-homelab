@@ -1,0 +1,9 @@
+ciliumNetworkPolicy:
+  enabled: true
+
+longhorn:
+  defaultSettings:
+    defaultReplicaCount: 1
+    replicaAutoBalance: "disabled"
+  persistence:
+    defaultClassReplicaCount: 1
