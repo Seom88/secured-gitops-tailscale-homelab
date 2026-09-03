@@ -141,7 +141,8 @@ graph TD
 | **Secrets** | Vault v1.15+ (HA Raft) | ✅ Deployed | 3-node cluster with auto-unseal |
 | **Secrets Sync** | External Secrets Operator | ✅ Deployed | Per-service ClusterSecretStores |
 | **Certificates** | cert-manager v1.13+ | ✅ Deployed | Automated TLS for services |
-| **Networking** | Tailscale Operator v1.9+ | ✅ Deployed | Zero-trust ingress (`.tailnet` domains) |
+| **Networking (CNI)** | Cilium v1.20.1 (eBPF) | ✅ Deployed | Kube-proxy replacement, Gateway API & CiliumNetworkPolicy |
+| **Networking (Ingress)** | Tailscale Operator v1.9+ | ✅ Deployed | Zero-trust ingress (`.tailnet` domains) |
 | **Storage (Block)** | Longhorn v1.6+ | ✅ Deployed | Distributed, wave-0 with CSI gates |
 | **Storage (Object)** | SeaweedFS v3.6+ | ✅ Deployed | S3-compatible, Loki backend |
 | **Monitoring** | Prometheus v2.45+, Grafana v10+, Loki v2.9+ + Alloy chart 1.12.1 | ✅ Deployed | Full observability stack (Prometheus + Grafana + Loki + Alloy DaemonSet) |

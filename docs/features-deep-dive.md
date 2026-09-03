@@ -88,7 +88,25 @@ open https://my-cluster.lonk-mirfak.ts.net/prometheus/
   - Gateway: `gateway-configmap.yaml` / `gateway-deployment.yaml` / `gateway-service.yaml`
   - Single Ingress: `ingress.yaml` (`my-cluster` → `cluster-gateway`)
 - Configuration: [`platform/tailscale/values.yaml`](../platform/tailscale/values.yaml) (`hostname: my-cluster` / `dev-my-cluster`)
-- ADRs: [ADR-001: Tailscale Ingress Placement](./adrs/001-tailscale-ingress-placement.md), [ADR-012: Single-Host Cluster Gateway](./adrs/012-single-host-cluster-gateway.md)
+- ADRs: [ADR-001: Tailscale Ingress Placement](./adrs/001-tailscale-ingress-placement.md), [ADR-012: Single-Host Cluster Gateway](./adrs/012-single-host-cluster-gateway.md), [ADR-014: Cilium CNI and Identity-Aware NetworkPolicies](./adrs/014-cilium-cni-and-identity-networkpolicies.md)
+
+---
+
+## 🐝 eBPF Networking & Security with Cilium
+
+### What's Implemented
+
+**Cilium CNI (`v1.20.1`) with Identity-Aware NetworkPolicies**:
+- **eBPF Kube-Proxy Replacement** — High-throughput service routing in kernel space without iptables overhead.
+- **Identity-Based Segmentation** — Fine-grained `CiliumNetworkPolicy` (`cilium.io/v2`) across all namespaces (`vault`, `longhorn-system`, `seaweedfs`, `monitoring`, `tailscale`, `velero`).
+- **L7 DNS Visibility & Scoping** — Egress DNS calls filtered strictly to `kube-dns` on port 53 with regex FQDN visibility, blocking DNS-based exfiltration.
+- **Zero-Trust Default Posture** — Deny-by-default for untrusted ingress/egress while allowing explicit intra-namespace communication for dynamic storage planes (Longhorn, SeaweedFS).
+- **Observability Integration** — Hubble relay endpoints (`ports 4244/4245`) whitelisted across services for real-time flow tracing.
+
+### Key Files
+
+- Chart templates: `platform/*/templates/cilium-networkpolicies.yaml`
+- ADR: [ADR-014: Cilium CNI and Identity-Aware NetworkPolicies](./adrs/014-cilium-cni-and-identity-networkpolicies.md)
 
 ---
 
