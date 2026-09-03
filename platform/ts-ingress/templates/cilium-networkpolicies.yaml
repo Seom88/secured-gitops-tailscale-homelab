@@ -45,6 +45,8 @@ spec:
       app.kubernetes.io/name: cluster-gateway
   egress:
     # ArgoCD — precise label + fallback namespace-only (label drift resilient)
+    # Port 8080 required: Cilium kubeProxyReplacement=strict enforces egress post-DNAT,
+    # so the packet is already translated from ClusterIP:80 → pod:8080 before policy check.
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: argocd
@@ -52,6 +54,8 @@ spec:
       toPorts:
         - ports:
             - port: "80"
+              protocol: TCP
+            - port: "8080"
               protocol: TCP
             - port: "443"
               protocol: TCP
@@ -61,6 +65,8 @@ spec:
       toPorts:
         - ports:
             - port: "80"
+              protocol: TCP
+            - port: "8080"
               protocol: TCP
             - port: "443"
               protocol: TCP
