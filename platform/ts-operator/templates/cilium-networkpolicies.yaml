@@ -1,12 +1,13 @@
 {{- if .Values.ciliumNetworkPolicy.enabled }}
-# CiliumNetworkPolicies for tailscale-operator namespace — operator + Ingress proxies
+# CiliumNetworkPolicies for tailscale namespace — operator + Ingress proxies
+# ADR-014: Cilium v1.20.1 kubeProxyReplacement=strict enforces identity; Flannel ignored mismatches.
 
 # 1) DNS
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  name: tailscale-operator-allow-dns
+  name: ts-operator-allow-dns
   namespace: tailscale
 spec:
   endpointSelector: {}
@@ -29,7 +30,7 @@ spec:
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  name: tailscale-operator-allow-egress
+  name: ts-operator-allow-egress
   namespace: tailscale
 spec:
   endpointSelector: {}
@@ -91,7 +92,7 @@ spec:
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  name: tailscale-operator-allow-ingress
+  name: ts-operator-allow-ingress
   namespace: tailscale
 spec:
   endpointSelector: {}
@@ -108,9 +109,10 @@ spec:
               protocol: TCP
             - port: "8080"
               protocol: TCP
+    # Operator / proxy intra-namespace — SAME namespace as operator (tailscale), namespace-only match
     - fromEndpoints:
         - matchLabels:
-            k8s:io.kubernetes.pod.namespace: tailscale-operator
+            k8s:io.kubernetes.pod.namespace: tailscale
     - fromEntities:
         - cluster
       toPorts:

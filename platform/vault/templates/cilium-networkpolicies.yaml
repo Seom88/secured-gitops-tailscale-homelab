@@ -1,6 +1,7 @@
 {{- if .Values.ciliumNetworkPolicy.enabled }}
 # CiliumNetworkPolicies for vault — complement to Helm-managed K8s NetworkPolicies (vault Helm: server + injector NPs)
 # Adds Hubble visibility + Cilium DNS-aware + explicit allow for ExternalSecretsOperator.
+# ADR-014: Cilium kubeProxyReplacement=strict enforces these; Flannel ignored mismatches.
 
 # 1) Hubble-aware DNS (mirrors Helm NP but Cilium-aware)
 ---
@@ -72,6 +73,8 @@ spec:
               protocol: TCP
 ---
 # 3) Ingress complement — Hubble + dedicated Tailscale device (vault-my-cluster)
+# Cilium strict: Tailscale Ingress proxy pods live in SAME namespace as Ingress (vault), NOT in tailscale-operator.
+# Flannel ignored namespace mismatches; Cilium blocks. Previous rule whitelisting tailscale-operator NEVER matched.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -90,10 +93,10 @@ spec:
         - ports:
             - port: "8200"
               protocol: TCP
-    # Vault dedicated Tailscale Ingress proxy lives in tailscale-operator (per ADR-012 Amendment)
+    # Vault dedicated Tailscale Ingress proxy — SAME namespace as Ingress (vault), namespace-only match
     - fromEndpoints:
         - matchLabels:
-            k8s:io.kubernetes.pod.namespace: tailscale-operator
+            k8s:io.kubernetes.pod.namespace: vault
       toPorts:
         - ports:
             - port: "8200"

@@ -7,7 +7,7 @@ metadata:
   namespace: tailscale
   labels:
     app.kubernetes.io/name: cluster-gateway
-    app.kubernetes.io/part-of: tailscale
+    app.kubernetes.io/part-of: ts-ingress
 data:
   nginx.conf: |
     worker_processes auto;
@@ -26,6 +26,24 @@ data:
       proxy_read_timeout 60s;
       proxy_send_timeout 60s;
 
+      # Cilium hardening: kubeProxyReplacement=strict uses eBPF service translation,
+      # L7 DNS policy may briefly delay initial resolution, and nginx caches DNS
+      # forever via getaddrinfo at startup. Add in-cluster resolver for re-resolution
+      # and periodic refresh. Use FQDN (kube-dns.kube-system.svc.cluster.local) not
+      # ClusterIP (10.96.0.10 drifts across reinstalls). valid=10s enables TTL-based
+      # refresh; resolver_timeout guards against DNS stalls. For true per-request
+      # re-resolution, replace proxy_pass with variable indirection:
+      #   set $backend "svc.namespace.svc.cluster.local";
+      #   proxy_pass http://$backend:80;
+      # Static proxy_pass below is kept for exact URI semantics (Grafana preserve
+      # prefix, ArgoCD strip prefix + sub_filter, Longhorn websocket). Resolver is
+      # still required for startup retry and for any future variable-based locations.
+      resolver kube-dns.kube-system.svc.cluster.local valid=10s ipv6=off;
+      resolver_timeout 5s;
+
+      # Cilium eBPF service translation benefits from HTTP/1.1 keepalive pooling.
+      # Set per-location proxy_http_version 1.1 + Connection "" (Longhorn uses upgrade).
+
       # Trust X-Forwarded-* from Tailscale proxy
       real_ip_header X-Forwarded-For;
       set_real_ip_from 0.0.0.0/0;
@@ -34,7 +52,7 @@ data:
         listen 80;
         server_name _;
 
-        # Health probe for k8s
+        # Health probe for k8s — must be reachable via host/remote-node for Cilium probes
         location = /healthz {
           access_log off;
           return 200 "ok\n";
@@ -50,6 +68,8 @@ data:
         # so assets/base href stay under /argocd/. Tested: ARGOCD_SERVER_BASEHREF not reliably rewrites HTML base on v3.4.4.
         location /argocd/ {
           proxy_pass http://argocd-server.argocd.svc.cluster.local:80/;
+          proxy_http_version 1.1;
+          proxy_set_header Connection "";
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -75,6 +95,8 @@ data:
         # Preserve /grafana prefix — stripping (proxy_pass .../ ) causes infinite 301 loop.
         location /grafana/ {
           proxy_pass http://monitoring-grafana.monitoring.svc.cluster.local:80;
+          proxy_http_version 1.1;
+          proxy_set_header Connection "";
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -90,6 +112,8 @@ data:
 {{- if .Values.prometheus.enabled }}
         location /prometheus/ {
           proxy_pass http://monitoring-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090;
+          proxy_http_version 1.1;
+          proxy_set_header Connection "";
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -105,6 +129,7 @@ data:
 {{- if .Values.longhorn.enabled }}
         location /longhorn/ {
           proxy_pass http://longhorn-frontend.longhorn-system.svc.cluster.local:80/;
+          proxy_http_version 1.1;
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -120,6 +145,8 @@ data:
 {{- if .Values.seaweedfs.s3.enabled }}
         location /seaweedfs-s3/ {
           proxy_pass http://seaweedfs-s3.seaweedfs.svc.cluster.local:8333/;
+          proxy_http_version 1.1;
+          proxy_set_header Connection "";
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -134,6 +161,8 @@ data:
         # SeaweedFS admin redirects / → /login and serves /static/* — keep under prefix
         location /seaweedfs-admin/ {
           proxy_pass http://seaweedfs-admin.seaweedfs.svc.cluster.local:23646/;
+          proxy_http_version 1.1;
+          proxy_set_header Connection "";
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

@@ -6,7 +6,7 @@ metadata:
   namespace: tailscale
   labels:
     app.kubernetes.io/name: cluster-gateway
-    app.kubernetes.io/part-of: tailscale
+    app.kubernetes.io/part-of: ts-ingress
 spec:
   replicas: {{ .Values.gateway.replicas }}
   selector:
@@ -18,7 +18,7 @@ spec:
         checksum/config: {{ include (print $.Template.BasePath "/gateway-configmap.yaml") . | sha256sum }}
       labels:
         app.kubernetes.io/name: cluster-gateway
-        app.kubernetes.io/part-of: tailscale
+        app.kubernetes.io/part-of: ts-ingress
     spec:
       containers:
         - name: nginx

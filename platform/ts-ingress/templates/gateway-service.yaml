@@ -6,7 +6,7 @@ metadata:
   namespace: tailscale
   labels:
     app.kubernetes.io/name: cluster-gateway
-    app.kubernetes.io/part-of: tailscale
+    app.kubernetes.io/part-of: ts-ingress
 spec:
   selector:
     app.kubernetes.io/name: cluster-gateway

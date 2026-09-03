@@ -20,7 +20,7 @@ flowchart LR
 
 | Wave | Apps | Notes |
 |------|------|-------|
-| `-1` | `tailscale-operator` | Must be Healthy first — provides MagicDNS |
+| `-1` | `ts-operator` | Must be Healthy first — provides MagicDNS |
 | `0` | `coredns-patch`, `velero`, `longhorn` | Storage and DNS ready before Vault |
 | `1` | `vault` | Depends on Longhorn PVCs |
 
@@ -28,7 +28,7 @@ flowchart LR
 
 ## 3. Bucket creation
 
-Automated via `templates/job-bucket-init.yaml` — an ArgoCD `Sync` hook (wave `0`) that runs after `tailscale-operator` is Healthy:
+Automated via `templates/job-bucket-init.yaml` — an ArgoCD `Sync` hook (wave `0`) that runs after `ts-operator` is Healthy:
 
 - Resolves `rustfs.lonk-mirfak.ts.net` via CoreDNS (120s wait), mounts `cloud-credentials`, and runs `aws s3api create-bucket` / `head-bucket` idempotently.
 - Uses `amazon/aws-cli:2.15.0`, `dnsPolicy: ClusterFirst`, `AWS_S3_ADDRESSING_STYLE=path`.

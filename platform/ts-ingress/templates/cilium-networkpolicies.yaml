@@ -1,13 +1,15 @@
 {{- if .Values.ciliumNetworkPolicy.enabled }}
 # CiliumNetworkPolicies for tailscale namespace — gateway nginx (my-cluster)
 # Gateway proxies to: argocd, grafana, prometheus, longhorn-frontend, seaweedfs-s3/admin — all via ClusterIP
+# ADR-014: Cilium v1.20.1 kubeProxyReplacement=strict enforces these strictly (Flannel ignored them).
+# ADR-012: single-host gateway (my-cluster) with nginx ConfigMap doing path-based proxy via ClusterIP DNS.
 
-# 1) DNS egress
+# 1) DNS egress — required for nginx resolver and service discovery (kube-dns only, not MagicDNS 1053)
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  name: tailscale-allow-dns
+  name: ts-ingress-allow-dns
   namespace: tailscale
 spec:
   endpointSelector: {}
@@ -26,18 +28,23 @@ spec:
             dns:
               - matchPattern: "*"
 ---
-# 2) Egress — gateway upstreams + kube-apiserver + Tailscale control (optional via world)
+# 2) Egress — gateway upstreams + kube-apiserver
+# Cilium strict: narrow label selectors break when chart labels drift (e.g. kube-prometheus-stack uses
+# app.kubernetes.io/instance=monitoring-kube-prometheus, not app.kubernetes.io/name=prometheus/grafana).
+# Flannel ignored this; Cilium blocks. Fix: keep precise label match AND add fallback namespace-only
+# rule on same ports so connectivity survives label drift. Documented per upstream. SeaweedFS already
+# uses namespace-only (correct pattern).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  name: tailscale-allow-egress
+  name: ts-ingress-allow-egress
   namespace: tailscale
 spec:
   endpointSelector:
     matchLabels:
       app.kubernetes.io/name: cluster-gateway
   egress:
-    # ArgoCD
+    # ArgoCD — precise label + fallback namespace-only (label drift resilient)
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: argocd
@@ -48,7 +55,16 @@ spec:
               protocol: TCP
             - port: "443"
               protocol: TCP
-    # Grafana (monitoring)
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: argocd
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+            - port: "443"
+              protocol: TCP
+    # Grafana (monitoring) — kube-prometheus-stack labels vary; provide namespace fallback
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: monitoring
@@ -57,7 +73,14 @@ spec:
         - ports:
             - port: "80"
               protocol: TCP
-    # Prometheus (monitoring)
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+    # Prometheus (monitoring) — operator vs stack label mismatch; namespace fallback
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: monitoring
@@ -68,7 +91,16 @@ spec:
               protocol: TCP
             - port: "8080"
               protocol: TCP
-    # Longhorn frontend
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+            - port: "8080"
+              protocol: TCP
+    # Longhorn frontend — precise + namespace fallback
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: longhorn-system
@@ -77,7 +109,14 @@ spec:
         - ports:
             - port: "80"
               protocol: TCP
-    # SeaweedFS S3 + admin
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: longhorn-system
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+    # SeaweedFS S3 + admin — namespace-only is correct (no stable app label)
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: seaweedfs
@@ -90,7 +129,6 @@ spec:
             - port: "33646"
               protocol: TCP
     # Vault is NOT via gateway (dedicated device vault-my-cluster) — explicitly NOT allowed here
-    # Kube API for health? Not needed but allow DNS already covers; gateway occasionally checks svc discovery
     - toEntities:
         - kube-apiserver
       toPorts:
@@ -104,7 +142,7 @@ spec:
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  name: tailscale-default-egress
+  name: ts-ingress-default-egress
   namespace: tailscale
 spec:
   endpointSelector: {}
@@ -146,26 +184,32 @@ spec:
             - port: "443"
               protocol: TCP
 ---
-# 4) Ingress — allow from Tailscale operator proxy + host + world (IngressClass tailscale forwards external)
+# 4) Ingress — allow from Tailscale proxy + host + world
+# Cilium strict: Tailscale Ingress proxy pods live in SAME namespace as Ingress (not tailscale-operator).
+# Flannel ignored namespace mismatches; Cilium blocks. For my-cluster Ingress in tailscale namespace,
+# proxy pods are created in tailscale. Old rule whitelisting tailscale-operator NEVER matched. Fix: match
+# k8s:io.kubernetes.pod.namespace=tailscale namespace-only (labels vary: app=ingress-proxy or
+# app.kubernetes.io/name=tailscale). Keep host/remote-node/cluster and world as fallback for kubelet
+# probes (port 80 /healthz) and Cilium kubeProxyReplacement=strict health checks.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  name: tailscale-allow-ingress
+  name: ts-ingress-allow-ingress
   namespace: tailscale
 spec:
   endpointSelector:
     matchLabels:
       app.kubernetes.io/name: cluster-gateway
   ingress:
-    # Tailscale Ingress proxy is run by tailscale-operator; its pods live in tailscale-operator namespace
+    # Tailscale Ingress proxy — SAME namespace as Ingress (tailscale), namespace-only match for label agnostic
     - fromEndpoints:
         - matchLabels:
-            k8s:io.kubernetes.pod.namespace: tailscale-operator
+            k8s:io.kubernetes.pod.namespace: tailscale
       toPorts:
         - ports:
             - port: "80"
               protocol: TCP
-    # Cilium host / remote-node (kube-proxy-replacement, health probes)
+    # Cilium host / remote-node / cluster (kube-proxy-replacement, health probes)
     - fromEntities:
         - host
         - remote-node
@@ -182,7 +226,7 @@ spec:
         - ports:
             - port: "80"
               protocol: TCP
-    # Intra-namespace health
+    # Intra-namespace health (no port restriction — liveness/readiness between gateway replicas)
     - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: tailscale

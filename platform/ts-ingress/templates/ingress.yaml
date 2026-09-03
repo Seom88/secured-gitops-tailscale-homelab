@@ -6,7 +6,7 @@ metadata:
   namespace: tailscale
   labels:
     app.kubernetes.io/name: my-cluster
-    app.kubernetes.io/part-of: tailscale
+    app.kubernetes.io/part-of: ts-ingress
 spec:
   ingressClassName: tailscale
   tls:

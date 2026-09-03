@@ -2,6 +2,8 @@
 
 **Status:** Accepted · **Date:** 2026-09-02 · **Deciders:** Seom88 · **Supersedes:** part of [ADR-001](001-tailscale-ingress-placement.md) · **Related:** [ADR-010](010-tailscale-oauth-ci-generated.md), [ADR-011](011-tailscale-dns-np.md)
 
+> **Amendment 2026-09-03:** chart renamed `ts-ingress` / `ts-operator`, namespace remains `tailscale`. Historical `platform/tailscale` / `platform/tailscale-operator` paths below are preserved as archive; new paths are `platform/ts-ingress` / `platform/ts-operator`.
+
 ## Context
 
 The cluster historically exposed platform services via 7 separate Tailscale `Ingress` resources (`platform/tailscale/templates/platform/*ingress.yaml`), each with `ingressClassName: tailscale` and `tls.hosts: [service]`. Each `Ingress` creates a distinct Tailscale device, MagicDNS name (`grafana.lonk-mirfak.ts.net`, `argocd...`, etc) and Let's Encrypt certificate. At homelab scale this wastes tailnet devices (one per platform service) and burns weekly cert quota (50 unique / 5 duplicate).

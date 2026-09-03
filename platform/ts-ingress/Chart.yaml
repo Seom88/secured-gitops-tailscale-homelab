@@ -1,5 +1,5 @@
 apiVersion: v2
-name: tailscale
+name: ts-ingress
 description: "Hybrid: 1 gateway device my-cluster for 5 services + dedicated vault-my-cluster device for Vault (2 devices total) — see ADR-012"
 type: application
 version: 1.0.0

@@ -47,7 +47,7 @@ The secret is **not** stored in Vault (`secret/tailscale/auth` is no longer used
 
 **Operator consumption:**
 
-`platform/tailscale-operator` (`1.102.3`, wave `-1` `healthy`) references it via:
+`platform/ts-operator` (`1.102.3`, wave `-1` `healthy`) references it via:
 
 ```yaml
 tailscale-operator:
@@ -71,7 +71,7 @@ Verification after bootstrap/sync:
 kubectl -n tailscale get secret operator-oauth -o jsonpath='{.data.client_id}' | base64 -d; echo
 kubectl -n tailscale get secret operator-oauth -o jsonpath='{.data.client_secret}' | base64 -d | wc -c
 kubectl -n tailscale get pods -l app.kubernetes.io/name=tailscale-operator
-argocd app get tailscale-operator  # should be Healthy/Synced at wave -1
+argocd app get ts-operator  # should be Healthy/Synced at wave -1
 ```
 
 ## Other Secrets

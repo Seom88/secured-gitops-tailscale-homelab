@@ -51,7 +51,7 @@ This is **not just another Kubernetes homelab** — it's a reference implementat
 |------|------------------|----------|
 | **Secrets Management** | Vault HA (3-node Raft), auto-unseal, per-service auth | [`platform/vault/`](./platform/vault/), [Docs](./docs/skills-demonstrated.md#-secrets-management--security) |
 | **GitOps & Orchestration** | ArgoCD App-of-Apps, sync-wave ordering, custom health checks | [`gitops/templates/apps/`](./gitops/templates/apps/), [ADR-006](./docs/adrs/006-app-health-and-vault-ordering.md) |
-| **Zero-Trust Networking** | Tailscale operator, single-host gateway (`my-cluster.lonk-mirfak.ts.net` + path routing) — 1 device | [`platform/tailscale/`](./platform/tailscale/), [ADR-001](./docs/adrs/001-tailscale-ingress-placement.md), [ADR-012](./docs/adrs/012-single-host-cluster-gateway.md) |
+| **Zero-Trust Networking** | Tailscale operator, single-host gateway (`my-cluster.lonk-mirfak.ts.net` + path routing) — 1 device | [`platform/ts-ingress/`](./platform/ts-ingress/), [ADR-001](./docs/adrs/001-tailscale-ingress-placement.md), [ADR-012](./docs/adrs/012-single-host-cluster-gateway.md) |
 | **High-Availability** | Vault Raft quorum, multi-node Kubernetes, Longhorn distributed storage | [`platform/vault/templates/`](./platform/vault/templates/), [Features](./docs/features-deep-dive.md#-storage-longhorn--seaweedfs) |
 | **Observability** | Prometheus + Grafana + Loki + Alloy (DaemonSet log collector) with Vault metrics | [`platform/monitoring/`](./platform/monitoring/) |
 | **Storage & Data** | Longhorn CSI, SeaweedFS S3, persistent volume management | [`platform/seaweedfs/`](./platform/seaweedfs/), [ADR-005](./docs/adrs/005-longhorn-back-to-gitops.md) |
@@ -101,7 +101,7 @@ graph TD
         W1[01 vault<br/>wave 1 healthy<br/>3-node Raft]
         W2[02 seaweedfs<br/>wave 2 healthy]
         W3[03 monitoring<br/>wave 3 sync-only<br/>Prometheus + Grafana + Loki + Alloy DaemonSet]
-        W4[04 tailscale<br/>wave 4 sync-only<br/>single-host gateway<br/>my-cluster + cluster-gateway]
+        W4[04 ts-ingress<br/>wave 4 sync-only<br/>single-host gateway<br/>my-cluster + cluster-gateway]
 
         ROOT --> W0A & W0B & W0C
         W0A & W0B & W0C --> W1
@@ -212,7 +212,7 @@ secured-gitops-tailscale-homelab/
 - `bootstrap/init-gitops.sh` — Idempotent bootstrap script
 - `gitops/Chart.yaml` — Root App-of-Apps meta-chart
 - `gitops/templates/apps/` — Platform apps ordered by sync-wave
-- `platform/vault/` → `platform/tailscale/` → ... — Individual platform charts
+- `platform/vault/` → `platform/ts-ingress/` → ... — Individual platform charts
 
 **Full directory walkthrough:** See [`docs/getting-started.md`](./docs/getting-started.md)
 

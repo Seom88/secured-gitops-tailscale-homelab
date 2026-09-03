@@ -1,20 +1,21 @@
 {{- if .Values.platformApps.enabled }}
+# -1 breaks 00- prefix — wave -1 must sort before 00-* so operator gates waves 0..4
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: tailscale
+  name: ts-operator
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "4"
-    argocd.argoproj.io/tracking-id: gitops:argoproj.io/Application:argocd/tailscale
+    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/tracking-id: gitops:argoproj.io/Application:argocd/ts-operator
   labels:
-    wave-policy: sync-only
+    wave-policy: healthy
 spec:
   project: default
   source:
     repoURL: {{ .Values.repoURL }}
     targetRevision: {{ if .Values.developmentApp.enabled }}dev{{ else }}main{{ end }}
-    path: platform/tailscale
+    path: platform/ts-operator
     helm:
       ignoreMissingValueFiles: true
       valueFiles:

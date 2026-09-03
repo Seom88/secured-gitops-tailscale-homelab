@@ -1,7 +1,7 @@
 developmentApp:
   enabled: true
 
-# dev overrides — mirrors platform/tailscale/values-dev.yaml tail before split
+# dev overrides — mirrors platform/ts-ingress/values-dev.yaml tail before split
 tailscale-operator:
   operatorConfig:
     hostname: "tailscale-operator-dev"

@@ -83,11 +83,11 @@ open https://my-cluster.lonk-mirfak.ts.net/prometheus/
 
 ### Key Files
 
-- Operator deployment: [`platform/tailscale-operator/Chart.yaml`](../platform/tailscale-operator/Chart.yaml) (wave `-1`)
-- Gateway + single Ingress: [`platform/tailscale/templates/`](../platform/tailscale/templates/)
+- Operator deployment: [`platform/ts-operator/Chart.yaml`](../platform/ts-operator/Chart.yaml) (wave `-1`)
+- Gateway + single Ingress: [`platform/ts-ingress/templates/`](../platform/ts-ingress/templates/)
   - Gateway: `gateway-configmap.yaml` / `gateway-deployment.yaml` / `gateway-service.yaml`
   - Single Ingress: `ingress.yaml` (`my-cluster` → `cluster-gateway`)
-- Configuration: [`platform/tailscale/values.yaml`](../platform/tailscale/values.yaml) (`hostname: my-cluster` / `dev-my-cluster`)
+- Configuration: [`platform/ts-ingress/values.yaml`](../platform/ts-ingress/values.yaml) (`hostname: my-cluster` / `dev-my-cluster`)
 - ADRs: [ADR-001: Tailscale Ingress Placement](./adrs/001-tailscale-ingress-placement.md), [ADR-012: Single-Host Cluster Gateway](./adrs/012-single-host-cluster-gateway.md), [ADR-014: Cilium CNI and Identity-Aware NetworkPolicies](./adrs/014-cilium-cni-and-identity-networkpolicies.md)
 
 ---
@@ -141,7 +141,7 @@ GitOps ensures:
 
 ```
 Wave -1 (Healthy required):
-  └── tailscale-operator  ← Must be healthy; gates 0..4; publishes DNSConfig status
+  └── ts-operator  ← Must be healthy; gates 0..4; publishes DNSConfig status
 
 Wave 0 (Healthy required):
   ├── 00-cert-manager     ← Must be ready
@@ -160,7 +160,7 @@ Wave 3 (Sync-only):
   └── 03-monitoring       ← Prometheus + Grafana + Loki (SeaweedFS S3) + Alloy DaemonSet (stateless, RBAC auto); depends on wave 2
 
 Wave 4 (Sync-only):
-  └── 04-tailscale        ← Single-host gateway (my-cluster Ingress + cluster-gateway NGINX), always last — ADR-012
+  └── 04-ts-ingress        ← Single-host gateway (my-cluster Ingress + cluster-gateway NGINX), always last — ADR-012
 ```
 
 ### Key Files
@@ -168,7 +168,7 @@ Wave 4 (Sync-only):
 - Root app: [`gitops/templates/root-prod-app.yaml`](../gitops/templates/root-prod-app.yaml)
 - Platform apps: [`gitops/templates/apps/`](../gitops/templates/apps/)
   - `00-cert-manager.yaml`, `00-external-secrets.yaml`, `00-longhorn.yaml`
-  - `01-vault.yaml`, `02-seaweedfs.yaml`, `03-monitoring.yaml`, `04-tailscale.yaml`
+  - `01-vault.yaml`, `02-seaweedfs.yaml`, `03-monitoring.yaml`, `04-ts-ingress.yaml`
 - Helm chart: [`gitops/Chart.yaml`](../gitops/Chart.yaml)
 - Configuration: [`gitops/values.yaml`](../gitops/values.yaml) (prod) and [`gitops/values-dev.yaml`](../gitops/values-dev.yaml) (dev)
 - ADR: [ADR-006: App Health and Vault Ordering](./adrs/006-app-health-and-vault-ordering.md)
