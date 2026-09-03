@@ -55,10 +55,10 @@ The scope for v1.0 is defined as Phases 1 through 4. Items previously labeled "P
 Remaining scope for v1.0.0. The Cilium CNI migration is a breaking change at the infrastructure layer.
 
 **CNI migration (v1.0.0, breaking change):**
-- [ ] Cilium CNI migration (Flannel -> Cilium; enables NetworkPolicy enforcement, Hubble observability, and WireGuard encryption) — planned for v1.0.0
+- [x] Cilium CNI migration (Flannel -> Cilium; enables NetworkPolicy enforcement, Hubble observability, and WireGuard encryption) — deployed (v1.20.1)
 
 **Security hardening (requires Cilium, planned for v1.0.0):**
-- [ ] Complete NetworkPolicies (default deny-all + explicit allows) — requires Cilium
+- [x] Complete NetworkPolicies (CiliumNetworkPolicy default deny-all + explicit allows across all namespaces) — deployed (see ADR-014)
 - [ ] Pod Security Admission in `restricted` mode
 - [ ] Centralized audit logging (Kubernetes API + Vault → Loki)
 - [ ] Container image vulnerability scanning (Trivy) integrated into CI
@@ -110,12 +110,12 @@ Items planned after v1.0.0. Expected to be additive; no CNI or storage re-archit
 - [x] Longhorn + SeaweedFS
 - [x] Prometheus + Grafana + Loki + Alloy (DaemonSet log collector)
 - [x] Velero — backup/restore (Wave 0, RustFS S3, chart `12.1.0`)
+- [x] Cilium CNI migration (Flannel -> Cilium v1.20.1; eBPF kube-proxy replacement, Gateway API)
+- [x] Complete NetworkPolicies (CiliumNetworkPolicy across all namespaces)
 - [x] Validation CI (GitHub Actions)
 - [x] Architecture Decision Records
 
 **Still pending for v1.0:**
-- [ ] Cilium CNI migration (Flannel -> Cilium; enables NetworkPolicy enforcement, Hubble, WireGuard encryption)
-- [ ] Complete NetworkPolicies (requires Cilium)
 - [ ] Pod Security Admission `restricted`
 - [ ] Centralized audit logging (K8s API + Vault → Loki)
 - [ ] Trivy in CI
