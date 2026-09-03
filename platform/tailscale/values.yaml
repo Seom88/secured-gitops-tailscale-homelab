@@ -12,7 +12,7 @@ gateway:
   replicas: 1
   image:
     repository: nginx
-    tag: "1.27-alpine"
+    tag: "1.29-alpine"
     pullPolicy: IfNotPresent
   resources:
     requests:
