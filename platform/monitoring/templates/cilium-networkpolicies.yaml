@@ -151,18 +151,9 @@ spec:
               protocol: TCP
             - port: "9090"
               protocol: TCP
-    # Hubble / Cilium health checks
+    # Cilium health/probe — allow all ports from host/remote-node/kube-apiserver (fixes 8084 connection refused on probes)
     - fromEntities:
         - host
         - remote-node
-      toPorts:
-        - ports:
-            - port: "9090"
-              protocol: TCP
-            - port: "80"
-              protocol: TCP
-            - port: "8080"
-              protocol: TCP
-            - port: "3000"
-              protocol: TCP
+        - kube-apiserver
 {{- end }}

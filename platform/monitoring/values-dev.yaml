@@ -8,12 +8,14 @@ loki:
       s3:
         endpoint: http://seaweedfs-s3.seaweedfs.svc:8333
 
-# Configuration for the Kube-Prometheus-Stack subchart
+# Configuration for the Kube-Prometheus-Stack subchart — dev single-node tuning (16GB host, 6GB VM)
 kube-prometheus-stack:
   prometheus:
     prometheusSpec:
       externalUrl: https://dev-my-cluster.lonk-mirfak.ts.net/prometheus
       routePrefix: /prometheus
+      retention: 2d
+      retentionSize: 5GB
       storageSpec:
         volumeClaimTemplate:
           spec:
@@ -22,8 +24,14 @@ kube-prometheus-stack:
             resources:
               requests:
                 storage: 10Gi
-
-  # Grafana configuration
+      resources:
+        requests: { cpu: 200m, memory: 512Mi }
+        limits: { cpu: 1000m, memory: 1Gi }
+  alertmanager:
+    alertmanagerSpec:
+      resources:
+        requests: { cpu: 50m, memory: 64Mi }
+        limits: { cpu: 100m, memory: 128Mi }
   grafana:
     grafana.ini:
       server:
@@ -40,3 +48,7 @@ kube-prometheus-stack:
           httpHeaderName1: "X-Scope-OrgID"
         secureJsonData:
           httpHeaderValue1: "fake"
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits: { cpu: 200m, memory: 128Mi }
+    persistence: { enabled: false }

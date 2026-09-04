@@ -8,8 +8,14 @@ vault:
   injector:
     replicas: 1
     affinity: ""
+    resources:
+      requests: { cpu: 20m, memory: 32Mi }
+      limits: { cpu: 50m, memory: 64Mi }
   server:
     affinity: ""
+    resources:
+      requests: { cpu: 200m, memory: 256Mi }
+      limits: { cpu: 500m, memory: 512Mi }
     ha:
       enabled: true
       replicas: 1

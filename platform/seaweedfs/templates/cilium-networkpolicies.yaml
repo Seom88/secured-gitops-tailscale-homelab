@@ -122,14 +122,9 @@ spec:
         - ports:
             - port: "8333"
               protocol: TCP
-    # Hubble / host health
+    # Cilium health/probe — allow all ports from host/remote-node/kube-apiserver (fixes 8084 connection refused on probes)
     - fromEntities:
         - host
         - remote-node
-      toPorts:
-        - ports:
-            - port: "9327"
-              protocol: TCP
-            - port: "8333"
-              protocol: TCP
+        - kube-apiserver
 {{- end }}
