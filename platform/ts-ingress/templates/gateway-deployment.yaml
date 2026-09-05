@@ -20,6 +20,14 @@ spec:
         app.kubernetes.io/name: cluster-gateway
         app.kubernetes.io/part-of: ts-ingress
     spec:
+      terminationGracePeriodSeconds: 60
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: cluster-gateway
       containers:
         - name: nginx
           image: "{{ .Values.gateway.image.repository }}:{{ .Values.gateway.image.tag }}"
@@ -33,6 +41,10 @@ spec:
               mountPath: /etc/nginx/nginx.conf
               subPath: nginx.conf
               readOnly: true
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 15; nginx -s quit"]
           resources:
             {{- toYaml .Values.gateway.resources | nindent 12 }}
           readinessProbe:

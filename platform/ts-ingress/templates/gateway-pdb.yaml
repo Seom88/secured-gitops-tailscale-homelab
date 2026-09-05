@@ -1,0 +1,12 @@
+{{- if .Values.gateway.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cluster-gateway-pdb
+  namespace: tailscale
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cluster-gateway
+{{- end }}

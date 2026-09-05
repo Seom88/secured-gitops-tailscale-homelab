@@ -16,11 +16,11 @@ gateway:
     pullPolicy: IfNotPresent
   resources:
     requests:
-      cpu: 50m
-      memory: 64Mi
-    limits:
-      cpu: 200m
+      cpu: 100m
       memory: 128Mi
+    limits:
+      cpu: 400m
+      memory: 256Mi
 
 # Per-service toggles — argocd/grafana/prometheus/longhorn/seaweedfs control gateway ConfigMap locations.
 # vault.enabled controls the dedicated vault-my-cluster Tailscale device (vault-ingress.yaml), not a gateway location.

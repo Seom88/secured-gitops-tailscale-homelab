@@ -50,6 +50,12 @@ data:
         '' close;
       }
 
+      # Preserve original scheme from Tailscale proxy (HTTPS) when gateway listens on HTTP
+      map $http_x_forwarded_proto $forwarded_proto {
+        default $http_x_forwarded_proto;
+        "" $scheme;
+      }
+
       # Trust X-Forwarded-* from Tailscale proxy
       real_ip_header X-Forwarded-For;
       set_real_ip_from 0.0.0.0/0;
@@ -57,6 +63,11 @@ data:
       server {
         listen 80;
         server_name _;
+
+        if ($http_x_forwarded_proto = "http") {
+          return 308 https://$host$request_uri;
+        }
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
         # Health probe for k8s — must be reachable via host/remote-node for Cilium probes
         location = /healthz {
@@ -79,7 +90,7 @@ data:
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_set_header X-Forwarded-Proto $forwarded_proto;
           proxy_set_header X-Forwarded-Host $host;
           proxy_set_header X-Forwarded-Prefix /argocd;
           proxy_set_header Accept-Encoding "";
@@ -108,7 +119,7 @@ data:
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_set_header X-Forwarded-Proto $forwarded_proto;
           proxy_set_header X-Forwarded-Host $host;
           proxy_set_header X-Forwarded-Prefix /grafana;
           proxy_redirect off;
@@ -127,7 +138,7 @@ data:
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_set_header X-Forwarded-Proto $forwarded_proto;
           proxy_set_header X-Forwarded-Prefix /prometheus;
           proxy_redirect off;
         }
@@ -144,7 +155,7 @@ data:
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_set_header X-Forwarded-Proto $forwarded_proto;
           proxy_set_header X-Forwarded-Host $host;
           proxy_set_header X-Forwarded-Prefix /hubble;
           proxy_set_header Upgrade $http_upgrade;
@@ -173,10 +184,15 @@ data:
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_set_header X-Forwarded-Proto $forwarded_proto;
+          proxy_set_header X-Forwarded-Host $host;
+          proxy_set_header X-Forwarded-Prefix /longhorn;
           proxy_set_header Upgrade $http_upgrade;
-          proxy_set_header Connection "upgrade";
+          proxy_set_header Connection $connection_upgrade;
+          proxy_set_header Accept-Encoding "";
           proxy_redirect off;
+          proxy_read_timeout 3600s;
+          proxy_send_timeout 3600s;
         }
         location = /longhorn {
           return 302 /longhorn/;
@@ -190,7 +206,7 @@ data:
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_set_header X-Forwarded-Proto $forwarded_proto;
           proxy_redirect off;
         }
         location = /seaweedfs-s3 {
@@ -206,7 +222,7 @@ data:
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_set_header X-Forwarded-Proto $forwarded_proto;
           proxy_set_header X-Forwarded-Host $host;
           proxy_set_header Accept-Encoding "";
           proxy_redirect / /seaweedfs-admin/;
