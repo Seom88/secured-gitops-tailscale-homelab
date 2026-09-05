@@ -168,7 +168,7 @@ vault-init:
 
 # Port-forward ArgoCD UI → localhost:8080
 pf-argocd:
-    kubectl port-forward svc/argocd-server -n argocd 8080:443
+    kubectl port-forward svc/argocd-server -n argocd 8080:80
 
 # Port-forward Vault UI → localhost:8200
 pf-vault:
