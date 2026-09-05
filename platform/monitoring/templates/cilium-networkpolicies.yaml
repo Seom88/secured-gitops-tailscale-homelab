@@ -44,14 +44,13 @@ spec:
               protocol: TCP
             - port: "6443"
               protocol: TCP
-    # Intra-monitoring: alloy -> loki-gateway (80), prometheus (9090), grafana (80), alertmanager (9093)
+    # Intra-monitoring: alloy -> loki 3100, prometheus 9090, grafana 3000, alertmanager 9093
+    # Pod ports only: 80->3000/3100 post-DNAT; 80 never matches
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: monitoring
       toPorts:
         - ports:
-            - port: "80"
-              protocol: TCP
             - port: "3100"
               protocol: TCP
             - port: "9090"
@@ -93,8 +92,6 @@ spec:
               protocol: TCP
             - port: "7946"
               protocol: TCP
-            - port: "3500"
-              protocol: TCP
     # Hubble relay (optional observability)
     - toEndpoints:
         - matchLabels:
@@ -103,8 +100,6 @@ spec:
       toPorts:
         - ports:
             - port: "4244"
-              protocol: TCP
-            - port: "4245"
               protocol: TCP
 ---
 # 3) Ingress allowlist — intra-monitoring + scrape from Prometheus + Tailscale gateway to Grafana, plus Hubble
@@ -140,16 +135,13 @@ spec:
               protocol: TCP
             - port: "7946"
               protocol: TCP
-    # Grafana / Prometheus via Tailscale gateway (tailscale namespace) — ports 80, 9090, 3000 ingress
-    # Grafana Service ClusterIP:80 -> Pod:3000 post-DNAT (kubeProxyReplacement=strict)
+    # Grafana 3000 + Prometheus 9090 via Tailscale gateway — Pod ports only (80 never matches post-DNAT)
     - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: tailscale
             k8s:app.kubernetes.io/name: cluster-gateway
       toPorts:
         - ports:
-            - port: "80"
-              protocol: TCP
             - port: "3000"
               protocol: TCP
             - port: "9090"

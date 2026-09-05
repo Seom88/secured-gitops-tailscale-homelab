@@ -45,41 +45,29 @@ spec:
       app.kubernetes.io/name: cluster-gateway
   egress:
     # ArgoCD — precise label + fallback namespace-only (label drift resilient)
-    # Port 8080 required: Cilium kubeProxyReplacement=strict enforces egress post-DNAT,
-    # so the packet is already translated from ClusterIP:80 → pod:8080 before policy check.
+    # Pod 8080 only: kubeProxyReplacement=strict post-DNAT ClusterIP:80 -> pod:8080; 80/443 never match
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: argocd
             k8s:app.kubernetes.io/name: argocd-server
       toPorts:
         - ports:
-            - port: "80"
-              protocol: TCP
             - port: "8080"
-              protocol: TCP
-            - port: "443"
               protocol: TCP
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: argocd
       toPorts:
         - ports:
-            - port: "80"
-              protocol: TCP
             - port: "8080"
               protocol: TCP
-            - port: "443"
-              protocol: TCP
-    # Grafana (monitoring) — kube-prometheus-stack labels vary; provide namespace fallback
-    # Service ClusterIP:80 -> Pod:3000 post-DNAT (kubeProxyReplacement=strict); allow both
+    # Grafana — Pod 3000 only: kubeProxyReplacement=strict post-DNAT 80->3000; 80 never matches
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: monitoring
             k8s:app.kubernetes.io/name: grafana
       toPorts:
         - ports:
-            - port: "80"
-              protocol: TCP
             - port: "3000"
               protocol: TCP
     - toEndpoints:
@@ -87,11 +75,9 @@ spec:
             k8s:io.kubernetes.pod.namespace: monitoring
       toPorts:
         - ports:
-            - port: "80"
-              protocol: TCP
             - port: "3000"
               protocol: TCP
-    # Prometheus (monitoring) — operator vs stack label mismatch; namespace fallback
+    # Prometheus — 9090 only (8080 is kube-state-metrics, not app=prometheus)
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: monitoring
@@ -100,16 +86,12 @@ spec:
         - ports:
             - port: "9090"
               protocol: TCP
-            - port: "8080"
-              protocol: TCP
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: monitoring
       toPorts:
         - ports:
             - port: "9090"
-              protocol: TCP
-            - port: "8080"
               protocol: TCP
     # Longhorn frontend — precise + namespace fallback
     - toEndpoints:
@@ -118,16 +100,16 @@ spec:
             k8s:app: longhorn-ui
       toPorts:
         - ports:
-            - port: "80"
+            - port: "8000"
               protocol: TCP
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: longhorn-system
       toPorts:
         - ports:
-            - port: "80"
+            - port: "8000"
               protocol: TCP
-    # SeaweedFS S3 + admin — namespace-only is correct (no stable app label)
+    # SeaweedFS S3 + admin — namespace-only (33646 not proxied by gateway)
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: seaweedfs
@@ -136,8 +118,6 @@ spec:
             - port: "8333"
               protocol: TCP
             - port: "23646"
-              protocol: TCP
-            - port: "33646"
               protocol: TCP
     # Vault is NOT via gateway (dedicated device vault-my-cluster) — explicitly NOT allowed here
     - toEntities:
