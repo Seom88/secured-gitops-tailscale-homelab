@@ -59,11 +59,19 @@ spec:
               protocol: UDP
             - port: "41641"
               protocol: TCP
+    # ICMP Echo for Tailscale PMTU — CRD 1.33.11 requires icmps[].fields[].type (bare family is invalid)
     - toEntities:
         - world
       icmps:
+      - fields:
         - family: IPv4
+          type: 8
+        - family: IPv4
+          type: 0
         - family: IPv6
+          type: 128
+        - family: IPv6
+          type: 129
     - toFQDNs:
         - matchName: controlplane.tailscale.com
         - matchPattern: "*.controlplane.tailscale.com"
