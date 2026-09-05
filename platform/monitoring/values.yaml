@@ -110,10 +110,6 @@ kube-prometheus-stack:
         secureJsonData:
           httpHeaderValue1: "fake"
 
-    sidecar:
-      dashboards:
-        searchNamespace: monitoring
-
     resources:
       requests:
         cpu: 200m
