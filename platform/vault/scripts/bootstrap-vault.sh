@@ -41,7 +41,7 @@ retry() {
 # Silent status check that handles exit code 2 (sealed) without kubectl noise
 vault_status() {
     local pod=$1
-    vault_kubectl "$pod" -- /bin/sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault status -format=json -tls-server-name=vault || true" 2>/dev/null
+    timeout 10 kubectl exec -i -n vault "$pod" -- /bin/sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault status -format=json -tls-server-name=vault || true" 2>/dev/null || true
 }
 
 # General vault exec that silences kubectl "command terminated" noise on stderr
@@ -123,7 +123,10 @@ fi
 echo -e "${YELLOW}  [Vault] Checking seal status for all pods...${NC}"
 for POD in $(kubectl get pods -n vault -l app.kubernetes.io/name=vault,component=server -o jsonpath='{.items[*].metadata.name}'); do
     echo -ne "${YELLOW}  [Vault] Waiting for pod $POD to be responsive...${NC}"
+    ATTEMPTS=0
     until vault_status "$POD" | jq -e '.version' >/dev/null 2>&1; do
+        ATTEMPTS=$((ATTEMPTS+1))
+        if [ "$ATTEMPTS" -ge 60 ]; then echo -e "\n${RED}ERROR: pod $POD never became responsive (vault status timeout)${NC}"; vault_status "$POD" || true; exit 1; fi
         echo -n "."
         sleep 2
     done

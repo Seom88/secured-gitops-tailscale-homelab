@@ -183,7 +183,7 @@ vault:
           storage "raft" {
             path = "/vault/data"
             {{- $namespace := .Release.Namespace }}
-            {{- range $i := until 3 }}
+            {{- range $i := until (.Values.server.ha.replicas | int) }}
             retry_join {
               leader_api_addr = "https://{{ template "vault.fullname" $ }}-{{ $i }}.{{ template "vault.fullname" $ }}-internal.{{ $namespace }}.svc.cluster.local:8200"
               leader_ca_cert_file = "/vault/userconfig/vault-tls/ca.crt"

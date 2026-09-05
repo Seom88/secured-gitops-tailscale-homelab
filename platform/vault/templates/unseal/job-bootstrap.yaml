@@ -111,7 +111,7 @@ spec:
 
               vault_status() {
                 local pod=$1
-                vault_kubectl "$pod" -- /bin/sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault status -format=json -tls-server-name=$TLS_SERVER_NAME || true" 2>/dev/null
+                timeout 10 kubectl exec -i -n "$VAULT_NAMESPACE" "$pod" -- /bin/sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault status -format=json -tls-server-name=$TLS_SERVER_NAME || true" 2>/dev/null || true
               }
 
               vault_exec() {
@@ -194,7 +194,10 @@ spec:
               echo "  [Vault] Checking seal status for all pods..."
               for POD in $(kubectl get pods -n "$VAULT_NAMESPACE" -l app.kubernetes.io/name=vault,component=server -o jsonpath='{.items[*].metadata.name}'); do
                 echo -n "  [Vault] Waiting for pod $POD to be responsive..."
+                ATTEMPTS=0
                 until vault_status "$POD" | jq -e '.version' >/dev/null 2>&1; do
+                  ATTEMPTS=$((ATTEMPTS+1))
+                  if [ "$ATTEMPTS" -ge 60 ]; then echo "ERROR: pod $POD never became responsive (vault status timeout)"; vault_status "$POD" || true; exit 1; fi
                   echo -n "."
                   sleep 2
                 done
