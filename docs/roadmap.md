@@ -78,6 +78,51 @@ Remaining scope for v1.0.0. The Cilium CNI migration is a breaking change at the
 
 Items planned after v1.0.0. Expected to be additive; no CNI or storage re-architecture is planned.
 
+### Decoupling & vendor-agnostic ingress (Gateway API BYOD)
+
+Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping the current MagicDNS workflow intact. App routing moves to standard Kubernetes Gateway API (`GatewayClass` / `Gateway` / `HTTPRoute`) so swapping the underlying mesh (Tailscale → Netbird or other) later requires no app changes.
+
+**Device inventory — 4 → 3 (vault device eliminated):**
+
+| Tailnet device | Purpose | Today (v1 — 4 devices) | After BYOD (v2 — 3 devices) |
+|---|---|---|---|
+| `k8s-nameserver` | `DNSConfig` device for MagicDNS `ts.net` → CoreDNS sibling `ts.net:53` (`platform/coredns-patch`, ADR-011) | ✅ present | ✅ stays |
+| `rustfs-egress` | `ExternalName` `rustfs.lonk-mirfak.ts.net` for Velero/S3 via Tailscale | ✅ present | ✅ stays (future optional: consolidate via `TCPRoute`; out of scope for v2) |
+| `my-cluster` | Single `Ingress` + NGINX gateway (`platform/ts-ingress`) for `argocd`/`grafana`/`prometheus`/`longhorn`/`seaweedfs` (ADR-012) | ✅ present | 🔀 replaced — merged into `gateway-envoy` |
+| `vault-my-cluster` | Dedicated `Ingress` for Vault — Amendment 2026-09-02 (Vault UI has no subpath support, `hashicorp/vault#9221`) | ✅ present | ❌ eliminated — becomes second listener/hostname on `gateway-envoy` |
+| `gateway-envoy` | Envoy Gateway `LoadBalancer` with `loadBalancerClass: tailscale` (BYOD) | — | ✅ **single device** serving both `my-cluster.lonk-mirfak.ts.net` + `vault-my-cluster.lonk-mirfak.ts.net` |
+
+> Operator itself is control-plane only and not counted. `k8s-nameserver` + `rustfs-egress` are unchanged in v2.
+
+**BYOD architecture (brief):**
+
+- Envoy Gateway chart provides `GatewayClass: tailscale` and a `LoadBalancer` (`loadBalancerClass: tailscale`) — single Tailscale device `gateway-envoy` replaces the two L7 devices above. See [Tailscale BYOD Gateway API](https://tailscale.com/docs/solutions/kubernetes-operator-byod-gateway-api).
+- One `Gateway` with multiple `listeners` / `hostnames` (`my-cluster.lonk-mirfak.ts.net`, `vault-my-cluster.lonk-mirfak.ts.net`), each terminating its own TLS cert. One `HTTPRoute` per service (replaces NGINX `ConfigMap` path-proxy).
+- Removes `platform/ts-ingress` NGINX gateway (`Deployment`/`Service`/`ConfigMap`) and `sub_filter`/`rewrite` hacks for `/longhorn`, `/seaweedfs-*`, etc. Vault no longer needs a separate device — it is a standard hostname-routed `HTTPRoute`.
+- Substrate ready: Cilium Gateway API CRDs `v1.2.3` are already installed via `infra-talos-homelab` (ADR-014); no CNI/storage change needed.
+
+**Scope:**
+
+| | In scope for v2 (immediate) | Future / optional (not v2) |
+|---|---|---|
+| Ingress | Consolidate `my-cluster` + `vault-my-cluster` onto one `gateway-envoy` device; keep MagicDNS (`*.lonk-mirfak.ts.net`) | Own domain via Pi-hole/CoreDNS authoritative + `ExternalDNS` + `cert-manager` + Tailscale split DNS (BYOD guide Steps 1–6); reduces MagicDNS dependency but not required for vendor-agnostic routing |
+| Mesh | App `HTTPRoutes` stay vendor-agnostic; swapping `GatewayClass` from `tailscale` to `netbird`/other requires no app changes | Evaluation of alternative meshes (e.g. Netbird) as drop-in `GatewayClass` replacement |
+| DNS / S3 | `k8s-nameserver` and `rustfs-egress` untouched | Own DNS/domain, `TCPRoute` for RustFS |
+
+**Checklist — v2:**
+
+- [ ] Install Envoy Gateway chart (Gateway API provider) and define `GatewayClass: tailscale`
+- [ ] Define single `Gateway: gateway-envoy` (`LoadBalancer`, `loadBalancerClass: tailscale`) with two TLS listeners/hostnames and per-service `HTTPRoute`s (argocd, grafana, prometheus, longhorn, seaweedfs, vault)
+- [ ] Migrate Vault route from dedicated `Ingress` (`vault-my-cluster`) to `HTTPRoute` on `gateway-envoy`; verify Vault UI/API at root without subpath hacks
+- [ ] Deprecate and remove `platform/ts-ingress` NGINX gateway (`Deployment`/`Service`/`ConfigMap` + Cilium policies for `cluster-gateway`); update `CiliumNetworkPolicies` for `gateway-envoy`
+- [ ] Update docs/runbooks (URLs, `helm template` verification, `kubectl get gateway/httproute` checks, rollback to dual-Ingress)
+
+**Non-goals for v2:**
+
+- Not removing Tailscale entirely — `k8s-nameserver`, `rustfs-egress`, and tailnet ACLs remain.
+- Not touching `k8s-nameserver` or `rustfs-egress` devices.
+- No change to storage (Longhorn/SeaweedFS), Vault HA, or ArgoCD waves beyond ingress.
+
 ### Compliance & policy
 
 - Kyverno — admission-time policy enforcement (policy-as-code)
@@ -125,6 +170,7 @@ Items planned after v1.0.0. Expected to be additive; no CNI or storage re-archit
 - [ ] Customization guide tested end-to-end
 
 **Planned for v2.0:**
+- [ ] Decoupling & vendor-agnostic ingress — Gateway API BYOD (Envoy Gateway, `GatewayClass: tailscale`; 4→3 devices — `vault-my-cluster` merged into `gateway-envoy`; MagicDNS kept, own-domain split DNS deferred)
 - [ ] Compliance & policy (Kyverno, CIS Benchmark, RBAC audit, compliance dashboard)
 - [ ] Operational excellence (automated secrets rotation, supply chain hardening, Velero restore drills)
 - [ ] Python automation & image security (Ops CLI, infrastructure tests, observability exporter, compliance scanning)

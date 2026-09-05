@@ -44,16 +44,26 @@ spec:
             - port: "6443"
               protocol: TCP
     # Tailscale control plane — plain world egress (no DNS L7 on world; DNS already allowed via kube-dns)
+    # Tailscale NAT traversal — STUN (3478/udp, 80/tcp) + ICMP path MTU (Hubble drop fix 2026-09-04)
     - toEntities:
         - world
       toPorts:
         - ports:
             - port: "443"
               protocol: TCP
+            - port: "3478"
+              protocol: UDP
+            - port: "80"
+              protocol: TCP
             - port: "41641"
               protocol: UDP
             - port: "41641"
               protocol: TCP
+    - toEntities:
+        - world
+      icmps:
+        - family: IPv4
+        - family: IPv6
     - toFQDNs:
         - matchName: controlplane.tailscale.com
         - matchPattern: "*.controlplane.tailscale.com"
@@ -78,6 +88,16 @@ spec:
               protocol: TCP
             - port: "9090"
               protocol: TCP
+    # Optional — mDNS/SSDP host discovery (10.244.0.131:5351, 239.255.255.250:1900) intentionally blocked;
+    # uncomment to silence Hubble if needed (host only, not world):
+    # - toEntities:
+    #     - host
+    #   toPorts:
+    #     - ports:
+    #         - port: "5351"
+    #           protocol: UDP
+    #         - port: "1900"
+    #           protocol: UDP
     # Hubble
     - toEndpoints:
         - matchLabels:
