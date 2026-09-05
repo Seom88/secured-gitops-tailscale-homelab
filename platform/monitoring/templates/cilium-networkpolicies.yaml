@@ -74,6 +74,7 @@ spec:
               protocol: TCP
     # Prometheus scraping: allow egress to any pod in cluster on scrape ports (9100 node-exporter, 8080 kube-state-metrics, 9090, 9153 coredns, 10250 kubelet)
     # Uses toEntities cluster to avoid enumerating every namespace/selector — Hubble will show flows per-identity
+    # Cilium metrics (9962 agent, 9963 operator, 9964 envoy, 9965 hubble, 9966 relay)
     - toEntities:
         - cluster
       toPorts:
@@ -95,6 +96,16 @@ spec:
             - port: "9327"
               protocol: TCP
             - port: "8085"
+              protocol: TCP
+            - port: "9962"
+              protocol: TCP
+            - port: "9963"
+              protocol: TCP
+            - port: "9964"
+              protocol: TCP
+            - port: "9965"
+              protocol: TCP
+            - port: "9966"
               protocol: TCP
     # Grafana plugins - grafana.com:443 for GF_INSTALL_PLUGINS
     - toFQDNs:
