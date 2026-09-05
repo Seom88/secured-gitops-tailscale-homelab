@@ -36,7 +36,7 @@ metadata:
 spec:
   endpointSelector: {}
   egress:
-    # Intra-longhorn — narrowed from allow-all: manager 9500, frontend 8000, instance-manager 8500
+    # Intra-longhorn — narrowed from allow-all: manager 9500, frontend 8000, instance-manager 8500-8503 range (8500,8501,8503)
     # (webhooks 9501-9503/8443 and replica data 10000-30000 deferred — expand if probes fail)
     - toEndpoints:
         - matchLabels:
@@ -48,6 +48,10 @@ spec:
             - port: "8000"
               protocol: TCP
             - port: "8500"
+              protocol: TCP
+            - port: "8501"
+              protocol: TCP
+            - port: "8503"
               protocol: TCP
     - toEntities:
         - kube-apiserver
@@ -87,6 +91,10 @@ spec:
             - port: "8000"
               protocol: TCP
             - port: "8500"
+              protocol: TCP
+            - port: "8501"
+              protocol: TCP
+            - port: "8503"
               protocol: TCP
     - fromEndpoints:
         - matchLabels:
