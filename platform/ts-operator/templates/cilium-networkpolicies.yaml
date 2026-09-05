@@ -95,16 +95,16 @@ spec:
               protocol: TCP
             - port: "9090"
               protocol: TCP
-    # Optional — mDNS/SSDP host discovery (10.244.0.131:5351, 239.255.255.250:1900) — world UDP 1-65535 now covers
-    # 1900/5351 for world; host block below kept for reference (host-only discovery, not world):
-    # - toEntities:
-    #     - host
-    #   toPorts:
-    #     - ports:
-    #         - port: "5351"
-    #           protocol: UDP
-    #         - port: "1900"
-    #           protocol: UDP
+    # mDNS/SSDP host discovery — host entity (10.244.0.131:5351, 239.255.255.250:1900) not covered by world UDP
+    - toEntities:
+        - host
+        - remote-node
+      toPorts:
+        - ports:
+            - port: "5351"
+              protocol: UDP
+            - port: "1900"
+              protocol: UDP
     # Hubble
     - toEndpoints:
         - matchLabels:
