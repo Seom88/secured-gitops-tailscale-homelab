@@ -190,12 +190,17 @@ kube-prometheus-stack:
 # It needs NO PVC/storage (WAL disabled by default, uses /tmp/alloy which is ephemeral).
 # RBAC (ServiceAccount + ClusterRole/ClusterRoleBinding for pods/nodes discovery) is
 # created automatically by the alloy chart (rbac.create=true, default). No manual RBAC needed.
+# Grafana Alloy — log shipper for Loki
+# Deployed as a DaemonSet: discovers local pods via discovery.kubernetes, filters to own node,
+# tails /var/log/pods host mount via loki.source.kubernetes, and forwards to Loki gateway.
 ciliumNetworkPolicy:
   enabled: true
 
 alloy:
   # Pass-through to alloy subchart (Helm: parent key `alloy` nests all alloy chart values)
   alloy:
+    mounts:
+      varlog: true
     configMap:
       content: |-
         logging {
@@ -203,10 +208,43 @@ alloy:
           format = "logfmt"
         }
 
+        // 1. Discover all pods in the cluster
         discovery.kubernetes "pods" {
           role = "pod"
         }
 
+        // 2. Filter to only pods running on the current node (K8S_NODE_NAME injected by Helm)
+        discovery.relabel "local_pods" {
+          targets = discovery.kubernetes.pods.targets
+
+          rule {
+            source_labels = ["__meta_kubernetes_pod_node_name"]
+            regex         = sys.env("K8S_NODE_NAME")
+            action        = "keep"
+          }
+
+          rule {
+            source_labels = ["__meta_kubernetes_namespace"]
+            target_label  = "namespace"
+          }
+
+          rule {
+            source_labels = ["__meta_kubernetes_pod_name"]
+            target_label  = "pod"
+          }
+
+          rule {
+            source_labels = ["__meta_kubernetes_pod_container_name"]
+            target_label  = "container"
+          }
+
+          rule {
+            source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+            target_label  = "app"
+          }
+        }
+
+        // 3. Drop noisy probe logs before pushing
         loki.process "drop_noise" {
           forward_to = [loki.write.grafana_loki.receiver]
 
@@ -216,12 +254,15 @@ alloy:
           }
         }
 
+        // 4. Collect logs from /var/log/pods on the node
         loki.source.kubernetes "pods" {
           targets    = discovery.kubernetes.pods.targets
           forward_to = [loki.write.grafana_loki.receiver]
+          targets    = discovery.relabel.local_pods.output
           forward_to = [loki.process.drop_noise.receiver]
         }
 
+        // 5. Send logs to Loki Gateway
         loki.write "grafana_loki" {
           endpoint {
             url = "http://monitoring-loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push"
