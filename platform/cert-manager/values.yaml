@@ -1,0 +1,5 @@
+ciliumNetworkPolicy:
+  enabled: true
+
+developmentApp:
+  enabled: false

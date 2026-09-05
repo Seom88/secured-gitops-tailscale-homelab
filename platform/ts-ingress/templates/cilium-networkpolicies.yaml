@@ -235,8 +235,12 @@ spec:
         - ports:
             - port: "80"
               protocol: TCP
-    # Intra-namespace health (no port restriction — liveness/readiness between gateway replicas)
+    # Intra-namespace — narrowed from allow-all: gateway http 80/TCP only (docs: nginx listen 80, cluster-gateway Service 80 -> pod 80)
     - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: tailscale
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
 {{- end }}
