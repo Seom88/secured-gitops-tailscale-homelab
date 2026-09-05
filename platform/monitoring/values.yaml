@@ -16,6 +16,13 @@ loki:
     extraEnvFrom:
       - secretRef:
           name: loki-s3-credentials
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 768Mi
 
   # Component replicas (set to 0 for Monolithic mode)
   write:
@@ -103,6 +110,10 @@ kube-prometheus-stack:
         secureJsonData:
           httpHeaderValue1: "fake"
 
+    sidecar:
+      dashboards:
+        searchNamespace: monitoring
+
     resources:
       requests:
         cpu: 200m
@@ -131,11 +142,20 @@ kube-prometheus-stack:
   # Prometheus persistent storage & native Ingress:
   prometheus:
     prometheusSpec:
-      retention: 15d
-      retentionSize: 25GB
+      scrapeInterval: "60s"
+      evaluationInterval: "60s"
+      retention: 7d
+      retentionSize: 15GB
       # Single-host gateway subpath — ADR-012
       externalUrl: https://my-cluster.lonk-mirfak.ts.net/prometheus
       routePrefix: /prometheus
+      resources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
+        limits:
+          cpu: 1000m
+          memory: 1536Mi
       storageSpec:
         volumeClaimTemplate:
           spec:
@@ -187,9 +207,19 @@ alloy:
           role = "pod"
         }
 
+        loki.process "drop_noise" {
+          forward_to = [loki.write.grafana_loki.receiver]
+
+          stage.drop {
+            expression = ".*(kube-probe|healthz|livez|readyz).*"
+            drop_counter_reason = "healthcheck_noise"
+          }
+        }
+
         loki.source.kubernetes "pods" {
           targets    = discovery.kubernetes.pods.targets
           forward_to = [loki.write.grafana_loki.receiver]
+          forward_to = [loki.process.drop_noise.receiver]
         }
 
         loki.write "grafana_loki" {

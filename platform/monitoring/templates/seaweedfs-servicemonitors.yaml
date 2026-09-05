@@ -14,9 +14,9 @@ metadata:
     release: monitoring
 spec:
   endpoints:
-    - interval: 30s
+    - interval: 60s
       port: metrics
-      scrapeTimeout: 5s
+      scrapeTimeout: 10s
   selector:
     matchLabels:
       app.kubernetes.io/name: seaweedfs
@@ -33,9 +33,9 @@ metadata:
     release: monitoring
 spec:
   endpoints:
-    - interval: 30s
+    - interval: 60s
       port: metrics
-      scrapeTimeout: 5s
+      scrapeTimeout: 10s
   selector:
     matchLabels:
       app.kubernetes.io/name: seaweedfs
@@ -52,9 +52,9 @@ metadata:
     release: monitoring
 spec:
   endpoints:
-    - interval: 30s
+    - interval: 60s
       port: metrics
-      scrapeTimeout: 5s
+      scrapeTimeout: 10s
   selector:
     matchLabels:
       app.kubernetes.io/name: seaweedfs
@@ -72,9 +72,9 @@ metadata:
     release: monitoring
 spec:
   endpoints:
-    - interval: 30s
+    - interval: 60s
       port: metrics
-      scrapeTimeout: 5s
+      scrapeTimeout: 10s
   selector:
     matchLabels:
       app.kubernetes.io/name: seaweedfs
@@ -91,9 +91,9 @@ metadata:
     release: monitoring
 spec:
   endpoints:
-    - interval: 30s
+    - interval: 60s
       port: metrics
-      scrapeTimeout: 5s
+      scrapeTimeout: 10s
   selector:
     matchLabels:
       app.kubernetes.io/name: seaweedfs
