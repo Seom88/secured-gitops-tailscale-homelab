@@ -83,14 +83,11 @@ spec:
             - port: "41641"
               protocol: UDP
     # Proxies forward to in-cluster services (operator creates Service per Ingress) — allow to cluster
+    # Vault 8200 (Vault API) + 9090 (metrics) only; 80/443 removed — operators proxy to pod ports, not Service ports post-DNAT
     - toEntities:
         - cluster
       toPorts:
         - ports:
-            - port: "80"
-              protocol: TCP
-            - port: "443"
-              protocol: TCP
             - port: "8200"
               protocol: TCP
             - port: "9090"
@@ -130,8 +127,6 @@ spec:
         - remote-node
       toPorts:
         - ports:
-            - port: "443"
-              protocol: TCP
             - port: "9443"
               protocol: TCP
             - port: "8080"

@@ -43,21 +43,4 @@ spec:
               protocol: TCP
     # Allow egress to kube-system for ConfigMap/Deployment ops (via kube-apiserver entity already covers, but add world deny exception)
     # No direct pod-to-pod needed — all via API server
----
-apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
-metadata:
-  name: coredns-patch-allow-ingress
-  namespace: coredns-patch
-spec:
-  endpointSelector: {}
-  ingress:
-    # Only host/health; Job does not expose service
-    - fromEntities:
-        - host
-        - remote-node
-      toPorts:
-        - ports:
-            - port: "8080"
-              protocol: TCP
 {{- end }}
