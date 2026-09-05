@@ -92,6 +92,22 @@ spec:
               protocol: TCP
             - port: "7946"
               protocol: TCP
+            - port: "9327"
+              protocol: TCP
+            - port: "8085"
+              protocol: TCP
+    # Grafana plugins - grafana.com:443 for GF_INSTALL_PLUGINS
+    - toFQDNs:
+        - matchName: grafana.com
+        - matchPattern: "*.grafana.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: grafana.com
+              - matchPattern: "*.grafana.com"
     # Hubble relay (optional observability)
     - toEndpoints:
         - matchLabels:
