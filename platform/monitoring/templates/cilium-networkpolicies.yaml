@@ -111,10 +111,24 @@ metadata:
 spec:
   endpointSelector: {}
   ingress:
-    # Intra-monitoring (prometheus, alloy, loki, grafana talk among themselves)
+    # Intra-monitoring (prometheus, alloy, loki, grafana talk among themselves) — narrowed to 3100,9090,9093,9094,3000,8080 (loki 3100, prom 9090, alertmanager 9093/9094, grafana 3000, kube-state-metrics 8080)
     - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - port: "3100"
+              protocol: TCP
+            - port: "9090"
+              protocol: TCP
+            - port: "9093"
+              protocol: TCP
+            - port: "9094"
+              protocol: TCP
+            - port: "3000"
+              protocol: TCP
+            - port: "8080"
+              protocol: TCP
     # Allow scraping from prometheus pods anywhere in cluster (node-exporter, kube-state-metrics, loki, coredns)
     # Prometheus lives in monitoring, but Cilium identity is cluster-scoped — use cluster entity for health checks
     - fromEntities:
@@ -144,9 +158,27 @@ spec:
               protocol: TCP
             - port: "9090"
               protocol: TCP
-    # Cilium health/probe — allow all ports from host/remote-node/kube-apiserver (fixes 8084 connection refused on probes)
+    # Cilium health/probe — narrowed to scrape + probe ports 8080,9090,9100,9153,3100,7946,8084,3000 (fixes 8084 connection refused on probes) — no longer allow-all
     - fromEntities:
         - host
         - remote-node
         - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+            - port: "9090"
+              protocol: TCP
+            - port: "9100"
+              protocol: TCP
+            - port: "9153"
+              protocol: TCP
+            - port: "3100"
+              protocol: TCP
+            - port: "7946"
+              protocol: TCP
+            - port: "8084"
+              protocol: TCP
+            - port: "3000"
+              protocol: TCP
 {{- end }}

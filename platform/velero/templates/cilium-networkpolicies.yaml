@@ -109,8 +109,13 @@ spec:
         - ports:
             - port: "8085"
               protocol: TCP
+    # Cilium health/probe — narrowed to 8085 TCP (velero metrics) — no longer allow-all
     - fromEntities:
         - host
         - remote-node
         - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "8085"
+              protocol: TCP
 {{- end }}

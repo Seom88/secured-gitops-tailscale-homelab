@@ -79,10 +79,32 @@ metadata:
 spec:
   endpointSelector: {}
   ingress:
-    # Intra-seaweedfs
+    # Intra-seaweedfs — narrowed to 8333,9333,19333,8888,18888,8080,18080,23646,33646,9327 (s3, master, filer, volume, admin, metrics)
     - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: seaweedfs
+      toPorts:
+        - ports:
+            - port: "8333"
+              protocol: TCP
+            - port: "9333"
+              protocol: TCP
+            - port: "19333"
+              protocol: TCP
+            - port: "8888"
+              protocol: TCP
+            - port: "18888"
+              protocol: TCP
+            - port: "8080"
+              protocol: TCP
+            - port: "18080"
+              protocol: TCP
+            - port: "23646"
+              protocol: TCP
+            - port: "33646"
+              protocol: TCP
+            - port: "9327"
+              protocol: TCP
     # Prometheus scraping (kube-prometheus-stack) — metrics on 9327 + 8080 + 9333
     - fromEndpoints:
         - matchLabels:
@@ -120,9 +142,19 @@ spec:
         - ports:
             - port: "8333"
               protocol: TCP
-    # Cilium health/probe — allow all ports from host/remote-node/kube-apiserver (fixes 8084 connection refused on probes)
+    # Cilium health/probe — narrowed to 8080,9333,8888,9327 (volume, master, filer, metrics for health probes) — no longer allow-all
     - fromEntities:
         - host
         - remote-node
         - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+            - port: "9333"
+              protocol: TCP
+            - port: "8888"
+              protocol: TCP
+            - port: "9327"
+              protocol: TCP
 {{- end }}
