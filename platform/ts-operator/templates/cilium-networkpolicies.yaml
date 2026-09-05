@@ -43,22 +43,21 @@ spec:
               protocol: TCP
             - port: "6443"
               protocol: TCP
-    # Tailscale control plane — plain world egress (no DNS L7 on world; DNS already allowed via kube-dns)
-    # Tailscale NAT traversal — STUN (3478/udp, 80/tcp) + ICMP path MTU (Hubble drop fix 2026-09-04)
+    # Tailscale direct (WireGuard hole-punching) — peers use ephemeral high UDP ports (e.g. 59652, 1041)
+    # + STUN 3478/udp + DERP 443/tcp + 41641/udp. Cilium >=1.11 supports endPort for UDP range:
+    # world UDP 1-65535 covers all ephemeral (1041 <1024, 59652, 1900 SSDP/5351 mDNS) while keeping TCP narrow (80/443 only).
+    # World UDP range now covers 1900/5351; host block below kept for reference. Do NOT add broad TCP range or bare world without toPorts.
     - toEntities:
         - world
       toPorts:
         - ports:
-            - port: "443"
-              protocol: TCP
-            - port: "3478"
-              protocol: UDP
             - port: "80"
               protocol: TCP
-            - port: "41641"
-              protocol: UDP
-            - port: "41641"
+            - port: "443"
               protocol: TCP
+            - port: "1"
+              endPort: 65535
+              protocol: UDP
     # ICMP Echo for Tailscale PMTU — CRD 1.33.11 requires icmps[].fields[].type (bare family is invalid)
     - toEntities:
         - world
@@ -96,8 +95,8 @@ spec:
               protocol: TCP
             - port: "9090"
               protocol: TCP
-    # Optional — mDNS/SSDP host discovery (10.244.0.131:5351, 239.255.255.250:1900) intentionally blocked;
-    # uncomment to silence Hubble if needed (host only, not world):
+    # Optional — mDNS/SSDP host discovery (10.244.0.131:5351, 239.255.255.250:1900) — world UDP 1-65535 now covers
+    # 1900/5351 for world; host block below kept for reference (host-only discovery, not world):
     # - toEntities:
     #     - host
     #   toPorts:
