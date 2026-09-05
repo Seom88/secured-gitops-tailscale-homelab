@@ -49,6 +49,11 @@ kube-prometheus-stack:
         secureJsonData:
           httpHeaderValue1: "fake"
     resources:
-      requests: { cpu: 50m, memory: 64Mi }
-      limits: { cpu: 200m, memory: 128Mi }
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+    livenessProbe:
+      initialDelaySeconds: 120
+    readinessProbe:
+      initialDelaySeconds: 30
+      timeoutSeconds: 5
     persistence: { enabled: false }
