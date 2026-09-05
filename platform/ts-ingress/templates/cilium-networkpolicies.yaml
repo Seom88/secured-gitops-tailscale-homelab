@@ -119,6 +119,22 @@ spec:
               protocol: TCP
             - port: "23646"
               protocol: TCP
+    # Hubble UI — kube-system hubble-ui:80 -> target 8081 (frontend nginx + backend 8090 via flow relay)
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: hubble-ui
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
     # Vault is NOT via gateway (dedicated device vault-my-cluster) — explicitly NOT allowed here
     - toEntities:
         - kube-apiserver

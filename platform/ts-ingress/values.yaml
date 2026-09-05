@@ -48,3 +48,7 @@ seaweedfs:
     enabled: false
   admin:
     enabled: true
+
+# Hubble UI — Cilium service hubble-ui.kube-system.svc.cluster.local:80 (requires hubble.ui.enabled)
+hubbleUi:
+  enabled: true
