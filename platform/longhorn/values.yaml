@@ -21,6 +21,22 @@ longhorn:
     # "Disable this setting when installing Longhorn using Argo CD or other GitOps solutions."
     jobEnabled: false
     upgradeVersionCheck: false
+  longhornManager:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+  longhornUI:
+    resources:
+      requests:
+        cpu: 20m
+        memory: 32Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
   persistence:
     defaultClass: true
     defaultClassReplicaCount: 2

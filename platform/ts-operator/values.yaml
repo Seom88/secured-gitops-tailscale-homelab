@@ -17,5 +17,12 @@ tailscale-operator:
     hostname: "tailscale-operator"
     defaultTags:
       - "tag:k8s-operator"
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
   proxyConfig:
     defaultTags: "tag:k8s"

@@ -3,6 +3,13 @@ seaweedfs:
   master:
     enabled: true
     replicas: 1
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
     data:
       type: "existingClaim"
       claimName: "seaweedfs-master-data"
@@ -12,6 +19,13 @@ seaweedfs:
   volume:
     enabled: true
     replicas: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 1000m
+        memory: 512Mi
     dataDirs:
       - name: data1
         type: "persistentVolumeClaim"
@@ -24,6 +38,13 @@ seaweedfs:
   filer:
     enabled: true
     replicas: 1
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
     data:
       type: "persistentVolumeClaim"
       size: "5Gi"
@@ -36,12 +57,26 @@ seaweedfs:
     enabled: true
     enableAuth: true
     existingConfigSecret: seaweedfs-s3-credentials
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
     logs:
       type: "emptyDir"
 
   # Admin UI — consolidated management console
   admin:
     enabled: true
+    resources:
+      requests:
+        cpu: 20m
+        memory: 32Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
     secret:
       # Credentials come from Vault → ESO (see templates/external-secret.yaml)
       existingSecret: seaweedfs-admin-credentials
