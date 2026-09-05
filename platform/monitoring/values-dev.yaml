@@ -37,17 +37,6 @@ kube-prometheus-stack:
       server:
         domain: dev-my-cluster.lonk-mirfak.ts.net
         root_url: https://dev-my-cluster.lonk-mirfak.ts.net/grafana/
-        serve_from_sub_path: true
-    # Add Loki as a data source — unified release name (no -dev suffix)
-    additionalDataSources:
-      - name: Loki
-        type: loki
-        url: http://monitoring-loki-gateway.monitoring.svc.cluster.local/
-        access: proxy
-        jsonData:
-          httpHeaderName1: "X-Scope-OrgID"
-        secureJsonData:
-          httpHeaderValue1: "fake"
     resources:
       requests: { cpu: 100m, memory: 256Mi }
       limits: { cpu: 500m, memory: 512Mi }

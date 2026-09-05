@@ -59,7 +59,6 @@ spec:
     matchLabels:
       app.kubernetes.io/name: seaweedfs
       app.kubernetes.io/component: filer
-      monitoring: "true"
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
