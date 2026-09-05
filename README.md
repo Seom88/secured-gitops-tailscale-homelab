@@ -94,6 +94,7 @@ graph TD
 
     subgraph "Kubernetes Cluster (distro-agnostic)"
         direction TB
+        CILIUM[Cilium 1.20.1<br/>eBPF kube-system<br/>kubeProxyReplacement strict<br/>Gateway API 1.2.3]
         ROOT[ArgoCD root<br/>App-of-Apps]
         W0A[00 cert-manager<br/>wave 0 healthy]
         W0B[00 external-secrets<br/>wave 0 healthy]
@@ -103,6 +104,7 @@ graph TD
         W3[03 monitoring<br/>wave 3 sync-only<br/>Prometheus + Grafana + Loki + Alloy DaemonSet]
         W4[04 ts-ingress<br/>wave 4 sync-only<br/>single-host gateway<br/>my-cluster + cluster-gateway]
 
+        CILIUM -.->|CNI + NetworkPolicy| ROOT
         ROOT --> W0A & W0B & W0C
         W0A & W0B & W0C --> W1
         W1 --> W2
@@ -119,6 +121,8 @@ graph TD
     Vault -.->|auto-unseal CronJob| Vault
     Cert -.->|TLS certificates| Vault
 ```
+
+> Cilium CNI + identity-aware policies: see [ADR-014](./docs/adrs/014-cilium-cni-and-identity-networkpolicies.md) and [Networking](./docs/networking.md).
 
 ## 🛡 Key DevSecOps Features
 

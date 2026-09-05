@@ -73,6 +73,9 @@ You understand GitOps as a paradigm, not just a tool. Sync-wave ordering and hea
 ## 🌐 Zero-Trust Networking & Observability
 
 **Skills:**
+- Cilium eBPF CNI (kubeProxyReplacement strict, KubePrism 7445) + Gateway API 1.2.3
+- Identity-aware CiliumNetworkPolicy (endpointSelector default-deny, toFQDNs/rules.dns, toEntities)
+- Hubble observability (relay 4244/4245, `hubble observe`)
 - Tailscale Operator integration
 - Network policies and RBAC
 - Ingress as a security boundary
@@ -84,7 +87,7 @@ You understand GitOps as a paradigm, not just a tool. Sync-wave ordering and hea
 **Evidence:**
 - **Tailscale Integration** — Mesh VPN operator (wave `-1`) + single-host gateway (`my-cluster.lonk-mirfak.ts.net` path routing via `cluster-gateway` NGINX). See [`platform/ts-ingress/`](../platform/ts-ingress/) and ADRs 001/012
 - **Platform Ingress Templates** — Single-host gateway pattern (1 Ingress `my-cluster` → `cluster-gateway` → per-service locations). See [`platform/ts-ingress/templates/ingress.yaml`](../platform/ts-ingress/templates/ingress.yaml) and `gateway-*.yaml`
-- **Network Policies** — Vault server/injector egress policies. See [`platform/vault/templates/networkpolicy.yaml`](../platform/vault/templates/networkpolicy.yaml)
+- **Network Policies** — Identity-aware `CiliumNetworkPolicy` (`cilium.io/v2`) across 9 charts with allow-dns / allow-egress / allow-ingress (eBPF, kubeProxyReplacement strict, Hubble 4244/4245). See [`platform/*/templates/cilium-networkpolicies.yaml`](../platform/vault/templates/cilium-networkpolicies.yaml) (9 charts, gated by `ciliumNetworkPolicy.enabled=true`) + infra `modules/platform/values/cilium/values.yaml` (Cilium 1.20.1, Gateway API 1.2.3). Legacy `networking.k8s.io/v1` `networkpolicy.yaml` retained for non-Cilium clusters
 - **Monitoring Stack** — Prometheus (metrics), Grafana (dashboards), Loki (SingleBinary + S3/SeaweedFS + gateway) + Alloy (stateless DaemonSet log collector via `discovery.kubernetes` → `loki.source.kubernetes` → `loki.write` to `http://monitoring-loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push` with `X-Scope-OrgID: fake`; no PVC, RBAC auto-created; replaces Promtail — deprecated). See [`platform/monitoring/`](../platform/monitoring/) and [`platform/monitoring/values.yaml`](../platform/monitoring/values.yaml) (`loki` + `alloy` blocks, chart `alloy:1.12.1`)
 - **Vault Metrics Export** — Prometheus endpoints for Vault health, sealed state, replication status
 - **Log Aggregation** — Loki with S3 backend (SeaweedFS) for centralized logging, shipped by Alloy. Grafana Explore + LogQL and dashboard Logs panels. See [`platform/monitoring/templates/loki-datasource.yaml`](../platform/monitoring/templates/loki-datasource.yaml)

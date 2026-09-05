@@ -12,6 +12,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Real application deployment** — Immich or similar (Phase 4)
 - **Phase 5 — Python automation & image security**: ops CLI (Typer), infrastructure tests (pytest/testinfra), Prometheus exporter, maintenance automation, Trivy image scanning
 
+## [Unreleased]
+
+### Added
+
+- **Cilium 1.20.1 eBPF CNI + Gateway API 1.2.3 + CiliumNetworkPolicy (9 charts, ADR-014) + Hubble observability** — Talos `cni: none` + `proxy.disabled`, DAG `gateway_api 1.2.3 → cilium 1.20.1 → wait_nodes → argocd` (KubePrism `localhost:7445`, `ipam: kubernetes`, `kubeProxyReplacement: strict`, `socketLB: hostNamespaceOnly`, `gatewayAPI.enabled`, `cgroup.hostRoot`). Per-namespace `CiliumNetworkPolicy` (gated by `ciliumNetworkPolicy.enabled=true`) with `allow-dns` (kube-dns 53 + `toFQDNs`/`rules.dns`), `allow-egress` (kube-apiserver 443/6443, hubble-relay 4244, intra-ns), `allow-ingress` (intra-ns, tailscale/cluster-gateway, host/remote-node/kube-apiserver probes). Fixed Flannel mismatches: vault same-ns ingress, Gateway post-DNAT ports 8080/3000/8081, storage intra-ns unrestricted (Longhorn 9500/8000/8500-8503, SeaweedFS 8333/9333), Hubble 4244/4245 whitelisted. See `docs/networking.md` and ADR-014.
+
 ## [1.0.0] - Unreleased
 
 > First version — never been published nor run on a live cluster; tag and GitHub Release pending.

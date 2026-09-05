@@ -2,6 +2,8 @@
 
 **Status:** Accepted · **Date:** 2026-09-02 · **Deciders:** Seom88 · **Supersedes:** part of [ADR-001](001-tailscale-ingress-placement.md) · **Related:** [ADR-010](010-tailscale-oauth-ci-generated.md), [ADR-011](011-tailscale-dns-np.md)
 
+> **Amendment 2026-09-02 (ADR-014):** The current CNI is **Cilium 1.20.1** with enforced `CiliumNetworkPolicy` (ADR-014).
+
 > **Amendment 2026-09-03:** chart renamed `ts-ingress` / `ts-operator`, namespace remains `tailscale`. Historical `platform/tailscale` / `platform/tailscale-operator` paths below are preserved as archive; new paths are `platform/ts-ingress` / `platform/ts-operator`.
 
 ## Context

@@ -96,17 +96,30 @@ open https://my-cluster.lonk-mirfak.ts.net/prometheus/
 
 ### What's Implemented
 
-**Cilium CNI (`v1.20.1`) with Identity-Aware NetworkPolicies**:
-- **eBPF Kube-Proxy Replacement** — High-throughput service routing in kernel space without iptables overhead.
-- **Identity-Based Segmentation** — Fine-grained `CiliumNetworkPolicy` (`cilium.io/v2`) across all namespaces (`vault`, `longhorn-system`, `seaweedfs`, `monitoring`, `tailscale`, `velero`).
-- **L7 DNS Visibility & Scoping** — Egress DNS calls filtered strictly to `kube-dns` on port 53 with regex FQDN visibility, blocking DNS-based exfiltration.
-- **Zero-Trust Default Posture** — Deny-by-default for untrusted ingress/egress while allowing explicit intra-namespace communication for dynamic storage planes (Longhorn, SeaweedFS).
-- **Observability Integration** — Hubble relay endpoints (`ports 4244/4245`) whitelisted across services for real-time flow tracing.
+**Cilium CNI (`v1.20.1`) + Gateway API `v1.2.3` with Identity-Aware NetworkPolicies**:
+- **eBPF Kube-Proxy Replacement (strict)** — Service routing and load-balancing in kernel space without iptables; `socketLB: hostNamespaceOnly`, `cgroup.hostRoot: /sys/fs/cgroup`.
+- **Identity-Based Segmentation** — Fine-grained `CiliumNetworkPolicy` (`cilium.io/v2`) across 9 charts (`vault`, `longhorn-system`, `seaweedfs`, `monitoring`, `tailscale`, `tailscale-operator`, `velero`, `cert-manager`, `external-secrets`/`coredns-patch`); gated by `ciliumNetworkPolicy.enabled=true`.
+- **L7 DNS Visibility & Scoping** — Egress DNS restricted to `kube-system/k8s-app=kube-dns` on UDP/TCP 53 with Cilium L7 DNS rules (`toFQDNs.matchPattern: "*"` + `rules.dns`), blocking DNS-based exfiltration while allowing MagicDNS (`*.ts.net`).
+- **Zero-Trust Default Posture** — `endpointSelector: {}` default-deny per namespace; explicit allows for intra-namespace, kube-apiserver (443/6443), and Hubble relay (4244/4245).
+- **Observability Integration** — Hubble relay whitelisted (`ports 4244/4245`) for real-time flow tracing (`hubble observe`).
+
+### How It Works
+
+1. **eBPF Datapath vs iptables** — Cilium replaces kube-proxy (`kubeProxyReplacement: strict`) with eBPF programs attached to the kernel. Talos nodes run with `cni: none` + `proxy.disabled: true`; the infra DAG installs `gateway_api 1.2.3 → cilium 1.20.1 → wait_nodes → argocd`. KubePrism provides HA API access at `localhost:7445` (`ipam: kubernetes`, `k8sServiceHost: localhost`, `k8sServicePort: 7445`).
+2. **Policy Lifecycle — 3-Rule Template per Namespace** — Each chart renders `platform/*/templates/cilium-networkpolicies.yaml` (gated by `ciliumNetworkPolicy.enabled`):
+   - `allow-dns` — `endpointSelector: {}` + `toEndpoints: {k8s-app: kube-dns, k8s:io.kubernetes.pod.namespace: kube-system}` on port 53 (UDP/TCP) with `toFQDNs: [{matchPattern: "*"}]` and `rules.dns`.
+   - `allow-egress` — kube-apiserver (443/6443), `hubble-relay` (4244), intra-namespace (`k8s:io.kubernetes.pod.namespace: <ns>`), plus per-app specifics (e.g., Vault Raft, Longhorn/SeaweedFS storage ports).
+   - `allow-ingress` — intra-namespace, `tailscale/cluster-gateway` ingress, and `toEntities: {host, remote-node, kube-apiserver}` + `health` probes.
+3. **Identity & DNS Details** — Cilium assigns cryptographic endpoint identities (not volatile Pod IPs). Egress uses `toFQDNs` + `rules.dns` for FQDN-aware filtering and `toEntities` (`host`, `remote-node`, `kube-apiserver`) for node-level probes. `kube-apiserver` entity covers the API server regardless of IP.
+4. **Hubble Observability** — Hubble parses eBPF flow events. Relay listens on `4244` (gRPC) and `4245` (Hubble UI/health); policies whitelist these ports. Verify flows with `hubble observe -n <ns> --follow` or `hubble observe --verdict DROPPED` to debug silent drops. UI exposed via `ts-ingress` gateway at `https://my-cluster.lonk-mirfak.ts.net/hubble` (port 8081 post-DNAT, see ADR-014).
+5. **Operational Notes** — New inter-service traffic must be added explicitly to the caller's `cilium-networkpolicies.yaml`. Storage data planes (Longhorn 9500/8000/8500-8503, SeaweedFS 8333/9333) stay unrestricted intra-namespace to avoid attachment deadlocks on ephemeral ports (ADR-014 storage invariant). Gateway post-DNAT ports are `8080/3000/8081` (not 80). Renovate automerges Cilium/Gateway API patch updates; Cilium major bumps require manual review.
 
 ### Key Files
 
-- Chart templates: `platform/*/templates/cilium-networkpolicies.yaml`
-- ADR: [ADR-014: Cilium CNI and Identity-Aware NetworkPolicies](./adrs/014-cilium-cni-and-identity-networkpolicies.md)
+- Fallback (non-Cilium clusters): `platform/*/templates/networkpolicy.yaml` (`networking.k8s.io/v1`) — retained for non-Cilium clusters, not enforced when Cilium is active
+- Cilium (enforced): `platform/*/templates/cilium-networkpolicies.yaml` (9 charts, gated by `ciliumNetworkPolicy.enabled=true`) + `platform/*/values.yaml` (`ciliumNetworkPolicy.enabled: true` default)
+- Infra substrate: `infra-talos-homelab` `modules/platform/values/cilium/values.yaml` (Helm values: `kubeProxyReplacement: strict`, `socketLB.hostNamespaceOnly`, `cgroup.hostRoot`, `k8sServiceHost: localhost:7445`, `ipam: kubernetes`, `gatewayAPI.enabled: true`), DAG `gateway_api 1.2.3 → cilium 1.20.1 → wait_nodes → argocd`
+- ADRs: [ADR-014: Cilium CNI and Identity-Aware NetworkPolicies](./adrs/014-cilium-cni-and-identity-networkpolicies.md) · [Networking guide](./networking.md)
 
 ---
 

@@ -1,8 +1,8 @@
 # Roadmap
 
-**Status:** v0.9 (pre-release) · v1.0.0 planned to include Cilium CNI migration (CNI replacement, breaking change); subsequent releases are expected to be additive · Last updated: 29 August 2026
+**Status:** v1.0-beta · Cilium 1.20.1 (ADR-014) · Last updated: 05 Sep 2026
 
-This document tracks what is currently deployed in the cluster, what is required to complete the **v1.0.0** release, and what is planned for **v2.0**. v1.0.0 will include the Cilium CNI migration (CNI replacement, breaking change). Subsequent releases are expected to be additive. The [README](./README.md) contains a short summary and links here.
+This document tracks what is currently deployed in the cluster, what is required to complete the **v1.0.0** release, and what is planned for **v2.0**. The cluster uses Cilium 1.20.1 + Gateway API 1.2.3 + CiliumNetworkPolicy (ADR-014); subsequent releases are expected to be additive. The [README](./README.md) contains a short summary and links here.
 
 ---
 
@@ -52,10 +52,10 @@ The scope for v1.0 is defined as Phases 1 through 4. Items previously labeled "P
 
 ### Phase 4 — Hardening & Developer Experience (in progress, v1.0)
 
-Remaining scope for v1.0.0. The Cilium CNI migration is a breaking change at the infrastructure layer.
+Remaining scope for v1.0.0. The Cilium CNI (breaking change at the infrastructure layer) is already deployed.
 
-**CNI migration (v1.0.0, breaking change):**
-- [ ] Cilium CNI migration (Flannel -> Cilium; enables NetworkPolicy enforcement, Hubble observability, and WireGuard encryption) — planned for v1.0.0
+**CNI (v1.0.0):**
+- [x] Cilium CNI (eBPF, Gateway API, CiliumNetworkPolicy) — Cilium 1.20.1 + Gateway API 1.2.3 (ADR-014) — NetworkPolicy enforcement, Hubble observability, eBPF kubeProxyReplacement
 
 **Security hardening (requires Cilium, planned for v1.0.0):**
 - [ ] Complete NetworkPolicies (default deny-all + explicit allows) — requires Cilium
@@ -159,8 +159,8 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 - [x] Architecture Decision Records
 
 **Still pending for v1.0:**
-- [ ] Cilium CNI migration (Flannel -> Cilium; enables NetworkPolicy enforcement, Hubble, WireGuard encryption)
-- [ ] Complete NetworkPolicies (requires Cilium)
+- [x] Cilium CNI (eBPF, Gateway API, CiliumNetworkPolicy) — Cilium 1.20.1 + Gateway API 1.2.3 (ADR-014) ✅ Complete
+- [x] CiliumNetworkPolicy — 9 charts with allow-dns / allow-egress / allow-ingress (ADR-014) ✅ Complete
 - [ ] Pod Security Admission `restricted`
 - [ ] Centralized audit logging (K8s API + Vault → Loki)
 - [ ] Trivy in CI
