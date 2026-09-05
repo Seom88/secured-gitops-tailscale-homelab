@@ -36,12 +36,19 @@ metadata:
 spec:
   endpointSelector: {}
   egress:
-    # Intra-longhorn traffic: manager (9500), webhooks (9501-9503), instance-manager (8500-8504),
-    # backing images (8000), and replica dynamic data ports (10000-30000).
-    # Official docs require open intra-namespace communication for the storage data plane.
+    # Intra-longhorn — narrowed from allow-all: manager 9500, frontend 8000, instance-manager 8500
+    # (webhooks 9501-9503/8443 and replica data 10000-30000 deferred — expand if probes fail)
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: longhorn-system
+      toPorts:
+        - ports:
+            - port: "9500"
+              protocol: TCP
+            - port: "8000"
+              protocol: TCP
+            - port: "8500"
+              protocol: TCP
     - toEntities:
         - kube-apiserver
       toPorts:
@@ -73,6 +80,14 @@ spec:
     - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: longhorn-system
+      toPorts:
+        - ports:
+            - port: "9500"
+              protocol: TCP
+            - port: "8000"
+              protocol: TCP
+            - port: "8500"
+              protocol: TCP
     - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: monitoring
@@ -88,9 +103,15 @@ spec:
         - ports:
             - port: "8000"
               protocol: TCP
+    # entity ingress narrowed from allow-all: frontend 8000 + manager 9500 health/api; cluster entity removed as overbroad
     - fromEntities:
         - kube-apiserver
         - host
         - remote-node
-        - cluster
+      toPorts:
+        - ports:
+            - port: "8000"
+              protocol: TCP
+            - port: "9500"
+              protocol: TCP
 {{- end }}

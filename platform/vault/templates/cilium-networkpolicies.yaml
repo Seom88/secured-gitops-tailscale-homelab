@@ -83,9 +83,16 @@ metadata:
 spec:
   endpointSelector: {}
   ingress:
+    # intra-vault narrowed from allow-all: Vault API 8200 + cluster 8201 (Raft)
     - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: vault
+      toPorts:
+        - ports:
+            - port: "8200"
+              protocol: TCP
+            - port: "8201"
+              protocol: TCP
     - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: external-secrets
@@ -101,8 +108,13 @@ spec:
         - ports:
             - port: "8200"
               protocol: TCP
+    # entity ingress narrowed from allow-all: Vault API 8200 only (8201 intra-vault only)
     - fromEntities:
         - host
         - remote-node
         - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "8200"
+              protocol: TCP
 {{- end }}
