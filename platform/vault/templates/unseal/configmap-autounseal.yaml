@@ -18,7 +18,31 @@ data:
     RETRY_ATTEMPTS=3
     OVERALL_FAILED=0
 
-    echo "[autounseal] Starting pod review in namespace: $NAMESPACE (TLS server name: $TLS_SERVER_NAME)"
+    # ---- lightweight readiness guard ----
+    # Before doing any kubectl exec (expensive WebSocket/SPDY calls), check if
+    # all Vault pods already report Ready. If so, skip the heavy unseal path.
+    # This is the hot path: when Vault is healthy it costs only two cheap
+    # kubectl get calls instead of N×(status + unseal) exec calls.
+    _DESIRED=$(timeout $TIMEOUT $KUBECTL get statefulset -n "$NAMESPACE" \
+      -l app.kubernetes.io/name=vault \
+      -o jsonpath='{.items[0].spec.replicas}' 2>/dev/null || echo "0")
+    # Split into two steps to avoid grep -c double-output bug:
+    # grep -c always prints its count to stdout (even "0" on 0 matches) then exits 1.
+    # Using "| grep -c || echo 0" inside $() would capture both grep's "0" AND echo's "0",
+    # yielding "0\n0" which breaks [ -ge ] with "bad number". Using || true is safe because
+    # grep -c already wrote the correct count; true adds nothing to stdout.
+    _READY_RAW=$(timeout $TIMEOUT $KUBECTL get pods -n "$NAMESPACE" \
+      -l app.kubernetes.io/name=vault,component=server \
+      -o jsonpath='{range .items[*]}{range .status.conditions[?(@.type=="Ready")]}{.status}{"\n"}{end}{end}' 2>/dev/null || true)
+    _READY=$(printf '%s\n' "$_READY_RAW" | grep -c "^True$" || true)
+    _READY=${_READY:-0}
+
+    if [ "$_DESIRED" -gt 0 ] && [ "$_READY" -ge "$_DESIRED" ]; then
+      echo "[autounseal] All $_READY/$_DESIRED Vault pods are Ready — skipping unseal checks."
+      exit 0
+    fi
+
+    echo "[autounseal] $_READY/$_DESIRED pods Ready — starting full pod review in namespace: $NAMESPACE (TLS server name: $TLS_SERVER_NAME)"
 
     # ---- helpers ----
     # Parse Vault status JSON field with jq if available, fallback to grep

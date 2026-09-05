@@ -10,8 +10,11 @@ rules:
     verbs: ["get"]
   - apiGroups: [""]
     resources: ["pods"]
-    verbs: ["list", "get"]
+    verbs: ["list", "get", "watch"]
   - apiGroups: [""]
     resources: ["pods/exec"]
     verbs: ["create"]
- 
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    verbs: ["get", "list"]
+

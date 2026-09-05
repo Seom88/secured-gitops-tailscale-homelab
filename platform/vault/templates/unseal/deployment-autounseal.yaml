@@ -1,0 +1,118 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vault-autounseal
+  namespace: vault
+  labels:
+    app.kubernetes.io/name: vault-autounseal
+    app.kubernetes.io/component: operations
+  annotations:
+    velero.io/exclude-from-backup: "false"
+    backup.velero.io/backup: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vault-autounseal
+  # Recreate ensures there is never more than one watcher at a time.
+  # RollingUpdate would briefly run two instances, both trying to unseal
+  # simultaneously and hammering the API server with duplicate exec calls.
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vault-autounseal
+        app.kubernetes.io/component: operations
+      annotations:
+        velero.io/exclude-from-backup: "false"
+        backup.velero.io/backup: "true"
+    spec:
+      serviceAccountName: vault-autounseal
+      terminationGracePeriodSeconds: 15
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+
+      containers:
+        - name: autounseal
+          image: bitnami/kubectl:latest
+          imagePullPolicy: IfNotPresent
+
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "[watcher] Vault unseal watcher started."
+
+              # Propagate SIGTERM/INT to the running child (unseal.sh or sleep)
+              # so in-flight kubectl exec connections are not orphaned when
+              # Kubernetes terminates the pod within terminationGracePeriodSeconds.
+              _CHILD_PID=0
+              _shutdown() {
+                if [ "$_CHILD_PID" -ne 0 ]; then
+                  kill "$_CHILD_PID" 2>/dev/null || true
+                  wait "$_CHILD_PID" 2>/dev/null || true
+                fi
+                exit 0
+              }
+              trap _shutdown TERM INT
+
+              while true; do
+                /scripts/unseal.sh &
+                _CHILD_PID=$!
+                wait "$_CHILD_PID"
+                EXIT_CODE=$?
+                _CHILD_PID=0
+                if [ "$EXIT_CODE" -eq 0 ]; then
+                  # All pods healthy — long sleep to reduce API pressure.
+                  sleep 10 &
+                  _CHILD_PID=$!
+                  wait "$_CHILD_PID"
+                  _CHILD_PID=0
+                else
+                  # Something was sealed or failed — retry sooner.
+                  sleep 5 &
+                  _CHILD_PID=$!
+                  wait "$_CHILD_PID"
+                  _CHILD_PID=0
+                fi
+              done
+
+          env:
+            - name: VAULT_NAMESPACE
+              value: "vault"
+            - name: VAULT_TLS_SERVER_NAME
+              value: "vault"
+
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+
+      volumes:
+        - name: script
+          configMap:
+            name: vault-autounseal-script
+            defaultMode: 0555
+        - name: tmp
+          emptyDir: {}
