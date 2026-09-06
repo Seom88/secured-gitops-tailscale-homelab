@@ -36,23 +36,10 @@ metadata:
 spec:
   endpointSelector: {}
   egress:
-    # Intra-longhorn — narrowed from allow-all: manager 9500, frontend 8000, instance-manager 8500-8503 range (8500,8501,8503)
-    # (webhooks 9501-9503/8443 and replica data 10000-30000 deferred — expand if probes fail)
+    # Intra-longhorn — allow all ports (manager 9500, frontend 8000, instance-manager 8500-8503, webhooks, and replica data 10000-30000)
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: longhorn-system
-      toPorts:
-        - ports:
-            - port: "9500"
-              protocol: TCP
-            - port: "8000"
-              protocol: TCP
-            - port: "8500"
-              protocol: TCP
-            - port: "8501"
-              protocol: TCP
-            - port: "8503"
-              protocol: TCP
     - toEntities:
         - kube-apiserver
       toPorts:
@@ -81,21 +68,10 @@ metadata:
 spec:
   endpointSelector: {}
   ingress:
+    # Intra-longhorn — allow all ports (manager 9500, frontend 8000, instance-manager 8500-8503, webhooks, and replica data 10000-30000)
     - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: longhorn-system
-      toPorts:
-        - ports:
-            - port: "9500"
-              protocol: TCP
-            - port: "8000"
-              protocol: TCP
-            - port: "8500"
-              protocol: TCP
-            - port: "8501"
-              protocol: TCP
-            - port: "8503"
-              protocol: TCP
     - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: monitoring
