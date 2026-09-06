@@ -163,7 +163,6 @@ for POD in $(kubectl get pods -n vault -l app.kubernetes.io/name=vault,component
     fi
     echo -ne "${YELLOW}  [Vault] Waiting for pod $POD to be responsive...${NC}"
     ATTEMPTS=0
-    RESPONSIVE=false
     until vault_status "$POD" | jq -e '.version' >/dev/null 2>&1; do
         ATTEMPTS=$((ATTEMPTS+1))
         if [ "$ATTEMPTS" -ge 60 ]; then
