@@ -6,7 +6,9 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["secrets"]
-    resourceNames: ["{{ .Release.Name }}-unseal-keys"]
+    resourceNames:
+      - "{{ .Release.Name }}-unseal-keys"
+      - "vault-tls"
     verbs: ["get"]
   - apiGroups: [""]
     resources: ["pods"]

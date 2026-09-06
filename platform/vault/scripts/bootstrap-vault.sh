@@ -80,13 +80,9 @@ until kubectl get statefulset -n vault -l app.kubernetes.io/name=vault -o name |
 done
 echo -e " ${GREEN}Created!${NC}"
 
-# Wait for quorum of pods to be Running (not Ready — sealed pods won't pass readinessProbe)
-# Quorum-tolerant: a stuck pod (e.g. ContainerCreating on FailedAttachVolume)
-# must not block bootstrap when 2/3 quorum is healthy.
-echo -ne "${YELLOW}  [Vault] Waiting for quorum of pods to be running...${NC}"
+# Wait for all pods to be Running (not Ready — sealed pods won't pass readinessProbe)
 DESIRED_REPLICAS=$(kubectl get statefulset -n vault -l app.kubernetes.io/name=vault -o jsonpath='{.items[0].spec.replicas}' 2>/dev/null || echo "0")
-QUORUM=$(( DESIRED_REPLICAS / 2 + 1 ))
-if [ "$QUORUM" -lt 1 ]; then QUORUM=1; fi
+echo -ne "${YELLOW}  [Vault] Waiting for all ($DESIRED_REPLICAS) pods to be running...${NC}"
 RETRY_ERRORS=0
 MAX_ERRORS=3
 while true; do
@@ -103,18 +99,13 @@ while true; do
     RETRY_ERRORS=0
     RUNNING_COUNT=$(echo "$RUNNING_OUTPUT" | grep -c "pod/" || true)
     DESIRED_REPLICAS=$(kubectl get statefulset -n vault -l app.kubernetes.io/name=vault -o jsonpath='{.items[0].spec.replicas}' 2>/dev/null || echo "0")
-    QUORUM=$(( DESIRED_REPLICAS / 2 + 1 ))
-    if [ "$QUORUM" -lt 1 ]; then QUORUM=1; fi
-    if [ "$RUNNING_COUNT" -ge "$QUORUM" ] && [ "$DESIRED_REPLICAS" -gt 0 ]; then
+    if [ "$RUNNING_COUNT" -ge "$DESIRED_REPLICAS" ] && [ "$DESIRED_REPLICAS" -gt 0 ]; then
         break
     fi
     echo -n "."
     sleep 5
 done
-echo -e " ${GREEN}Quorum reached: $RUNNING_COUNT/$DESIRED_REPLICAS pods running (quorum $QUORUM)!${NC}"
-if [ "$RUNNING_COUNT" -lt "$DESIRED_REPLICAS" ]; then
-    echo -e "${YELLOW}  [Vault] WARNING: only $RUNNING_COUNT/$DESIRED_REPLICAS pods Running; continuing with quorum.${NC}"
-fi
+echo -e " ${GREEN}All $RUNNING_COUNT/$DESIRED_REPLICAS pods running!${NC}"
 
 if ! VAULT_POD=$(find_healthy_pod); then
     echo -e "\n${RED}  [Vault] ERROR: no responsive Running pod found${NC}"
@@ -199,14 +190,10 @@ for POD in $(kubectl get pods -n vault -l app.kubernetes.io/name=vault,component
     fi
 done
 
-if [ "$HEALTHY_COUNT" -ge "$QUORUM" ]; then
-    if [ -n "$FAILED_PODS" ]; then
-        echo -e "${YELLOW}  [Vault] Quorum healthy ($HEALTHY_COUNT/$DESIRED_REPLICAS, quorum $QUORUM); skipped pods:$FAILED_PODS — continuing to config.${NC}"
-    else
-        echo -e "${GREEN}  [Vault] All pods healthy ($HEALTHY_COUNT/$DESIRED_REPLICAS).${NC}"
-    fi
+if [ "$HEALTHY_COUNT" -ge "$DESIRED_REPLICAS" ]; then
+    echo -e "${GREEN}  [Vault] All pods healthy ($HEALTHY_COUNT/$DESIRED_REPLICAS).${NC}"
 else
-    echo -e "${RED}  [Vault] ERROR: only $HEALTHY_COUNT/$DESIRED_REPLICAS pods healthy, quorum $QUORUM not reached; failing.${NC}"
+    echo -e "${RED}  [Vault] ERROR: only $HEALTHY_COUNT/$DESIRED_REPLICAS pods healthy; failing.${NC}"
     exit 1
 fi
 

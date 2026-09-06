@@ -50,8 +50,7 @@ data:
       _json="$1"
       _field="$2"
       if command -v jq >/dev/null 2>&1; then
-        echo "$_json" | jq -r --arg f "$_field" '.[$f] // empty' 2>/dev/null | tr -d '\n'
-        # For booleans jq -r gives true/false strings; fallback handled below
+        echo "$_json" | jq -r --arg f "$_field" 'if .[$f] == null then empty else .[$f] end' 2>/dev/null | tr -d '\n'
         return 0
       fi
       # fallback: extract "field": value (boolean or string)
@@ -117,24 +116,31 @@ data:
       return 1
     }
 
-    # ---- discover pods with retry ----
-    echo "[autounseal] Looking for Vault pods..."
+    # ---- discover pods with retry: wait for all $_DESIRED pods to be running ----
+    echo "[autounseal] Waiting for all $_DESIRED Vault pods to be running..."
     RETRIES=12
     SLEEP=5
     i=1
     while [ "$i" -le "$RETRIES" ]; do
       PODS=$(timeout $TIMEOUT $KUBECTL get pods -n "$NAMESPACE" \
         -l app.kubernetes.io/name=vault,component=server \
+        --field-selector=status.phase=Running \
         -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || true)
-      if [ -n "$PODS" ]; then
-        echo "[autounseal] Found Vault pods: $PODS"
+      POD_COUNT=$(echo "$PODS" | wc -w | tr -d ' ')
+      if [ "$_DESIRED" -gt 0 ] && [ "$POD_COUNT" -ge "$_DESIRED" ]; then
+        echo "[autounseal] All $POD_COUNT/$_DESIRED Vault pods are running: $PODS"
         break
       fi
       if [ "$i" -eq "$RETRIES" ]; then
-        echo "[autounseal] ERROR: No Vault pods found after $((RETRIES * SLEEP)) seconds."
-        exit 1
+        if [ "$POD_COUNT" -gt 0 ]; then
+          echo "[autounseal] WARNING: Only $POD_COUNT/$_DESIRED Vault pods running after $((RETRIES * SLEEP))s. Proceeding with running pods: $PODS"
+          break
+        else
+          echo "[autounseal] ERROR: No running Vault pods found after $((RETRIES * SLEEP)) seconds."
+          exit 1
+        fi
       fi
-      echo "[autounseal] No Vault pods yet (attempt $i/$RETRIES), retrying in ${SLEEP}s..."
+      echo "[autounseal] Waiting for all pods to run ($POD_COUNT/$_DESIRED running, attempt $i/$RETRIES), retrying in ${SLEEP}s..."
       sleep "$SLEEP"
       i=$((i + 1))
     done
@@ -244,15 +250,15 @@ data:
       CAND_SEALED=$(parse_field "$CAND_STATUS" "sealed")
       CAND_INIT=$(parse_field "$CAND_STATUS" "initialized")
       CAND_STANDBY=$(parse_field "$CAND_STATUS" "standby")
+      if [ -z "$CAND_SEALED" ]; then
+        CAND_SEALED=$(echo "$CAND_STATUS" | grep -o '"sealed"[[:space:]]*:[[:space:]]*[^,}]*' | grep -o 'true\|false' | head -1 || echo "")
+      fi
+      if [ -z "$CAND_INIT" ]; then
+        CAND_INIT=$(echo "$CAND_STATUS" | grep -o '"initialized"[[:space:]]*:[[:space:]]*[^,}]*' | grep -o 'true\|false' | head -1 || echo "")
+      fi
       # Healthy = initialized true and sealed false (standby ok is fine)
       if [ "$CAND_INIT" = "true" ] && [ "$CAND_SEALED" = "false" ]; then
         HEALTHY_POD="$CANDIDATE"
-        # Prefer vault-2 style name if available: check if candidate ends with -2, keep it as best
-        if echo "$CANDIDATE" | grep -q -- "-2$"; then
-          echo "[raft-recovery] Selected leader candidate $CANDIDATE (unsealed, healthy; preferred -2)"
-          break
-        fi
-        # otherwise first healthy is fine, but continue to see if -2 exists later? For now break on first healthy to keep deterministic
         echo "[raft-recovery] Selected leader candidate $CANDIDATE (unsealed, healthy)"
         break
       fi
@@ -275,18 +281,7 @@ data:
 
       # Case 1: Pod not Running
       if [ "$PHASE" != "Running" ]; then
-        echo "[raft-recovery] WARNING: Pod $POD is not Running (phase=$PHASE, waiting=$WAITING_REASON, restarts=$RESTART_COUNT) — CrashLoopBackOff or pending."
-        if [ -n "$HEALTHY_POD" ] && [ "$HEALTHY_POD" != "$POD" ]; then
-          echo "[raft-recovery] Attempting 'vault operator raft remove-peer $POD' via healthy $HEALTHY_POD (not deleting pod)..."
-          if timeout $TIMEOUT $KUBECTL exec -n "$NAMESPACE" "$HEALTHY_POD" -- sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault operator raft remove-peer -tls-server-name=$TLS_SERVER_NAME $POD || env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt vault operator raft remove-peer $POD || true" 2>&1 | grep -v "command terminated" || true; then
-            echo "[raft-recovery] remove-peer command issued for $POD (check logs for success)."
-          else
-            echo "[raft-recovery] WARNING: remove-peer for $POD via $HEALTHY_POD failed — will retry next cycle."
-          fi
-        else
-          echo "[raft-recovery] No healthy peer to run remove-peer for $POD — deferring."
-        fi
-        OVERALL_FAILED=1
+        echo "[autounseal] WARNING: Pod $POD is not in Running phase (phase=$PHASE, waiting=$WAITING_REASON, restarts=$RESTART_COUNT) — skipping."
         continue
       fi
 
