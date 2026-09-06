@@ -120,6 +120,24 @@ spec:
                 vault_kubectl "$pod" -- /bin/sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt $cmd" 2>/dev/null
               }
 
+              # Return the first Running pod that is responsive (vault status shows .version).
+              # Usage: find_healthy_pod (prints pod name to stdout). Returns 1 if none found.
+              find_healthy_pod() {
+                local pod
+                local phase
+                for pod in $(kubectl get pods -n "$VAULT_NAMESPACE" -l app.kubernetes.io/name=vault,component=server -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+                  phase=$(kubectl get pod "$pod" -n "$VAULT_NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
+                  if [ "$phase" != "Running" ]; then
+                    continue
+                  fi
+                  if vault_status "$pod" | jq -e '.version' >/dev/null 2>&1; then
+                    echo "$pod"
+                    return 0
+                  fi
+                done
+                return 1
+              }
+
               vault_auth_write() {
                 local path=$1
                 shift
@@ -165,8 +183,14 @@ spec:
                 sleep 5
               done
               echo " Quorum reached: $RUNNING_COUNT/$DESIRED_REPLICAS pods running (quorum $QUORUM)!"
+              if [ "$RUNNING_COUNT" -lt "$DESIRED_REPLICAS" ]; then
+                echo "  [Vault] WARNING: only $RUNNING_COUNT/$DESIRED_REPLICAS pods Running; continuing with quorum."
+              fi
 
-              VAULT_POD=$(kubectl get pod -n "$VAULT_NAMESPACE" -l app.kubernetes.io/name=vault,component=server -o jsonpath="{.items[0].metadata.name}")
+              if ! VAULT_POD=$(find_healthy_pod); then
+                echo "  [Vault] ERROR: no responsive Running pod found"
+                exit 1
+              fi
               RELEASE_NAME=$(kubectl get pod "$VAULT_POD" -n "$VAULT_NAMESPACE" -o jsonpath="{.metadata.labels['app\.kubernetes\.io/instance']}")
               SECRET_NAME="${RELEASE_NAME}-unseal-keys"
 
@@ -190,18 +214,36 @@ spec:
                 echo "  [Vault] Already initialized, skipping init."
               fi
 
-              # 3. Unseal all pods (idempotent)
+              # 3. Unseal all pods (quorum-tolerant: skip non-Running / unresponsive pods, idempotent)
               echo "  [Vault] Checking seal status for all pods..."
+              HEALTHY_COUNT=0
+              UNSEALED_COUNT=0
+              FAILED_PODS=""
               for POD in $(kubectl get pods -n "$VAULT_NAMESPACE" -l app.kubernetes.io/name=vault,component=server -o jsonpath='{.items[*].metadata.name}'); do
+                POD_PHASE=$(kubectl get pod "$POD" -n "$VAULT_NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
+                if [ "$POD_PHASE" != "Running" ]; then
+                  echo "  [Vault] WARNING: skipping pod $POD (phase $POD_PHASE, e.g. ContainerCreating); will retry on next run."
+                  FAILED_PODS="$FAILED_PODS $POD"
+                  continue
+                fi
                 echo -n "  [Vault] Waiting for pod $POD to be responsive..."
                 ATTEMPTS=0
                 until vault_status "$POD" | jq -e '.version' >/dev/null 2>&1; do
                   ATTEMPTS=$((ATTEMPTS+1))
-                  if [ "$ATTEMPTS" -ge 60 ]; then echo "ERROR: pod $POD never became responsive (vault status timeout)"; vault_status "$POD" || true; exit 1; fi
+                  if [ "$ATTEMPTS" -ge 60 ]; then
+                    echo ""
+                    echo "  [Vault] WARNING: pod $POD never became responsive (vault status timeout); skipping."
+                    FAILED_PODS="$FAILED_PODS $POD"
+                    break
+                  fi
                   echo -n "."
                   sleep 2
                 done
+                if ! vault_status "$POD" | jq -e '.version' >/dev/null 2>&1; then
+                  continue
+                fi
                 echo " Responsive!"
+                HEALTHY_COUNT=$((HEALTHY_COUNT + 1))
                 STATUS=$(vault_status "$POD")
                 SEALED=$(echo "$STATUS" | jq -r '.sealed')
                 if [ "$SEALED" == "true" ]; then
@@ -213,12 +255,28 @@ spec:
                   retry vault_exec "$POD" "vault operator unseal -tls-server-name=$TLS_SERVER_NAME $KEY2" > /dev/null 2>&1
                   retry vault_exec "$POD" "vault operator unseal -tls-server-name=$TLS_SERVER_NAME $KEY3" > /dev/null 2>&1
                   echo "  [Vault] Pod $POD unsealed!"
+                  UNSEALED_COUNT=$((UNSEALED_COUNT + 1))
                 else
                   echo "  [Vault] Pod $POD is already unsealed."
+                  UNSEALED_COUNT=$((UNSEALED_COUNT + 1))
                 fi
               done
+              if [ "$HEALTHY_COUNT" -ge "$QUORUM" ]; then
+                if [ -n "$FAILED_PODS" ]; then
+                  echo "  [Vault] Quorum healthy ($HEALTHY_COUNT/$DESIRED_REPLICAS, quorum $QUORUM); skipped pods:$FAILED_PODS — continuing to config."
+                else
+                  echo "  [Vault] All pods healthy ($HEALTHY_COUNT/$DESIRED_REPLICAS)."
+                fi
+              else
+                echo "  [Vault] ERROR: only $HEALTHY_COUNT/$DESIRED_REPLICAS pods healthy, quorum $QUORUM not reached; failing."
+                exit 1
+              fi
 
-              # 4. Configure Vault (idempotent — mirrors bootstrap-vault.sh step 4)
+              # 4. Configure Vault (re-resolve a healthy pod; the earlier VAULT_POD may be stale, idempotent — mirrors bootstrap-vault.sh step 4)
+              if ! VAULT_POD=$(find_healthy_pod); then
+                echo "  [Vault] ERROR: no responsive Running pod available for configuration"
+                exit 1
+              fi
               ROOT_TOKEN=$(kubectl get secret "$SECRET_NAME" -n "$VAULT_NAMESPACE" -o jsonpath='{.data.root-token}' | base64 -d)
               echo "  [Vault] Configuring engines and auth..."
               vault_exec "$VAULT_POD" "VAULT_TOKEN=$ROOT_TOKEN vault secrets list -tls-server-name=$TLS_SERVER_NAME" | grep -q "secret/" || \

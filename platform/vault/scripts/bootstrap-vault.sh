@@ -52,6 +52,24 @@ vault_exec() {
     vault_kubectl "$pod" -- /bin/sh -c "env VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt $cmd" 2>/dev/null
 }
 
+# Return the first Running pod that is responsive (vault status shows .version).
+# Usage: find_healthy_pod (prints pod name to stdout). Returns 1 if none found.
+find_healthy_pod() {
+    local pod
+    local phase
+    for pod in $(kubectl get pods -n vault -l app.kubernetes.io/name=vault,component=server -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+        phase=$(kubectl get pod "$pod" -n vault -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
+        if [ "$phase" != "Running" ]; then
+            continue
+        fi
+        if vault_status "$pod" | jq -e '.version' >/dev/null 2>&1; then
+            echo "$pod"
+            return 0
+        fi
+    done
+    return 1
+}
+
 echo -e "${BOLD}${BLUE}  [Vault] Starting bootstrap...${NC}"
 
 # 1. Wait for Vault StatefulSet to exist
@@ -62,9 +80,13 @@ until kubectl get statefulset -n vault -l app.kubernetes.io/name=vault -o name |
 done
 echo -e " ${GREEN}Created!${NC}"
 
-# Wait for all pods to be Running (not Ready — sealed pods won't pass readinessProbe)
-echo -ne "${YELLOW}  [Vault] Waiting for all pods to be running...${NC}"
+# Wait for quorum of pods to be Running (not Ready — sealed pods won't pass readinessProbe)
+# Quorum-tolerant: a stuck pod (e.g. ContainerCreating on FailedAttachVolume)
+# must not block bootstrap when 2/3 quorum is healthy.
+echo -ne "${YELLOW}  [Vault] Waiting for quorum of pods to be running...${NC}"
 DESIRED_REPLICAS=$(kubectl get statefulset -n vault -l app.kubernetes.io/name=vault -o jsonpath='{.items[0].spec.replicas}' 2>/dev/null || echo "0")
+QUORUM=$(( DESIRED_REPLICAS / 2 + 1 ))
+if [ "$QUORUM" -lt 1 ]; then QUORUM=1; fi
 RETRY_ERRORS=0
 MAX_ERRORS=3
 while true; do
@@ -81,15 +103,23 @@ while true; do
     RETRY_ERRORS=0
     RUNNING_COUNT=$(echo "$RUNNING_OUTPUT" | grep -c "pod/" || true)
     DESIRED_REPLICAS=$(kubectl get statefulset -n vault -l app.kubernetes.io/name=vault -o jsonpath='{.items[0].spec.replicas}' 2>/dev/null || echo "0")
-    if [ "$RUNNING_COUNT" -eq "$DESIRED_REPLICAS" ] && [ "$DESIRED_REPLICAS" -gt 0 ]; then
+    QUORUM=$(( DESIRED_REPLICAS / 2 + 1 ))
+    if [ "$QUORUM" -lt 1 ]; then QUORUM=1; fi
+    if [ "$RUNNING_COUNT" -ge "$QUORUM" ] && [ "$DESIRED_REPLICAS" -gt 0 ]; then
         break
     fi
     echo -n "."
     sleep 5
 done
-echo -e " ${GREEN}All $DESIRED_REPLICAS pods running!${NC}"
+echo -e " ${GREEN}Quorum reached: $RUNNING_COUNT/$DESIRED_REPLICAS pods running (quorum $QUORUM)!${NC}"
+if [ "$RUNNING_COUNT" -lt "$DESIRED_REPLICAS" ]; then
+    echo -e "${YELLOW}  [Vault] WARNING: only $RUNNING_COUNT/$DESIRED_REPLICAS pods Running; continuing with quorum.${NC}"
+fi
 
-VAULT_POD=$(kubectl get pod -n vault -l app.kubernetes.io/name=vault,component=server -o jsonpath="{.items[0].metadata.name}")
+if ! VAULT_POD=$(find_healthy_pod); then
+    echo -e "\n${RED}  [Vault] ERROR: no responsive Running pod found${NC}"
+    exit 1
+fi
 RELEASE_NAME=$(kubectl get pod "$VAULT_POD" -n vault -o jsonpath="{.metadata.labels['app\.kubernetes\.io/instance']}")
 SECRET_NAME="$RELEASE_NAME-unseal-keys"
 
@@ -119,18 +149,36 @@ if echo "$STATUS" | jq -e '.initialized == false' >/dev/null 2>&1; then
     echo -e "${GREEN}  [Vault] Initialized and keys saved to $SECRET_NAME${NC}"
 fi
 
-# 3. Unseal all pods
+# 3. Unseal all pods (quorum-tolerant: skip non-Running / unresponsive pods)
 echo -e "${YELLOW}  [Vault] Checking seal status for all pods...${NC}"
+HEALTHY_COUNT=0
+UNSEALED_COUNT=0
+FAILED_PODS=""
 for POD in $(kubectl get pods -n vault -l app.kubernetes.io/name=vault,component=server -o jsonpath='{.items[*].metadata.name}'); do
+    POD_PHASE=$(kubectl get pod "$POD" -n vault -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
+    if [ "$POD_PHASE" != "Running" ]; then
+        echo -e "${YELLOW}  [Vault] WARNING: skipping pod $POD (phase $POD_PHASE, e.g. ContainerCreating); will retry on next run.${NC}"
+        FAILED_PODS="$FAILED_PODS $POD"
+        continue
+    fi
     echo -ne "${YELLOW}  [Vault] Waiting for pod $POD to be responsive...${NC}"
     ATTEMPTS=0
+    RESPONSIVE=false
     until vault_status "$POD" | jq -e '.version' >/dev/null 2>&1; do
         ATTEMPTS=$((ATTEMPTS+1))
-        if [ "$ATTEMPTS" -ge 60 ]; then echo -e "\n${RED}ERROR: pod $POD never became responsive (vault status timeout)${NC}"; vault_status "$POD" || true; exit 1; fi
+        if [ "$ATTEMPTS" -ge 60 ]; then
+            echo -e "\n${YELLOW}  [Vault] WARNING: pod $POD never became responsive (vault status timeout); skipping.${NC}"
+            FAILED_PODS="$FAILED_PODS $POD"
+            break
+        fi
         echo -n "."
         sleep 2
     done
+    if ! vault_status "$POD" | jq -e '.version' >/dev/null 2>&1; then
+        continue
+    fi
     echo -e " ${GREEN}Responsive!${NC}"
+    HEALTHY_COUNT=$((HEALTHY_COUNT + 1))
 
     STATUS=$(vault_status "$POD")
     SEALED=$(echo "$STATUS" | jq -r '.sealed')
@@ -145,12 +193,29 @@ for POD in $(kubectl get pods -n vault -l app.kubernetes.io/name=vault,component
         retry vault_exec "$POD" "vault operator unseal -tls-server-name=vault $KEY2" > /dev/null 2>&1
         retry vault_exec "$POD" "vault operator unseal -tls-server-name=vault $KEY3" > /dev/null 2>&1
         echo -e "${GREEN}  [Vault] Pod $POD unsealed!${NC}"
+        UNSEALED_COUNT=$((UNSEALED_COUNT + 1))
     else
         echo -e "${GREEN}  [Vault] Pod $POD is already unsealed.${NC}"
+        UNSEALED_COUNT=$((UNSEALED_COUNT + 1))
     fi
 done
 
-# 4. Configure Vault
+if [ "$HEALTHY_COUNT" -ge "$QUORUM" ]; then
+    if [ -n "$FAILED_PODS" ]; then
+        echo -e "${YELLOW}  [Vault] Quorum healthy ($HEALTHY_COUNT/$DESIRED_REPLICAS, quorum $QUORUM); skipped pods:$FAILED_PODS — continuing to config.${NC}"
+    else
+        echo -e "${GREEN}  [Vault] All pods healthy ($HEALTHY_COUNT/$DESIRED_REPLICAS).${NC}"
+    fi
+else
+    echo -e "${RED}  [Vault] ERROR: only $HEALTHY_COUNT/$DESIRED_REPLICAS pods healthy, quorum $QUORUM not reached; failing.${NC}"
+    exit 1
+fi
+
+# 4. Configure Vault (re-resolve a healthy pod; the earlier VAULT_POD may be stale)
+if ! VAULT_POD=$(find_healthy_pod); then
+    echo -e "${RED}  [Vault] ERROR: no responsive Running pod available for configuration${NC}"
+    exit 1
+fi
 ROOT_TOKEN=$(kubectl get secret "$SECRET_NAME" -n vault -o jsonpath='{.data.root-token}' | base64 -d)
 
 echo -e "${BOLD}${BLUE}  [Vault] Configuring engines and auth...${NC}"
