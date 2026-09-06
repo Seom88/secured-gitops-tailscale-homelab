@@ -113,10 +113,10 @@ kube-prometheus-stack:
     resources:
       requests:
         cpu: 200m
-        memory: 512Mi
+        memory: 256Mi
       limits:
         cpu: 1000m
-        memory: 1Gi
+        memory: 768Mi
     livenessProbe:
       initialDelaySeconds: 90
     readinessProbe:
@@ -148,10 +148,10 @@ kube-prometheus-stack:
       resources:
         requests:
           cpu: 200m
-          memory: 512Mi
+          memory: 256Mi
         limits:
           cpu: 1000m
-          memory: 1536Mi
+          memory: 1024Mi
       storageSpec:
         volumeClaimTemplate:
           spec:

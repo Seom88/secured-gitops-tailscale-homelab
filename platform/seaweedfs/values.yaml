@@ -22,7 +22,7 @@ seaweedfs:
     resources:
       requests:
         cpu: 100m
-        memory: 128Mi
+        memory: 96Mi
       limits:
         cpu: 1000m
         memory: 512Mi

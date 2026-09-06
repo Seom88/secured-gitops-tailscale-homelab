@@ -55,10 +55,10 @@ vault:
     resources:
       requests:
         cpu: 50m
-        memory: 64Mi
+        memory: 32Mi
       limits:
         cpu: 250m
-        memory: 256Mi
+        memory: 128Mi
 
   server:
     enabled: true
@@ -147,10 +147,10 @@ vault:
     resources:
       requests:
         cpu: 500m
-        memory: 256Mi
+        memory: 128Mi
       limits:
         cpu: 2000m
-        memory: 1Gi
+        memory: 512Mi
 
     affinity: |
       podAntiAffinity:
