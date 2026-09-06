@@ -1,0 +1,37 @@
+{{- if not (eq (index .Values "kube-prometheus-stack" "enabled") false) }}
+# Velero ServiceMonitor managed by monitoring chart.
+# Decoupled from platform/velero/values.yaml where metrics.serviceMonitor.enabled is now false.
+# This eliminates the chicken-and-egg dependency where Velero would require
+# Prometheus Operator CRDs at install time (autodetect=false managed by monitoring chart; autodetect=true would skip rendering otherwise).
+# Replicates vmware-tanzu/velero 12.1.0 template exactly (velero/templates/servicemonitor.yaml)
+# verified via: helm template velero vmware-tanzu/velero --version 12.1.0 --set metrics.enabled=true --set metrics.serviceMonitor.enabled=true
+# - Service name/port: http-monitoring (8085) — matches velero/templates/service.yaml
+# - Selector: app.kubernetes.io/name=velero, app.kubernetes.io/instance=velero
+# - Namespace: velero (Release.Namespace)
+# - Interval/timeout: 30s / 10s from values.yaml metrics.scrapeInterval / scrapeTimeout
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: velero
+  namespace: velero
+  labels:
+    app.kubernetes.io/name: velero
+    app.kubernetes.io/instance: velero
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: velero-12.1.0
+    release: monitoring
+spec:
+  namespaceSelector:
+    matchNames:
+      - velero
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: velero
+      app.kubernetes.io/instance: velero
+  endpoints:
+    - port: http-monitoring
+      interval: 30s
+      scrapeTimeout: 10s
+      path: /metrics
+{{- end }}

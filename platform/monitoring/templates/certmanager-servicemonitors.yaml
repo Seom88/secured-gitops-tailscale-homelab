@@ -1,0 +1,55 @@
+{{- if not (eq (index .Values "kube-prometheus-stack" "enabled") false) }}
+# cert-manager ServiceMonitor managed by monitoring chart (decoupled, optional).
+# Upstream jetstack/cert-manager:1.17.2 defaults to prometheus.enabled=true but
+# prometheus.servicemonitor.enabled=false — no ServiceMonitor is created by default.
+# Platform disables prometheus entirely (see gitops/templates/apps/00-cert-manager.yaml:
+# prometheus.enabled=false) to keep the CRD chicken-and-egg out of the ArgoCD sync.
+# Enable scraping by deploying this ServiceMonitor from the monitoring chart instead.
+# This replicates jetstack/cert-manager 1.17.2 templates/servicemonitor.yaml exactly
+# (verified via: helm template cert-manager jetstack/cert-manager --version v1.17.2 --set prometheus.enabled=true --set prometheus.servicemonitor.enabled=true):
+# - Single ServiceMonitor covering controller/cainjector/webhook via matchExpressions
+# - targetPort 9402, path /metrics, interval 60s, scrapeTimeout 30s, honorLabels false
+# Prometheus instance label default kept, plus release: monitoring for kube-prometheus-stack selector.
+# Gated on kube-prometheus-stack.enabled so CRDs must exist first.
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cert-manager
+  namespace: cert-manager
+  labels:
+    app: cert-manager
+    app.kubernetes.io/name: cert-manager
+    app.kubernetes.io/instance: cert-manager
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: cert-manager-v1.17.2
+    prometheus: default
+    release: monitoring
+spec:
+  jobLabel: cert-manager
+  selector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          - cainjector
+          - cert-manager
+          - webhook
+      - key: app.kubernetes.io/instance
+        operator: In
+        values:
+          - cert-manager
+      - key: app.kubernetes.io/component
+        operator: In
+        values:
+          - cainjector
+          - controller
+          - webhook
+  endpoints:
+    - targetPort: 9402
+      path: /metrics
+      interval: 60s
+      scrapeTimeout: 30s
+      honorLabels: false
+{{- end }}

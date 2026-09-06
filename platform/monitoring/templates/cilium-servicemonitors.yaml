@@ -1,0 +1,151 @@
+{{- if not (eq (index .Values "kube-prometheus-stack" "enabled") false) }}
+# Cilium ServiceMonitors managed by monitoring chart.
+# This eliminates the chicken-and-egg dependency where Cilium cannot install
+# ServiceMonitors before Prometheus Operator CRDs are applied by the monitoring chart.
+# Decoupled from infra-talos-homelab/modules/platform/values/cilium/values.yaml where
+# all 5 serviceMonitor.enabled are now false:
+#   - operator.prometheus.serviceMonitor.enabled (9963)
+#   - prometheus.serviceMonitor.enabled (9962)
+#   - envoy.prometheus.serviceMonitor.enabled (9964)
+#   - hubble.metrics.serviceMonitor.enabled (9965)
+#   - hubble.relay.prometheus.serviceMonitor.enabled (9966)
+# All intervals replicate original values (30s) and release label (monitoring).
+# Selectors/ports/endpoints replicate Cilium 1.18.0 Helm chart templates exactly
+# (verified via: helm template cilium/cilium --set trustCRDsExist=true):
+#   - cilium-agent: selector app.kubernetes.io/name=cilium-agent, port metrics (9962)
+#   - cilium-operator: selector io.cilium/app=operator,name=cilium-operator, port metrics (9963)
+#   - cilium-envoy: selector k8s-app=cilium-envoy, port envoy-metrics (9964)
+#   - hubble: selector k8s-app=hubble, port hubble-metrics (9965)
+#   - hubble-relay: selector k8s-app=hubble-relay, port metrics (9966)
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cilium-agent
+  namespace: kube-system
+  labels:
+    release: monitoring
+    app.kubernetes.io/part-of: cilium
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cilium-agent
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  targetLabels:
+    - k8s-app
+  endpoints:
+    - port: metrics
+      interval: 30s
+      honorLabels: true
+      path: /metrics
+      relabelings:
+        - action: replace
+          replacement: ${1}
+          sourceLabels:
+            - __meta_kubernetes_pod_node_name
+          targetLabel: node
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cilium-envoy
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/part-of: cilium
+    app.kubernetes.io/name: cilium-envoy
+    release: monitoring
+spec:
+  selector:
+    matchLabels:
+      k8s-app: cilium-envoy
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  targetLabels:
+    - k8s-app
+  endpoints:
+    - port: envoy-metrics
+      interval: 30s
+      honorLabels: true
+      path: /metrics
+      relabelings:
+        - action: replace
+          replacement: ${1}
+          sourceLabels:
+            - __meta_kubernetes_pod_node_name
+          targetLabel: node
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cilium-operator
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/part-of: cilium
+    app.kubernetes.io/name: cilium-operator
+    release: monitoring
+spec:
+  selector:
+    matchLabels:
+      io.cilium/app: operator
+      name: cilium-operator
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  endpoints:
+    - port: metrics
+      interval: 30s
+      honorLabels: true
+      path: /metrics
+      targetLabels:
+        - io.cilium/app
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: hubble
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/part-of: cilium
+    release: monitoring
+spec:
+  selector:
+    matchLabels:
+      k8s-app: hubble
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  endpoints:
+    - port: hubble-metrics
+      interval: 30s
+      honorLabels: true
+      path: /metrics
+      scheme: http
+      relabelings:
+        - action: replace
+          replacement: ${1}
+          sourceLabels:
+            - __meta_kubernetes_pod_node_name
+          targetLabel: node
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: hubble-relay
+  namespace: kube-system
+  labels:
+    release: monitoring
+spec:
+  selector:
+    matchLabels:
+      k8s-app: hubble-relay
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  endpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics
+{{- end }}

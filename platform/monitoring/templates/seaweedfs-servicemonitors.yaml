@@ -1,4 +1,4 @@
-{{- if index .Values "kube-prometheus-stack" "enabled" | default true }}
+{{- if not (eq (index .Values "kube-prometheus-stack" "enabled") false) }}
 # SeaweedFS ServiceMonitors managed by monitoring chart.
 # This eliminates the chicken-and-egg dependency where SeaweedFS cannot install
 # ServiceMonitors before Prometheus Operator CRDs are applied by the monitoring chart.

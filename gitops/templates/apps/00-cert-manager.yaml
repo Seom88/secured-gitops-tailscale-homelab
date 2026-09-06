@@ -23,6 +23,12 @@ spec:
         global:
           leaderElection:
             namespace: cert-manager
+        prometheus:
+          enabled: false
+          servicemonitor:
+            enabled: false
+          podmonitor:
+            enabled: false
   destination:
     server: https://kubernetes.default.svc
     namespace: cert-manager
