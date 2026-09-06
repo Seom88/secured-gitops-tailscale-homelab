@@ -54,8 +54,8 @@ velero:
     backupSyncPeriod: 1m
     restoreOnlyMode: false
     # UI: keep default 60s.
-    # Features: enable FileSystemBackup (former Restic) and CSI if available.
-    features: veleroFeatureGates
+    # Features: CSI if available (empty = defaults). Must NOT be a literal string.
+    features: ""
 
   # Credentials — the Secret `cloud-credentials` is created by bootstrap/init-gitops.sh
   # (chicken-egg: Velero cannot use ESO/Vault because Vault itself is backed up).
@@ -72,15 +72,63 @@ velero:
     enabled: true
 
   # Schedules — default Schedules installed at deploy time.
+  # ArgoCD prune protection: Backups created by these Schedules are extraneous
+  # for ArgoCD (velero.io group) — annotations propagate Schedule -> Backup
+  # (velero docs: backup-reference). Keeps ArgoCD from pruning day-2 Backups.
+  # useOwnerReferencesInBackup=false is intentional (true would delete Backups
+  # when the Schedule changes/deletes).
   schedules:
     daily-full:
       disabled: false
       schedule: "0 2 * * *"
       useOwnerReferencesInBackup: false
+      annotations:
+        argocd.argoproj.io/compare-options: IgnoreExtraneous
+        argocd.argoproj.io/sync-options: Prune=false
       template:
         ttl: 720h
         includedNamespaces:
           - "*"
+        excludedNamespaces:
+          - velero
+          - kube-system
+          - kube-public
+          - kube-node-lease
+          - longhorn-system
+          # GitOps control-plane (other repo: infra-talos-homelab,
+          # argocd_namespace=argocd, cilium_namespace=kube-system).
+          # ArgoCD is source-of-truth in Git — reinstall, never restore.
+          # Cilium CNI lives in kube-system (already excluded) but its
+          # cluster-scoped runtime CRDs need excludedResources below.
+          - argocd
+        excludedResources:
+          - replicas.longhorn.io
+          - engines.longhorn.io
+          - nodes.longhorn.io
+          # ArgoCD control-plane — Git is source of truth, never restore.
+          - applications.argoproj.io
+          - appprojects.argoproj.io
+          - applicationsets.argoproj.io
+          # Cilium runtime churn — ephemeral identities/endpoints, re-created
+          # by the agent. Restoring stale identities breaks networking.
+          # (Policies themselves are Git-managed; only runtime state excluded.)
+          - ciliumidentities.cilium.io
+          - ciliumendpoints.cilium.io
+          - ciliumendpointslices.cilium.io
+          # Volatile / derived resources — noise, never restore.
+          # (Community consensus: velero discussion #9146, e-whisper filtering guide.)
+          - events
+          - events.events.k8s.io
+          - endpointslices.discovery.k8s.io
+          - controllerrevisions.apps
+          # Short-lived cert-manager ACME objects — re-issued on demand.
+          - challenges.acme.cert-manager.io
+          - orders.acme.cert-manager.io
+          # Velero's own objects — live in velero ns (already excluded),
+          # belt-and-braces so a label-selector backup never grabs them.
+          - backups.velero.io
+          - restores.velero.io
+          - schedules.velero.io
         storageLocation: default
         volumeSnapshotLocations:
           - default
@@ -89,18 +137,31 @@ velero:
       disabled: false
       schedule: "0 * * * *"
       useOwnerReferencesInBackup: false
+      annotations:
+        argocd.argoproj.io/compare-options: IgnoreExtraneous
+        argocd.argoproj.io/sync-options: Prune=false
       template:
         ttl: 168h
         includedNamespaces:
           - vault
         # Critical Vault resources — hourly protection for unseal keys & TLS.
+        # NOTE: ClusterSecretStore is cluster-scoped, covered by daily-full, not this namespaced schedule.
+        # NOTE: statefulsets required — Vault runs as StatefulSet, not Deployment.
+        # NOTE: defaultVolumesToFsBackup=false is intentional — hourly covers
+        # manifests only; Raft data (PVC) is covered by daily-full with FsBackup=true.
         includedResources:
           - secrets
           - configmaps
           - persistentvolumeclaims
           - cronjobs
-        labelSelector:
-          matchLabels: {}
+          - deployments
+          - statefulsets
+          - jobs
+          - serviceaccounts
+          - roles
+          - rolebindings
+          - issuers.cert-manager.io
+          - certificates.cert-manager.io
         storageLocation: default
         defaultVolumesToFsBackup: false
 
