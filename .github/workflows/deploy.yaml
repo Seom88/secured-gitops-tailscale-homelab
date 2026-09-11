@@ -27,8 +27,14 @@ concurrency:
 
 env:
   HELM_VERSION: v3.18.4
-  S3_ENDPOINT: https://rustfs.lonk-mirfak.ts.net
-  S3_BUCKET: terraform-homelab
+  # Single source of truth: GitHub Vars (S3_ENDPOINT, S3_BUCKET). NO fallbacks —
+  # empty vars fail fast in the "Validate S3 configuration" step below.
+  # S3_ENDPOINT must be the full URL (https://<fqdn>); init-gitops.sh derives the
+  # bare FQDN for Velero s3.tailnetFqdn from it.
+  # NOTE: S3_BUCKET here is the Terraform-state bucket, NOT the Velero bucket
+  # (velero-homelab is chart-owned in platform/velero/values.yaml).
+  S3_ENDPOINT: ${{ vars.S3_ENDPOINT }}
+  S3_BUCKET: ${{ vars.S3_BUCKET }}
 
 jobs:
   deploy:
@@ -50,6 +56,27 @@ jobs:
           path: infra
           token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
           persist-credentials: false
+
+      - name: Validate S3 configuration (fail fast)
+        run: |
+          fail=0
+          if [ -z "$S3_ENDPOINT" ]; then
+            echo "::error::S3_ENDPOINT is empty — set GitHub repository/environment Var S3_ENDPOINT (e.g. https://rustfs.<tailnet>.ts.net)"
+            fail=1
+          else
+            case "$S3_ENDPOINT" in
+              https://*) ;;
+              *)
+                echo "::error::S3_ENDPOINT must start with https:// (full URL, e.g. https://rustfs.<tailnet>.ts.net)"
+                fail=1
+                ;;
+            esac
+          fi
+          if [ -z "$S3_BUCKET" ]; then
+            echo "::error::S3_BUCKET is empty — set GitHub repository/environment Var S3_BUCKET (Terraform-state bucket)"
+            fail=1
+          fi
+          exit $fail
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v4
@@ -156,6 +183,7 @@ jobs:
       - name: Bootstrap (delegates to init-gitops.sh — single source of truth)
         env:
           KUBECONFIG: /tmp/kubeconfig.yaml
+          S3_ENDPOINT: ${{ env.S3_ENDPOINT }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           VELERO_AWS_ACCESS_KEY_ID: ${{ secrets.VELERO_AWS_ACCESS_KEY_ID }}

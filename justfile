@@ -12,23 +12,47 @@ _default:
 
 # ── Bootstrap ─────────────────────────────────
 
+# S3_ENDPOINT — required by bootstrap/init-gitops.sh (resolveS3Endpoint derives
+# Velero s3.tailnetFqdn from it). Define it in one of:
+#   - .env (see .env.example: S3_ENDPOINT=https://<fqdn>), auto-loaded via `set dotenv-load`
+#     and exported to every recipe (including ./bootstrap/init-gitops.sh below)
+#   - shell env: export S3_ENDPOINT=https://...
+#   - CI vars: GitHub Vars S3_ENDPOINT (deploy.yaml passes it through)
+# Empty or placeholder ("...") values fail loudly before any mutation.
+_require-s3-endpoint:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Explicit .env load in case just runs with --no-dotenv or outside dotenv context
+    if [ -f .env ]; then
+      set -a; source .env; set +a
+    fi
+    if [ -z "${S3_ENDPOINT:-}" ] || [ "${S3_ENDPOINT}" = "..." ]; then
+      echo "ERROR: S3_ENDPOINT is not set (or is still a placeholder)." >&2
+      echo "  Set S3_ENDPOINT to the full S3 URL (e.g. https://rustfs.<tailnet>.ts.net) in .env (see .env.example), shell env, or CI vars (GitHub Vars S3_ENDPOINT)." >&2
+      exit 1
+    fi
+    case "${S3_ENDPOINT}" in
+      https://*) ;;
+      *) echo "ERROR: S3_ENDPOINT must start with https:// (got '${S3_ENDPOINT}')." >&2; exit 1 ;;
+    esac
+
 # Full bootstrap (production) — idempotent; rerun for status check, --force to reapply
-init-prod:
+init-prod: _require-s3-endpoint
     just secrets-apply
     ./bootstrap/init-gitops.sh prod
 
 # Force reapply App-of-Apps (production)
-init-prod-force:
+init-prod-force: _require-s3-endpoint
     just secrets-apply
     ./bootstrap/init-gitops.sh prod --force
 
 # Full bootstrap (development mode) — idempotent; rerun for status check, --force to reapply
-init-dev:
+init-dev: _require-s3-endpoint
     just secrets-apply
     ./bootstrap/init-gitops.sh dev
 
 # Force reapply App-of-Apps (development)
-init-dev-force:
+init-dev-force: _require-s3-endpoint
     just secrets-apply
     ./bootstrap/init-gitops.sh dev --force
 
@@ -39,24 +63,24 @@ secrets-init:
     #!/usr/bin/env bash
     set -euo pipefail
     if [ -f .env ]; then
-      echo "✅ .env ya existe — no se sobrescribe (borralo primero si querés regenerarlo)"
+      echo "✅ .env already exists — not overwriting (delete it first to regenerate)"
       exit 0
     fi
     if [ ! -f .env.example ]; then
-      echo "❌ .env.example no encontrado" >&2; exit 1
+      echo "❌ .env.example not found" >&2; exit 1
     fi
     cp .env.example .env
-    echo "✅ .env creado desde .env.example — completá los valores y luego: just secrets-apply"
+    echo "✅ .env created from .env.example — fill in the values, then run: just secrets-apply"
 
-# Check .env vs .env.example — keys faltantes / valores vacíos / placeholders
+# Check .env vs .env.example — missing keys / empty values / placeholders
 secrets-check:
     #!/usr/bin/env bash
     set -euo pipefail
     if [ ! -f .env.example ]; then
-      echo "❌ .env.example no encontrado" >&2; exit 1
+      echo "❌ .env.example not found" >&2; exit 1
     fi
     if [ ! -f .env ]; then
-      echo "❌ .env no encontrado — crealo con: just secrets-init  (o cp .env.example .env)" >&2
+      echo "❌ .env not found — create it with: just secrets-init  (or cp .env.example .env)" >&2
       exit 1
     fi
     echo "==> .env vs .env.example"
@@ -66,37 +90,37 @@ secrets-check:
       key=$(echo "$key" | xargs)
       [ -z "$key" ] && continue
       if ! grep -q "^${key}=" .env; then
-        echo "  ❌ falta en .env: $key"; missing=$((missing+1))
+        echo "  ❌ missing in .env: $key"; missing=$((missing+1))
       else
         val=$(grep "^${key}=" .env | cut -d'=' -f2-)
         if [ -z "$val" ]; then
-          echo "  ⚠️  vacío en .env: $key"; empty=$((empty+1))
+          echo "  ⚠️  empty in .env: $key"; empty=$((empty+1))
         elif [ "$val" = "..." ] || [ "$val" = "changeme" ] || [ "$val" = "CHANGEME" ]; then
-          echo "  ⚠️  placeholder sin completar en .env: $key=$val"; placeholder=$((placeholder+1))
+          echo "  ⚠️  unfilled placeholder in .env: $key=$val"; placeholder=$((placeholder+1))
         fi
       fi
     done < .env.example
     if [ "$missing" = 0 ] && [ "$empty" = 0 ] && [ "$placeholder" = 0 ]; then
-      echo "✅ .env OK — todas las keys de .env.example presentes y con valor"
+      echo "✅ .env OK — all .env.example keys present with values"
     else
       echo ""
-      echo "Resumen: $missing faltantes, $empty vacías, $placeholder placeholders"
+      echo "Summary: $missing missing, $empty empty, $placeholder placeholders"
       [ "$missing" != 0 ] && exit 1 || true
       [ "$placeholder" != 0 ] && exit 1 || true
     fi
 
-# Carga .env → k8s Secrets (idempotente, re-ejecutable)
+# Load .env → k8s Secrets (idempotent, re-runnable)
 #   tailscale/operator-oauth  {client_id, client_secret}  <- K8S_TS_OAUTH_*
 # velero/cloud-credentials  {cloud: "[default]\\naws_access_key_id=..."} <- VELERO_AWS_*
 secrets-apply:
     #!/usr/bin/env bash
     set -euo pipefail
-    # Carga explícita de .env por si just se invoca con --no-dotenv o fuera de just
+    # Explicit .env load in case just is invoked with --no-dotenv or outside just
     if [ -f .env ]; then
       set -a; source .env; set +a
     fi
     if [ ! -f .env ]; then
-      echo "⚠️  .env no encontrado — usando env del shell / CI (GitHub Secrets)" >&2
+      echo "⚠️  .env not found — using shell / CI env (GitHub Secrets)" >&2
     fi
     echo "==> secrets-apply (.env → k8s)"
 
@@ -104,8 +128,8 @@ secrets-apply:
     TS_ID="${K8S_TS_OAUTH_CLIENT_ID:-}"
     TS_SECRET="${K8S_TS_OAUTH_SECRET:-}"
     if [ -z "$TS_ID" ] || [ -z "$TS_SECRET" ] || [ "$TS_ID" = "..." ] || [ "$TS_SECRET" = "..." ]; then
-      echo "  ⏭️  Tailscale: sin credenciales válidas (K8S_TS_OAUTH_CLIENT_ID / K8S_TS_OAUTH_SECRET) — skip"
-      echo "     Tip: completá .env y reintentá, o exportá las vars en el shell"
+      echo "  ⏭️  Tailscale: no valid credentials (K8S_TS_OAUTH_CLIENT_ID / K8S_TS_OAUTH_SECRET) — skipping"
+      echo "     Tip: fill in .env and retry, or export the vars in the shell"
     else
       echo "  🔐 Tailscale: creando/actualizando Secret tailscale/operator-oauth..."
       kubectl get namespace tailscale >/dev/null 2>&1 || kubectl create namespace tailscale >/dev/null 2>&1
@@ -123,7 +147,7 @@ secrets-apply:
     VELERO_ID="${VELERO_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}"
     VELERO_SECRET_VAL="${VELERO_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}"
     if [ -z "$VELERO_ID" ] || [ -z "$VELERO_SECRET_VAL" ] || [ "$VELERO_ID" = "..." ] || [ "$VELERO_SECRET_VAL" = "..." ]; then
-      echo "  ⏭️  Velero: sin credenciales S3 válidas (VELERO_AWS_ACCESS_KEY_ID / VELERO_AWS_SECRET_ACCESS_KEY) — skip"
+      echo "  ⏭️  Velero: no valid S3 credentials (VELERO_AWS_ACCESS_KEY_ID / VELERO_AWS_SECRET_ACCESS_KEY) — skipping"
     else
       echo "  🛡️  Velero: creando/actualizando Secret velero/cloud-credentials..."
       kubectl get namespace velero >/dev/null 2>&1 || kubectl create namespace velero >/dev/null 2>&1
@@ -137,25 +161,25 @@ secrets-apply:
       echo "  ✅ Velero: Secret velero/cloud-credentials listo"
     fi
 
-    echo "✅ secrets-apply: done (revisá con: just secrets-status)"
+    echo "✅ secrets-apply: done (check with: just secrets-status)"
 
-# Estado de los Secrets en k8s (sin exponer valores)
+# k8s Secrets status (values masked)
 secrets-status:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "==> k8s Secrets (masked)"
     echo "  tailscale/operator-oauth:"
     if kubectl get secret operator-oauth -n tailscale >/dev/null 2>&1; then
-      echo "    ✅ existe — keys: $(kubectl get secret operator-oauth -n tailscale -o jsonpath='{.data}' | tr ',' '\\n' | cut -d'\"' -f2 | paste -sd ', ' -)"
+      echo "    ✅ exists — keys: $(kubectl get secret operator-oauth -n tailscale -o jsonpath='{.data}' | tr ',' '\\n' | cut -d'"' -f2 | paste -sd ', ' -)"
       echo "    client_id len: $(kubectl get secret operator-oauth -n tailscale -o jsonpath='{.data.client_id}' | base64 -d | wc -c | xargs) chars"
     else
-      echo "    ❌ no existe"
+      echo "    ❌ not found"
     fi
     echo "  velero/cloud-credentials:"
     if kubectl get secret cloud-credentials -n velero >/dev/null 2>&1; then
-      echo "    ✅ existe — key 'cloud' presente: $(kubectl get secret cloud-credentials -n velero -o jsonpath='{.data.cloud}' | base64 -d | head -1)"
+      echo "    ✅ exists — key 'cloud' present: $(kubectl get secret cloud-credentials -n velero -o jsonpath='{.data.cloud}' | base64 -d | head -1)"
     else
-      echo "    ❌ no existe"
+      echo "    ❌ not found"
     fi
 
 # ── Vault ─────────────────────────────────────
@@ -255,15 +279,15 @@ validate-gitops:
     echo "==> helm dependency build (gitops)"
     helm dependency build gitops 2>&1 || echo "no dependencies for gitops chart"
     echo "==> helm lint (prod)"
-    helm lint gitops -f gitops/values.yaml
+    helm lint gitops -f gitops/values.yaml --set veleroS3.tailnetFqdn=s3-validate.invalid
     echo "==> helm lint (dev)"
-    helm lint gitops -f gitops/values-dev.yaml
+    helm lint gitops -f gitops/values-dev.yaml --set veleroS3.tailnetFqdn=s3-validate.invalid
     echo "==> helm template (prod) — empty check"
-    helm template gitops gitops -f gitops/values.yaml > /tmp/gitops-prod.yaml
+    helm template gitops gitops -f gitops/values.yaml --set veleroS3.tailnetFqdn=s3-validate.invalid > /tmp/gitops-prod.yaml
     test -s /tmp/gitops-prod.yaml || (echo "❌ helm template rendered empty (prod)" && exit 1)
     echo "   prod render: $(wc -l < /tmp/gitops-prod.yaml) lines, $(grep -c '^---' /tmp/gitops-prod.yaml || true) documents"
     echo "==> helm template (dev) — empty check"
-    helm template gitops gitops -f gitops/values-dev.yaml > /tmp/gitops-dev.yaml
+    helm template gitops gitops -f gitops/values-dev.yaml --set veleroS3.tailnetFqdn=s3-validate.invalid > /tmp/gitops-dev.yaml
     test -s /tmp/gitops-dev.yaml || (echo "❌ helm template rendered empty (dev)" && exit 1)
     echo "   dev render: $(wc -l < /tmp/gitops-dev.yaml) lines"
     echo "✅ validate-gitops: OK"
@@ -287,7 +311,12 @@ validate-platform:
         # Use update to handle out-of-sync Chart.lock (e.g. vault)
         helm dependency update "$dir" 2>&1 || helm dependency build "$dir" 2>&1 || echo "   no deps / already built for $dir"
         echo "==> helm lint $dir"
-        if ! helm lint "$dir"; then
+        # Velero s3.tailnetFqdn is required (CI-supplied) — lint with a test value.
+        extra=""
+        if [ "$dir" = "platform/velero/" ]; then
+          extra="--set s3.tailnetFqdn=s3-validate.invalid"
+        fi
+        if ! helm lint $extra "$dir"; then
           echo "❌ helm lint failed for $dir"
           failed=1
         fi
@@ -386,8 +415,10 @@ sync:
 # Show rendered Helm templates (dry-run)
 diff:
     helm diff upgrade --install gitops gitops/ -n argocd -f gitops/values.yaml \
+      --set veleroS3.tailnetFqdn=s3-validate.invalid \
       --allow-unreleased 2>/dev/null || \
-    helm template gitops gitops/ -n argocd -f gitops/values.yaml
+    helm template gitops gitops/ -n argocd -f gitops/values.yaml \
+      --set veleroS3.tailnetFqdn=s3-validate.invalid
 
 # ── Docs ──────────────────────────────────────
 

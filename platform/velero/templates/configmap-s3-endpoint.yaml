@@ -1,0 +1,15 @@
+{{- if .Values.velero.enabled }}
+{{- $fqdn := required "s3.tailnetFqdn is required (set via CI vars S3_ENDPOINT)" .Values.s3.tailnetFqdn }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: s3-endpoint
+  namespace: velero
+  labels:
+    app.kubernetes.io/part-of: velero
+data:
+  tailnet-fqdn: {{ $fqdn | quote }}
+  s3-url: {{ printf "https://%s" $fqdn | quote }}
+  bucket: {{ .Values.s3.bucket | quote }}
+  region: {{ .Values.s3.region | quote }}
+{{- end }}

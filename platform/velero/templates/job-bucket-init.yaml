@@ -1,4 +1,5 @@
 {{- if .Values.velero.enabled }}
+{{- $fqdn := required "s3.tailnetFqdn is required (set via CI vars S3_ENDPOINT)" .Values.s3.tailnetFqdn }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -37,7 +38,7 @@ spec:
           args:
             - |
               set -e
-              echo "[bucket-init] Starting RustFS bucket init..."
+              echo "[bucket-init] Starting S3 bucket init..."
               CRED_FILE="/etc/velero/cloud"
               WAIT_SECS=0
               WAIT_MAX=60
@@ -54,14 +55,14 @@ spec:
               # Velero secret format: "[default]\naws_access_key_id=...\naws_secret_access_key=..."
               export AWS_ACCESS_KEY_ID="$(grep -E 'aws_access_key_id' "$CRED_FILE" | cut -d'=' -f2 | tr -d '[:space:]')"
               export AWS_SECRET_ACCESS_KEY="$(grep -E 'aws_secret_access_key' "$CRED_FILE" | cut -d'=' -f2 | tr -d '[:space:]')"
-              export AWS_DEFAULT_REGION="us-east-1"
+              export AWS_DEFAULT_REGION="{{ .Values.s3.region }}"
               export AWS_EC2_METADATA_DISABLED="true"
               export AWS_S3_ADDRESSING_STYLE="path"
-              # Ensure aws-cli uses path-style addressing (RustFS requires it)
+              # Ensure aws-cli uses path-style addressing (S3 backend requires it)
               aws configure set default.s3.addressing_style path || true
               aws configure set default.s3.addressing_style path --profile default || true
-              ENDPOINT="https://rustfs.lonk-mirfak.ts.net"
-              BUCKET="velero-homelab"
+              ENDPOINT="https://{{ $fqdn }}"
+              BUCKET="{{ .Values.s3.bucket }}"
               if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
                 echo "[bucket-init] ERROR: could not parse credentials from $CRED_FILE"
                 echo "[bucket-init] File content (sanitized):"
@@ -69,12 +70,12 @@ spec:
                 exit 1
               fi
               # Wait for Tailscale Egress service DNS / proxy to be ready
-              echo "[bucket-init] Waiting for rustfs.lonk-mirfak.ts.net (max 120s)..."
+              echo "[bucket-init] Waiting for {{ $fqdn }} (max 120s)..."
               DNS_WAIT=0
               DNS_MAX=120
               while [ $DNS_WAIT -lt $DNS_MAX ]; do
-                if nslookup rustfs.lonk-mirfak.ts.net >/dev/null 2>&1 || getent hosts rustfs.lonk-mirfak.ts.net >/dev/null 2>&1; then
-                  echo "[bucket-init] DNS resolved for rustfs.lonk-mirfak.ts.net"
+                if nslookup {{ $fqdn }} >/dev/null 2>&1 || getent hosts {{ $fqdn }} >/dev/null 2>&1; then
+                  echo "[bucket-init] DNS resolved for {{ $fqdn }}"
                   break
                 fi
                 echo "[bucket-init] DNS not yet resolved ($DNS_WAIT/$DNS_MAX s)..."
@@ -87,7 +88,7 @@ spec:
 
               echo "[bucket-init] Creating bucket $BUCKET at $ENDPOINT (region $AWS_DEFAULT_REGION)..."
 
-              # RustFS via Tailscale funnel uses a Tailscale-issued cert not in public CA bundle.
+              # S3 via Tailscale funnel uses a Tailscale-issued cert not in public CA bundle.
               AWS_S3_EXTRA="--no-verify-ssl"
 
               set +e

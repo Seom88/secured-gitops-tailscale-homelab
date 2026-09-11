@@ -1,20 +1,11 @@
-rustfs:
-  hostname: velero-rustfs-egress-dev
-  tailnetFqdn: rustfs.lonk-mirfak.ts.net
+# Dev overlay. S3 endpoint: same single source as prod (CI vars S3_ENDPOINT) —
+# intentionally empty here; required at render time. Only prefix/hostname differ
+# (bucket/region inherit from values.yaml); the BackupStorageLocation CR is built
+# by templates/backupstoragelocation.yaml from s3.* (no BSL block here).
+s3:
+  hostname: velero-s3-egress-dev
+  prefix: velero-dev
+  tailnetFqdn: ""
 
 developmentApp:
   enabled: true
-
-velero:
-  configuration:
-    backupStorageLocation:
-      - name: default
-        provider: aws
-        bucket: velero-homelab
-        prefix: velero-dev
-        caCert: ""
-        config:
-          region: us-east-1
-          s3ForcePathStyle: "true"
-          s3Url: https://rustfs.lonk-mirfak.ts.net
-          insecureSkipTLSVerify: "true"

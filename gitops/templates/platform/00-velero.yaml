@@ -21,6 +21,14 @@ spec:
         {{- if .Values.developmentApp.enabled }}
         - values-dev.yaml
         {{- end }}
+      # S3 endpoint parameter — single source: CI GitHub Vars S3_ENDPOINT
+      # (init-gitops.sh --set veleroS3.tailnetFqdn). `required` fails the sync
+      # loudly instead of deploying a stale hardcoded URL. One parameter is
+      # enough: Service, ConfigMap, bucket-init Job, CiliumNetworkPolicy and the
+      # wrapper-owned BackupStorageLocation all derive from s3.tailnetFqdn.
+      parameters:
+        - name: s3.tailnetFqdn
+          value: {{ required "veleroS3.tailnetFqdn is required (CI: --set veleroS3.tailnetFqdn from S3_ENDPOINT)" .Values.veleroS3.tailnetFqdn | quote }}
   destination:
     server: https://kubernetes.default.svc
     namespace: velero
@@ -34,7 +42,7 @@ spec:
     - /spec/template/metadata/annotations
   - group: ""
     kind: Service
-    name: rustfs-egress
+    name: s3-egress
     namespace: velero
     jsonPointers:
     - /spec/type

@@ -1,9 +1,20 @@
 ciliumNetworkPolicy:
   enabled: true
 
-rustfs:
-  tailnetFqdn: rustfs.lonk-mirfak.ts.net
-  hostname: velero-rustfs-egress
+# S3 backend — single source for the URL: CI (GitHub Vars S3_ENDPOINT).
+# Flow: vars.S3_ENDPOINT -> deploy.yaml env -> init-gitops.sh --set veleroS3.tailnetFqdn
+# -> ArgoCD Application helm.parameter s3.tailnetFqdn.
+# tailnetFqdn is REQUIRED (empty on purpose — Service, ConfigMap, bucket-init Job,
+# CiliumNetworkPolicy and BackupStorageLocation fail loudly via `required` when unset).
+# Do NOT put a URL literal here: a stale literal would silently win over CI.
+# bucket/prefix/region are chart-owned (identical in every env except prefix):
+# S3_BUCKET in CI is the Terraform-state bucket, NOT this one — never wire it here.
+s3:
+  tailnetFqdn: ""
+  bucket: velero-homelab
+  prefix: velero
+  region: us-east-1
+  hostname: velero-s3-egress
 
 developmentApp:
   enabled: false
@@ -18,7 +29,7 @@ velero:
       create: true
       name: velero
 
-  # AWS plugin — required for RustFS S3 (S3-compatible) backend.
+  # AWS plugin — required for the S3-compatible backend.
   initContainers:
     - name: velero-plugin-for-aws
       image: velero/velero-plugin-for-aws:v1.14.2
@@ -28,21 +39,13 @@ velero:
           name: plugins
 
   configuration:
-    # BackupStorageLocation — single default location on RustFS.
-    # Prefix is per-environment: velero in prod; values-dev.yaml overrides
-    # to velero-dev to keep dev backups isolated from prod.
-    # Full S3 path: s3://velero-homelab/velero/
-    backupStorageLocation:
-      - name: default
-        provider: aws
-        bucket: velero-homelab
-        prefix: velero
-        caCert: ""
-        config:
-          region: us-east-1
-          s3ForcePathStyle: "true"
-          s3Url: https://rustfs.lonk-mirfak.ts.net
-          insecureSkipTLSVerify: "true"
+    # BackupStorageLocation — owned by THIS wrapper chart
+    # (templates/backupstoragelocation.yaml), NOT by the upstream subchart:
+    # upstream reads s3Url literally from values (no templating), and neither
+    # helm --set nor ArgoCD parameters can patch a single array entry by index
+    # (lists are replaced wholesale — a [0] patch would drop provider/bucket and
+    # fail upstream schema validation). Empty list = upstream creates no BSL.
+    backupStorageLocation: []
     # VolumeSnapshotLocation — not used (Longhorn snapshots via FsBackup), but chart requires at least one entry.
     volumeSnapshotLocation:
       - name: default

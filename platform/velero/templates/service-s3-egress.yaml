@@ -2,11 +2,11 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: rustfs-egress
+  name: s3-egress
   namespace: velero
   annotations:
-    tailscale.com/tailnet-fqdn: {{ .Values.rustfs.tailnetFqdn | default "rustfs.lonk-mirfak.ts.net" }}
-    {{- with .Values.rustfs.hostname }}
+    tailscale.com/tailnet-fqdn: {{ required "s3.tailnetFqdn is required (set via CI vars S3_ENDPOINT)" .Values.s3.tailnetFqdn }}
+    {{- with .Values.s3.hostname }}
     tailscale.com/hostname: {{ . }}
     {{- end }}
 spec:

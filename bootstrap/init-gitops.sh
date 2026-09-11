@@ -28,6 +28,11 @@ Examples:
   ./bootstrap/init-gitops.sh dev --force --check   # check wins, still read-only
   ./bootstrap/init-gitops.sh prod --force
   ./bootstrap/init-gitops.sh dev --check
+
+Environment:
+  S3_ENDPOINT  S3 endpoint full URL (https://<fqdn>) — REQUIRED when installing
+               the App-of-Apps. CI provides it via GitHub Vars S3_ENDPOINT
+               (deploy.yaml); locally export it before running.
 EOF
 }
 
@@ -148,6 +153,41 @@ aws_secret_access_key=${VELERO_SECRET}"
     --from-literal=cloud="$CLOUD_CONTENT" \
     --dry-run=client -o yaml | kubectl apply -f - >/dev/null
   echo -e "${GREEN}  [Velero] Secret velero/cloud-credentials ready.${NC}"
+}
+
+# --- S3 endpoint (single source: $S3_ENDPOINT, i.e. CI GitHub Vars S3_ENDPOINT) ---
+# Derives the bare tailnet FQDN (Velero s3.tailnetFqdn) and sets S3_FQDN for the
+# `helm upgrade --install gitops --set veleroS3.tailnetFqdn` below. Every URL-bearing
+# Velero manifest (Service, ConfigMap, bucket-init Job, CiliumNetworkPolicy,
+# wrapper-owned BackupStorageLocation) derives from that one value.
+# Fails loudly when unset — charts carry no URL literals.
+resolveS3Endpoint() {
+  echo -e "\n${BLUE}🪣 Resolving S3 endpoint (single source: S3_ENDPOINT)...${NC}"
+
+  if [ -z "${S3_ENDPOINT:-}" ]; then
+    echo -e "${RED}  [S3] ERROR: S3_ENDPOINT is not set.${NC}" >&2
+    echo -e "${YELLOW}  [S3]    Set GitHub Vars S3_ENDPOINT (full URL, e.g. https://rustfs.<tailnet>.ts.net).${NC}" >&2
+    echo -e "${YELLOW}  [S3]    CI passes it via deploy.yaml; locally run:${NC}" >&2
+    echo -e "${YELLOW}  [S3]    S3_ENDPOINT=https://rustfs.<tailnet>.ts.net ./bootstrap/init-gitops.sh $ENV${NC}" >&2
+    exit 1
+  fi
+
+  case "$S3_ENDPOINT" in
+    https://*) ;;
+    *)
+      echo -e "${RED}  [S3] ERROR: S3_ENDPOINT must start with https:// (got '${S3_ENDPOINT}').${NC}" >&2
+      exit 1
+      ;;
+  esac
+
+  S3_FQDN="${S3_ENDPOINT#https://}"
+  S3_FQDN="${S3_FQDN%%/*}"
+  if [ -z "$S3_FQDN" ]; then
+    echo -e "${RED}  [S3] ERROR: could not derive FQDN from S3_ENDPOINT='${S3_ENDPOINT}'.${NC}" >&2
+    exit 1
+  fi
+  S3_URL="https://$S3_FQDN"
+  echo -e "${GREEN}  [S3] Endpoint: $S3_URL (FQDN: $S3_FQDN)${NC}"
 }
 
 runStatusChecks() {
@@ -322,12 +362,15 @@ fi
 
 if [ "$APP_EXISTS" = "true" ]; then
   echo -e "\n${YELLOW}App-of-Apps already exists — skipping helm install${NC}"
+  echo -e "${YELLOW}  Velero S3 params keep their installed values; URL change? Re-run with --force.${NC}"
 else
   echo -e "\n${BLUE}📂 Installing GitOps App-of-Apps...${NC}"
+  resolveS3Endpoint
   helm upgrade --install gitops gitops \
     --namespace argocd \
     --timeout 30m \
     -f "$VALUES_FILE" \
+    --set veleroS3.tailnetFqdn="$S3_FQDN" \
     || echo -e "${YELLOW}⚠️  GitOps helm install failed (likely a server-side apply conflict).${NC}
 ${YELLOW}   You can retry with: kubectl delete applicationset -n argocd platform-local-apps${NC}"
 fi

@@ -3,5 +3,13 @@ repoURL: https://github.com/Seom88/secured-gitops-tailscale-homelab.git
 platformApps:
   enabled: true
 
+# Velero S3 endpoint — single source: CI (GitHub Vars S3_ENDPOINT).
+# init-gitops.sh derives the bare FQDN from $S3_ENDPOINT and passes it as
+# --set veleroS3.tailnetFqdn on `helm upgrade --install gitops`.
+# Forwarded to the Velero Application as a Helm parameter (templates/platform/00-velero.yaml).
+# REQUIRED — intentionally empty: rendering fails loudly via `required` when unset.
+veleroS3:
+  tailnetFqdn: ""
+
 developmentApp:
   enabled: false

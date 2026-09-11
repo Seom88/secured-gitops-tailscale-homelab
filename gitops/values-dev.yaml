@@ -3,5 +3,9 @@ repoURL: https://github.com/Seom88/secured-gitops-tailscale-homelab.git
 platformApps:
   enabled: true
 
+# Same single source as prod (CI vars S3_ENDPOINT via --set) — see values.yaml.
+veleroS3:
+  tailnetFqdn: ""
+
 developmentApp:
   enabled: true

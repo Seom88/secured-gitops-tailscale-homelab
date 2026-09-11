@@ -1,0 +1,30 @@
+{{- if .Values.velero.enabled }}
+{{- $fqdn := required "s3.tailnetFqdn is required (set via CI vars S3_ENDPOINT)" .Values.s3.tailnetFqdn }}
+# BackupStorageLocation owned by this wrapper chart (NOT the upstream subchart):
+# upstream reads s3Url literally from values (no templating), and neither
+# `helm --set` nor ArgoCD parameters can patch one array entry by index
+# (lists are replaced wholesale — a [0] patch drops provider/bucket and fails
+# upstream schema validation). Upstream BSL is disabled via
+# `velero.configuration.backupStorageLocation: []` in values.yaml.
+# URL single source: CI vars S3_ENDPOINT -> s3.tailnetFqdn (required above).
+# Bucket/prefix/region are chart-owned in s3.* (S3_BUCKET in CI is the
+# Terraform-state bucket — never the Velero bucket).
+apiVersion: velero.io/v1
+kind: BackupStorageLocation
+metadata:
+  name: default
+  namespace: velero
+  labels:
+    app.kubernetes.io/part-of: velero
+spec:
+  provider: aws
+  accessMode: ReadWrite
+  objectStorage:
+    bucket: {{ .Values.s3.bucket | quote }}
+    prefix: {{ .Values.s3.prefix | quote }}
+  config:
+    region: {{ .Values.s3.region | quote }}
+    s3ForcePathStyle: "true"
+    s3Url: {{ printf "https://%s" $fqdn | quote }}
+    insecureSkipTLSVerify: "true"
+{{- end }}

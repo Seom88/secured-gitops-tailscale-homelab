@@ -26,8 +26,8 @@ spec:
             dns:
               - matchPattern: "*"
 ---
-# 2) Egress — RustFS S3 (velero-homelab bucket) + Tailscale proxy + kube-apiserver + Hubble
-# RustFS lives behind Tailscale gateway DNS (rustfs.lonk-mirfak.ts.net) on 443
+# 2) Egress — S3 (velero-homelab bucket) + Tailscale proxy + kube-apiserver + Hubble
+# S3 backend lives behind Tailscale gateway DNS (s3.tailnetFqdn from CI) on 443
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -36,9 +36,9 @@ metadata:
 spec:
   endpointSelector: {}
   egress:
-    # S3 via Tailscale (RustFS at {{ .Values.rustfs.tailnetFqdn | default "rustfs.lonk-mirfak.ts.net" }}:443) — use FQDN + world with 443
+    # S3 via Tailscale (S3 at {{ required "s3.tailnetFqdn is required (set via CI vars S3_ENDPOINT)" .Values.s3.tailnetFqdn }}:443) — use FQDN + world with 443
     - toFQDNs:
-        - matchName: {{ .Values.rustfs.tailnetFqdn | default "rustfs.lonk-mirfak.ts.net" }}
+        - matchName: {{ required "s3.tailnetFqdn is required (set via CI vars S3_ENDPOINT)" .Values.s3.tailnetFqdn }}
         - matchPattern: "*.lonk-mirfak.ts.net"
       toPorts:
         - ports:
