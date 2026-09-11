@@ -2,13 +2,14 @@
 
 ![Backend](https://img.shields.io/badge/Backend-RustFS_S3_velero--homelab-blue?style=flat-square)
 ![Namespace](https://img.shields.io/badge/Namespace-velero-green?style=flat-square)
-![Chart](https://img.shields.io/badge/Chart-vmware--tanzu%2Fvelero_9.0.2-orange?style=flat-square)
+![Chart](https://img.shields.io/badge/Chart-vmware--tanzu%2Fvelero_12.1.0-orange?style=flat-square)
+![App](https://img.shields.io/badge/App-1.18.1-yellow?style=flat-square)
 
-Velero backs up the entire cluster to an external RustFS S3 bucket (`velero-homelab` at `https://rustfs.lonk-mirfak.ts.net`) with GitOps automation and no manual bucket setup.
+Velero backs up cluster manifests and workload data (everything except Vault — see Vault policy below) to an external RustFS S3 bucket (`velero-homelab` at `https://rustfs.lonk-mirfak.ts.net`) with GitOps automation and no manual bucket setup.
 
 ## Why this design
 
-Velero backs up Vault (Raft PVCs, TLS, unseal keys). If Velero's own S3 credentials came from Vault via ExternalSecrets, a bare-metal restore would deadlock: Vault down → no Secret → Velero can't start. Credentials are injected as a plain Kubernetes Secret before ArgoCD syncs the chart (`credentials.existingSecret: cloud-credentials`), following ADR-004 option A. Velero never reads from Vault.
+Velero never touches Vault (Raft PVCs, TLS, unseal material are excluded — restoring them corrupts the cluster; DR is re-bootstrap + rotation). If Velero's own S3 credentials came from Vault via ExternalSecrets, a bare-metal restore would deadlock: Vault down → no Secret → Velero can't start. Credentials are injected as a plain Kubernetes Secret before ArgoCD syncs the chart (`credentials.existingSecret: cloud-credentials`), following ADR-004 option A. Velero never reads from Vault.
 
 Credentials file format (key `cloud`):
 
@@ -24,22 +25,32 @@ aws_secret_access_key=...
 flowchart LR
     ENV["Env vars<br/>VELERO_AWS_*"] --> BOOT["bootstrap/init-gitops.sh<br/>Secret cloud-credentials"]
     BOOT --> JOB["Job velero-bucket-init<br/>hook Sync wave 0"]
-    JOB --> CHART["Helm chart velero<br/>vmware-tanzu 9.0.2"]
-    CHART --> BSL["BackupStorageLocation default<br/>bucket velero-homelab"]
+    JOB --> CHART["Helm chart velero<br/>vmware-tanzu 12.1.0 / app 1.18.1"]
+    CHART --> BSL["BackupStorageLocation default<br/>bucket velero-homelab (RustFS)"]
     BSL --> RUSTFS[("RustFS S3")]
+    CHART -.->|excluded| VAULT["Vault ns<br/>re-bootstrap, never restore"]
 ```
 
 Wave `-1` `tailscale-operator` → wave `0` `coredns-patch` (ts.net MagicDNS) + `velero` + `longhorn` → wave `1` `vault`. Guarantees DNS and storage are ready before Vault creates PVCs.
 
 ## Schedules
 
-| Schedule | Cron | Scope | TTL |
-|----------|------|-------|-----|
-| `daily-full` | `0 2 * * *` | all namespaces, all resources | 30d |
-| `vault-hourly` | `0 * * * *` | `vault` namespace (`secrets, configmaps, pvc, cronjobs`) | 7d |
+| Schedule | Cron | Scope | TTL | Status |
+|----------|------|-------|-----|--------|
+| `daily-full` | `0 2 * * *` | all namespaces except `vault`, control-plane (`velero`, `kube-*`, `longhorn-system`, `argocd`) | 30d | active |
+| `vault-hourly` | `0 * * * *` | `vault` namespace (retired) | 7d | `disabled: true` — see Vault policy |
 
-- `defaultVolumesToFsBackup: true` + `nodeAgent.enabled: true` → Longhorn PVCs backed up via filesystem copy (no CSI snapshots).
-- Storage: `s3ForcePathStyle: true`, `s3Url: https://rustfs.lonk-mirfak.ts.net`, `region: us-east-1`, `prefix: velero/`.
+- `defaultVolumesToFsBackup: true` + `deployNodeAgent: true` + `nodeAgent.enabled: true` → Longhorn PVCs backed up via filesystem copy (no CSI snapshots). The node-agent gate and the FsBackup default must stay on together.
+- Resource guard: `resources.limits.memory: 512Mi` (chart default `128Mi` OOMKills during FsBackup on this homelab) — do not lower it.
+- Storage: `s3ForcePathStyle: true`, `s3Url: https://rustfs.lonk-mirfak.ts.net`, `region: us-east-1`, `prefix: velero/`, single BSL `default`.
+
+## Vault policy — excluded, re-bootstrap + rotation
+
+Nothing of Vault is stored in Velero: `daily-full` carries `vault` in `excludedNamespaces`, and `vault-hourly` is disabled (kept in `values.yaml` as documentation of the retired schedule).
+
+Restoring Raft state from Velero corrupts the cluster, and Vault holds no irreplaceable PKI/transit material, so DR is `platform/vault/scripts/bootstrap-vault.sh` (init when `initialized==false`, unseal, kv-v2 + k8s auth) followed by secret rotation — never a Velero restore.
+
+Hourly crash-consistency for Vault volumes is a Longhorn local snapshot instead: `platform/longhorn/templates/recurringjobs.yaml` (`RecurringJob` `vault-hourly-snapshot`, `task: snapshot`, `cron: 0 * * * *`, `retain: 24`). `snapshot` is local copy-on-write; `backup` would need an S3/NFS target that is intentionally unconfigured. Volumes opt in via the `vault-hourly` group label (`recurring-job-group.longhorn.io/vault-hourly=enabled`). Daily snapshot templates for `seaweedfs`/`monitoring` are commented out in the same file.
 
 ## Quick start
 

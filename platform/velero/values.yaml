@@ -98,6 +98,12 @@ velero:
           - kube-public
           - kube-node-lease
           - longhorn-system
+          # Vault is NEVER backed up by Velero (policy): Raft restores from
+          # Velero corrupt the cluster. DR is re-bootstrap via
+          # platform/vault/scripts/bootstrap-vault.sh (init if
+          # initialized==false, unseal, kv-v2 + k8s auth) + secret rotation.
+          # Hourly crash-consistency comes from Longhorn local snapshots.
+          - vault
           # GitOps control-plane (other repo: infra-talos-homelab,
           # argocd_namespace=argocd, cilium_namespace=kube-system).
           # ArgoCD is source-of-truth in Git — reinstall, never restore.
@@ -136,8 +142,14 @@ velero:
         volumeSnapshotLocations:
           - default
         defaultVolumesToFsBackup: true
+    # vault-hourly — DISABLED by policy: nothing of Vault is stored in Velero.
+    # Raft snapshot restores via Velero corrupt the cluster; DR is re-bootstrap
+    # (platform/vault/scripts/bootstrap-vault.sh) + rotation, not restore.
+    # Hourly protection for Vault is a Longhorn local snapshot RecurringJob
+    # (platform/longhorn/templates/recurringjobs.yaml). Kept here disabled as
+    # documentation of the retired schedule — do not re-enable.
     vault-hourly:
-      disabled: false
+      disabled: true
       schedule: "0 * * * *"
       useOwnerReferencesInBackup: false
       annotations:
@@ -147,11 +159,11 @@ velero:
         ttl: 168h
         includedNamespaces:
           - vault
-        # Critical Vault resources — hourly protection for unseal keys & TLS.
+        # RETIRED — kept for reference only (schedule disabled above).
         # NOTE: ClusterSecretStore is cluster-scoped, covered by daily-full, not this namespaced schedule.
-        # NOTE: statefulsets required — Vault runs as StatefulSet, not Deployment.
-        # NOTE: defaultVolumesToFsBackup=false is intentional — hourly covers
-        # manifests only; Raft data (PVC) is covered by daily-full with FsBackup=true.
+        # NOTE: defaultVolumesToFsBackup=false was intentional when active —
+        # hourly covered manifests only; Raft data (PVC) was covered by
+        # daily-full with FsBackup=true. Both are retired: Vault is excluded.
         includedResources:
           - secrets
           - configmaps

@@ -1,0 +1,134 @@
+# Longhorn RecurringJobs — local hourly snapshots (no S3 backup target).
+#
+# Group model: Longhorn matches RecurringJobs to volumes by GROUP via the
+# Volume-CR label `recurring-job-group.longhorn.io/<group>=enabled`
+# (group name must match `.spec.groups` of a RecurringJob).
+#
+#   - vault-hourly -> opt-IN job below (hourly snapshot, retain 24 = ~1 day of
+#                     hourly recovery points). Vault is EXCLUDED from Velero
+#                     (Raft restores corrupt the cluster); crash-consistency comes
+#                     from these lightweight local snapshots. DR itself is
+#                     re-bootstrap via platform/vault/scripts/bootstrap-vault.sh +
+#                     secret rotation, not restore. Label Vault volumes explicitly:
+#                       kubectl -n longhorn-system label volume <vault-volume-name> \
+#                         recurring-job-group.longhorn.io/vault-hourly=enabled
+#   - default      -> AUTO-applies ONLY to volumes that carry NO
+#                     `recurring-job-group.longhorn.io/*` label at all. A volume
+#                     with at least one such label leaves the `default` group.
+#                     Job below: every 2h (`0 */2 * * *`), retain 12 = 24h coverage.
+#   - no-snapshot  -> MARKER group, no RecurringJob is bound to it. Labeling a
+#                     volume with it opts the volume OUT of `default` (the volume
+#                     now has a group label, so default no longer auto-applies)
+#                     while scheduling nothing. SeaweedFS + monitoring volumes
+#                     MUST carry this label: SeaweedFS manages its own
+#                     replication/erasure coding, and Prometheus/Loki data is
+#                     reproducible or S3-backed — Longhorn snapshots on them only
+#                     waste space and I/O:
+#                       kubectl -n longhorn-system label volume <seaweed|mon-volume> \
+#                         recurring-job-group.longhorn.io/no-snapshot=enabled
+#
+# IMPORTANT: the label must live on the Longhorn Volume CR in `longhorn-system`,
+# NOT on the PVC — the CSI provisioner does not copy PVC labels to Volume CRs,
+# so labeling PVCs/templates has no effect on recurring jobs. SeaweedFS
+# (platform/seaweedfs, incl. templates/master-pvc.yaml) and monitoring
+# (platform/monitoring: Loki persistence, Prometheus volumeClaimTemplate) PVCs
+# are provisioned by subcharts, hence the opt-out is applied post-provisioning
+# with the kubectl commands above, not via PVC template labels.
+#
+# Snapshot vs backup: `snapshot` is local + instant (no backup target needed);
+# `backup` requires a configured S3/NFS backup target (currently unconfigured
+# in the UI — intentionally out of scope).
+apiVersion: longhorn.io/v1beta2
+kind: RecurringJob
+metadata:
+  name: vault-hourly-snapshot
+  namespace: longhorn-system
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: longhorn
+spec:
+  name: vault-hourly-snapshot
+  # Hourly, at minute 0. Matches the retired Velero vault-hourly cadence.
+  cron: "0 * * * *"
+  task: snapshot
+  groups:
+    - vault-hourly
+  # 24 hourly snapshots ≈ 1 day of rollback window. Snapshots are
+  # copy-on-write and cheap; old ones prune automatically.
+  retain: 24
+  concurrency: 1
+  labels:
+    snapshot: hourly
+    volume: vault
+---
+# Default snapshots every 2h, retain 12 = 24h coverage. Applies automatically
+# ONLY to volumes with no `recurring-job-group.longhorn.io/*` label. Vault uses
+# its own hourly job above (label: vault-hourly); SeaweedFS + monitoring are
+# excluded via the marker label `recurring-job-group.longhorn.io/no-snapshot`
+# (no job bound to that group, so nothing runs on them).
+apiVersion: longhorn.io/v1beta2
+kind: RecurringJob
+metadata:
+  name: default-2h-snapshot
+  namespace: longhorn-system
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: longhorn
+spec:
+  name: default-2h-snapshot
+  cron: "0 */2 * * *"
+  task: snapshot
+  groups:
+    - default
+  retain: 12
+  concurrency: 2
+  labels:
+    snapshot: 2h
+    volume: default
+# ---------------------------------------------------------------------------
+# Optional future jobs (uncomment when needed). Same opt-in pattern: label the
+# target volumes with `recurring-job-group.longhorn.io/<group>: enabled`.
+# NOTE: seaweedfs/monitoring stay intentionally EXCLUDED via the `no-snapshot`
+# marker label (see header) — only uncomment these if that policy is reversed
+# and the volumes are relabeled to the corresponding group.
+# ---------------------------------------------------------------------------
+# ---
+# apiVersion: longhorn.io/v1beta2
+# kind: RecurringJob
+# metadata:
+#   name: seaweedfs-daily-snapshot
+#   namespace: longhorn-system
+#   labels:
+#     app.kubernetes.io/managed-by: Helm
+#     app.kubernetes.io/part-of: longhorn
+# spec:
+#   name: seaweedfs-daily-snapshot
+#   cron: "0 3 * * *"
+#   task: snapshot
+#   groups:
+#     - seaweedfs-daily
+#   retain: 7
+#   concurrency: 1
+#   labels:
+#     snapshot: daily
+#     volume: seaweedfs
+# ---
+# apiVersion: longhorn.io/v1beta2
+# kind: RecurringJob
+# metadata:
+#   name: monitoring-daily-snapshot
+#   namespace: longhorn-system
+#   labels:
+#     app.kubernetes.io/managed-by: Helm
+#     app.kubernetes.io/part-of: longhorn
+# spec:
+#   name: monitoring-daily-snapshot
+#   cron: "30 3 * * *"
+#   task: snapshot
+#   groups:
+#     - monitoring-daily
+#   retain: 7
+#   concurrency: 1
+#   labels:
+#     snapshot: daily
+#     volume: monitoring

@@ -6,7 +6,7 @@
 
 ## 1. Why a bootstrap Secret
 
-Velero backs up Vault. If Velero's S3 credentials came from Vault via ExternalSecrets, a bare-metal restore deadlocks. The fix (ADR-004 option A) is a plain Secret created before ArgoCD syncs, referenced via `credentials.existingSecret: cloud-credentials`.
+Velero backs up cluster manifests and workload data — but explicitly NOT Vault (see 8). If Velero's S3 credentials came from Vault via ExternalSecrets, a bare-metal restore deadlocks. The fix (ADR-004 option A) is a plain Secret created before ArgoCD syncs, referenced via `credentials.existingSecret: cloud-credentials`.
 
 ## 2. Flow
 
@@ -63,7 +63,7 @@ velero backup create manual-$(date +%Y%m%d%H%M) --wait && velero backup get
 kubectl -n velero get schedules -o yaml
 ```
 
-Schedules: `daily-full` (02:00, all namespaces, 30d TTL) and `vault-hourly` (hourly, vault only, 7d TTL).
+Schedules: `daily-full` (02:00, all namespaces except Vault/control-plane, 30d TTL). The former `vault-hourly` Velero schedule is retired (disabled) — hourly Vault protection is now a Longhorn local snapshot RecurringJob (see §8).
 
 ## 6. Troubleshooting
 
@@ -73,11 +73,32 @@ Schedules: `daily-full` (02:00, all namespaces, 30d TTL) and `vault-hourly` (hou
 | `NoSuchBucket` | Check `kubectl -n velero logs job/velero-bucket-init` |
 | `BSL not Ready` | Verify `s3Url`/`s3ForcePathStyle` and ini format |
 | `nslookup` fails | Check `kubectl -n kube-system get cm coredns | grep ts.net` |
-
-Vault DR: Velero complements but does not replace `vault operator raft snapshot`. See `docs/runbook-vault-restore.md`.
+| Velero OOMKilled | `resources.limits.memory` is pinned at `512Mi` (chart default `128Mi` OOMs on FsBackup); `deployNodeAgent: true` is required for `defaultVolumesToFsBackup: true` |
 
 ## 7. References
 
 - ADR-004 option A, ADR-011 (DNS/NetworkPolicy)
-- Chart: `platform/velero/Chart.yaml` (vmware-tanzu/velero `12.1.0`, app `1.18.1`) + `platform/velero/values.yaml` (schedules `daily-full`/`vault-hourly`, RustFS `s3Url`/`s3ForcePathStyle`)
+- Chart: `platform/velero/Chart.yaml` (vmware-tanzu/velero `12.1.0`, app `1.18.1`, `deployNodeAgent: true`, memory limit `512Mi`) + `platform/velero/values.yaml` (schedule `daily-full` with `vault` excluded, RustFS `s3Url`/`s3ForcePathStyle`)
+- BSL: single default location on RustFS (`s3://velero-homelab/velero/`, `s3ForcePathStyle: true`, `insecureSkipTLSVerify: true` for cluster-internal TLS)
 - App: `gitops/templates/apps/05-velero.yaml` (sync-wave `0`, `wave-policy: healthy`, `CreateNamespace=true`)
+
+## 8. Vault policy — excluded from Velero, re-bootstrap + rotation
+
+Nothing of Vault is stored in Velero. `daily-full` lists `vault` in `excludedNamespaces`, and the old `vault-hourly` schedule is `disabled: true` (retained in `values.yaml` as documentation only).
+
+Rationale: restoring Vault Raft state from a Velero backup corrupts the cluster (stale quorum/peers, sealed-state mismatch). Vault holds no irreplaceable PKI/transit material — everything it stores is regenerable — so DR is re-bootstrap, not restore:
+
+```bash
+./platform/vault/scripts/bootstrap-vault.sh   # init if initialized==false, unseal, kv-v2 + k8s auth
+# then rotate secrets (ESO ClusterSecretStores re-sync from Vault)
+```
+
+Hourly crash-consistency for Vault volumes comes from Longhorn, not Velero: `platform/longhorn/templates/recurringjobs.yaml` defines a `RecurringJob` (`longhorn.io/v1beta2`, Longhorn chart `1.12.1` has no native `recurringJobs` values support, hence the raw CR):
+
+| RecurringJob | Cron | Task | Retain | Group |
+|--------------|------|------|--------|-------|
+| `vault-hourly-snapshot` | `0 * * * *` | `snapshot` (local, NOT `backup`) | 24 (~1 day) | `vault-hourly` |
+
+- `snapshot` vs `backup`: snapshots are local copy-on-write (instant, no target needed); `backup` requires an S3/NFS backup target, which is intentionally unconfigured in the Longhorn UI for now.
+- Opt-in: label Vault volumes with `recurring-job-group.longhorn.io/vault-hourly=enabled` (Longhorn matches jobs to volumes by group). Commented-out daily snapshot templates for `seaweedfs`/`monitoring` are included in the same file for future use.
+- Vault DR runbook: see `docs/runbook-vault-restore.md` (Raft snapshots are operational only — never the DR path).
