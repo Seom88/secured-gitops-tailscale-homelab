@@ -363,8 +363,20 @@ if [ "$FORCE" != "true" ]; then
 fi
 
 if [ "$APP_EXISTS" = "true" ]; then
-  echo -e "\n${YELLOW}App-of-Apps already exists — skipping helm install${NC}"
-  echo -e "${YELLOW}  Velero S3 params keep their installed values; URL change? Re-run with --force.${NC}"
+  if [ "$CHECK" = "true" ]; then
+    echo -e "\n${YELLOW}App-of-Apps already exists — skipping helm upgrade (--check is read-only)${NC}"
+  else
+    echo -e "\n${BLUE}🔄 App-of-Apps exists — propagating veleroS3.tailnetFqdn...${NC}"
+    resolveS3Endpoint
+    helm upgrade --install gitops gitops \
+      --namespace argocd \
+      --timeout 30m \
+      -f "$VALUES_FILE" \
+      --reuse-values \
+      --set veleroS3.tailnetFqdn="$S3_FQDN" \
+      || echo -e "${YELLOW}⚠️  GitOps helm install failed (likely a server-side apply conflict).${NC}
+${YELLOW}   You can retry with: kubectl delete applicationset -n argocd platform-local-apps${NC}"
+  fi
 else
   echo -e "\n${BLUE}📂 Installing GitOps App-of-Apps...${NC}"
   resolveS3Endpoint
