@@ -4,8 +4,10 @@ ciliumNetworkPolicy:
 # S3 backend — single source for the URL: CI (GitHub Vars S3_ENDPOINT).
 # Flow: vars.S3_ENDPOINT -> deploy.yaml env -> init-gitops.sh --set veleroS3.tailnetFqdn
 # -> ArgoCD Application helm.parameter s3.tailnetFqdn.
-# tailnetFqdn is REQUIRED (empty on purpose — Service, ConfigMap, bucket-init Job,
+# tailnetFqdn is REQUIRED (empty on purpose — Service, bucket-init Job,
 # CiliumNetworkPolicy and BackupStorageLocation fail loudly via `required` when unset).
+# The informational ConfigMap velero/s3-endpoint is CI-owned
+# (.github/workflows/deploy.yaml) and is NOT templated here.
 # Do NOT put a URL literal here: a stale literal would silently win over CI.
 # bucket/prefix/region are chart-owned (identical in every env except prefix):
 # S3_BUCKET in CI is the Terraform-state bucket, NOT this one — never wire it here.

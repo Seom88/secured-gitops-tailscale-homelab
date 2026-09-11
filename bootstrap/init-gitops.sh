@@ -158,8 +158,10 @@ aws_secret_access_key=${VELERO_SECRET}"
 # --- S3 endpoint (single source: $S3_ENDPOINT, i.e. CI GitHub Vars S3_ENDPOINT) ---
 # Derives the bare tailnet FQDN (Velero s3.tailnetFqdn) and sets S3_FQDN for the
 # `helm upgrade --install gitops --set veleroS3.tailnetFqdn` below. Every URL-bearing
-# Velero manifest (Service, ConfigMap, bucket-init Job, CiliumNetworkPolicy,
+# Velero manifest (Service, bucket-init Job, CiliumNetworkPolicy,
 # wrapper-owned BackupStorageLocation) derives from that one value.
+# (The informational ConfigMap velero/s3-endpoint is CI-owned,
+# created by .github/workflows/deploy.yaml — not templated.)
 # Fails loudly when unset — charts carry no URL literals.
 resolveS3Endpoint() {
   echo -e "\n${BLUE}🪣 Resolving S3 endpoint (single source: S3_ENDPOINT)...${NC}"

@@ -53,6 +53,10 @@ kubectl -n velero get secret cloud-credentials -o jsonpath='{.data.cloud}' | bas
 
 In CI, `.github/workflows/deploy.yaml` already injects `AWS_*`; optional `VELERO_AWS_*` repo secrets can be added for separation.
 
+## 4b. Endpoint ConfigMap (CI-owned)
+
+The informational ConfigMap `velero/s3-endpoint` (`tailnet-fqdn`, `s3-url`, `bucket`, `region`) is created by the `Ensure Velero S3 ConfigMap` step in `.github/workflows/deploy.yaml` from GitHub Vars `S3_ENDPOINT`. It is not templated by the chart — the chart only carries the URL-bearing manifests (Service, bucket-init Job, network policies, BackupStorageLocation) derived from `s3.tailnetFqdn`.
+
 ## 5. Verification
 
 ```bash

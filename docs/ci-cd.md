@@ -74,7 +74,9 @@ env:
    KUBECONFIG=/tmp/kubeconfig.yaml kubectl get nodes --request-timeout=10s
    ```
    Fails fast if `infra/environments/proxmox/${ENV}` is missing or resulting kubeconfig is empty.
-9. `bootstrap (delegates to init-gitops.sh — single source of truth)` (`KUBECONFIG=/tmp/kubeconfig.yaml`):
+ 9. `ensure Tailscale operator Secret` — `kubectl create secret generic operator-oauth -n tailscale` from `K8S_TS_OAUTH_*`, then rollout restart of the operator.
+ 10. `ensure Velero S3 ConfigMap` — CI-owned informational mirror `velero/s3-endpoint` (`tailnet-fqdn`, `s3-url`, `bucket`, `region`) derived from `S3_ENDPOINT` (GitHub Vars). The chart does not template it.
+ 11. `bootstrap (delegates to init-gitops.sh — single source of truth)` (`KUBECONFIG=/tmp/kubeconfig.yaml`):
    ```bash
    ENV="${{ inputs.environment || 'prod' }}"
    FORCE="--force" # only if inputs.force_reapply == true

@@ -180,6 +180,38 @@ jobs:
             kubectl rollout restart deployment/operator -n tailscale 2>/dev/null || true
           echo "Tailscale operator Secret ready."
 
+      - name: Ensure Velero S3 ConfigMap
+        env:
+          KUBECONFIG: /tmp/kubeconfig.yaml
+        run: |
+          set -e
+          # CI-owned ConfigMap velero/s3-endpoint (informational mirror of the
+          # S3 endpoint; the chart does NOT template it).
+          # Same derivation as bootstrap/init-gitops.sh resolveS3Endpoint():
+          # $S3_ENDPOINT (GitHub Vars, full https:// URL) -> bare FQDN.
+          # Keys tailnet-fqdn, s3-url, bucket, region; bucket/region mirror the
+          # chart-owned s3.* constants in platform/velero/values.yaml.
+          # S3_ENDPOINT was already validated (non-empty, https:// prefix) by
+          # the "Validate S3 configuration" step.
+          # S3_BUCKET is the Terraform-state bucket, NOT Velero's — never wired here.
+          S3_FQDN="${S3_ENDPOINT#https://}"
+          S3_FQDN="${S3_FQDN%%/*}"
+          if [ -z "$S3_FQDN" ]; then
+            echo "::error::could not derive FQDN from S3_ENDPOINT"
+            exit 1
+          fi
+          S3_URL="https://$S3_FQDN"
+          echo "Ensuring ConfigMap velero/s3-endpoint ($S3_URL)..."
+          kubectl create namespace velero --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create configmap s3-endpoint \
+            -n velero \
+            --from-literal=tailnet-fqdn="$S3_FQDN" \
+            --from-literal=s3-url="$S3_URL" \
+            --from-literal=bucket="velero-homelab" \
+            --from-literal=region="us-east-1" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          echo "Velero S3 ConfigMap ready."
+
       - name: Bootstrap (delegates to init-gitops.sh — single source of truth)
         env:
           KUBECONFIG: /tmp/kubeconfig.yaml

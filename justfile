@@ -188,6 +188,17 @@ secrets-status:
 vault-init:
     ./platform/vault/scripts/bootstrap-vault.sh
 
+# ── Velero ────────────────────────────────────
+
+# Manual backup from daily-full schedule template (uses values.yaml template, timestamped like scheduled backups)
+velero-backup-manual:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    name="manual-velero-daily-full-$(date +%Y%m%d%H%M%S)"
+    echo "==> Creating backup $name from schedule velero-daily-full"
+    velero backup create "$name" --from-schedule velero-daily-full --wait
+    echo "==> $name created — follow with: velero backup describe $name --details"
+
 # ── Port Forwarding ───────────────────────────
 
 # Port-forward ArgoCD UI → localhost:8080
