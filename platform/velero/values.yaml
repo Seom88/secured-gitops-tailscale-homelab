@@ -68,6 +68,8 @@ velero:
   # SnapshotsEnabled — enables VolumeSnapshot handling (kept true for future CSI).
   snapshotsEnabled: true
 
+  deployNodeAgent: true
+
   # NodeAgent (formerly restic) — required for PVC filesystem backup (Longhorn volumes).
   nodeAgent:
     enabled: true
