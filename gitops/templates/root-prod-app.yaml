@@ -20,6 +20,15 @@ spec:
         {{- if .Values.developmentApp.enabled }}
         - values-dev.yaml
         {{- end }}
+      # Propagate the CI-provided FQDN into Argo's own render of this chart.
+      # repo-server renders path gitops from git (values.yaml is empty by
+      # design) using ONLY this Application's spec — helm release --set values
+      # never reach it. Without this, `required` in 00-velero.yaml fails every
+      # root sync. Value baked at install time by init-gitops.sh
+      # --set veleroS3.tailnetFqdn (single source: CI vars S3_ENDPOINT).
+      parameters:
+        - name: veleroS3.tailnetFqdn
+          value: {{ required "veleroS3.tailnetFqdn is required (CI: --set veleroS3.tailnetFqdn from S3_ENDPOINT)" .Values.veleroS3.tailnetFqdn | quote }}
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
