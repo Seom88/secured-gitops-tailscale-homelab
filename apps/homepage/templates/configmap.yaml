@@ -17,42 +17,43 @@ data:
   custom.js: ""
   bookmarks.yaml: |
     - Developer:
-        - Github:
+        - GitHub:
             - abbr: GH
               href: https://github.com/Seom88
+              icon: github
+              description: My repositories, stars and code
   services.yaml: |
-    - Platform Services:
-        - Argocd:
+    - GitOps & Security:
+        - Argo CD:
+            icon: argocd
             href: https://my-cluster.lonk-mirfak.ts.net/argocd
-            description: Homepage is awesome
-        - Grafana:
-            href: https://my-cluster.lonk-mirfak.ts.net/grafana
-            description: Homepage is awesome
-        - Prometheus:
-            href: https://my-cluster.lonk-mirfak.ts.net/prometheus
-            description: Homepage is awesome
-        - Hubble:
-            href: https://my-cluster.lonk-mirfak.ts.net/hubble
-            description: Homepage is awesome
-        - Longhorn:
-            href: https://my-cluster.lonk-mirfak.ts.net/longhorn
-            description: Homepage is awesome
-        - SeaweedFS Admin:
-            href: https://my-cluster.lonk-mirfak.ts.net/seaweedfs-admin
-            description: Homepage is awesome
-        - My Secrets:
+            description: GitOps deployments, sync status and app history
+        - Vault:
+            icon: vault
             href: https://vault-my-cluster.lonk-mirfak.ts.net
-            description: Homepage is awesome
-
-    # - My Second Group:
-    #     - My Second Service:
-    #         href: https://my-cluster.lonk-mirfak.ts.net/grafana
-    #         description: Homepage is the best
-
-    # - My Third Group:
-    #     - My Third Service:
-    #         href: http://localhost/
-    #         description: Homepage is 😎
+            description: Secrets, tokens and encryption key management
+    - Observability:
+        - Grafana:
+            icon: grafana
+            href: https://my-cluster.lonk-mirfak.ts.net/grafana
+            description: Dashboards for metrics, logs and cluster health
+        - Prometheus:
+            icon: prometheus
+            href: https://my-cluster.lonk-mirfak.ts.net/prometheus
+            description: Metrics collection, queries and alert rules
+        - Hubble:
+            icon: cilium
+            href: https://my-cluster.lonk-mirfak.ts.net/hubble
+            description: Network flows, service map and policy visibility
+    - Storage:
+        - Longhorn:
+            icon: longhorn
+            href: https://my-cluster.lonk-mirfak.ts.net/longhorn
+            description: Block storage, volumes, snapshots and backups
+        - SeaweedFS Admin:
+            icon: seaweedfs
+            href: https://my-cluster.lonk-mirfak.ts.net/seaweedfs-admin
+            description: S3 object storage, buckets, volumes and filer
   widgets.yaml: |
     - kubernetes:
         cluster:
