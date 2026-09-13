@@ -25,7 +25,7 @@ data:
   services.yaml: |
     - GitOps & Security:
         - Argo CD:
-            icon: argocd
+            icon: argo-cd
             href: https://my-cluster.lonk-mirfak.ts.net/argocd
             description: GitOps deployments, sync status and app history
         - Vault:
@@ -51,7 +51,7 @@ data:
             href: https://my-cluster.lonk-mirfak.ts.net/longhorn
             description: Block storage, volumes, snapshots and backups
         - SeaweedFS Admin:
-            icon: seaweedfs
+            icon: sh-seaweedfs
             href: https://my-cluster.lonk-mirfak.ts.net/seaweedfs-admin
             description: S3 object storage, buckets, volumes and filer
   widgets.yaml: |
