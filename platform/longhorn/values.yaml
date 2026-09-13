@@ -5,10 +5,25 @@ longhorn:
   defaultSettings:
     defaultReplicaCount: 2
     replicaSoftAntiAffinity: false
+    # single-zone homelab, pin explicit to avoid silent upstream default change.
+    replicaZoneSoftAntiAffinity: true
+    replicaDiskSoftAntiAffinity: true
     replicaAutoBalance: "least-effort"
-    storageReservedPercentageForDefaultDisk: 5
-    storageMinimalAvailablePercentage: 15
-    storageOverProvisioningPercentage: 200
+    # Best-practices allow-volumes-creation-with-degraded-availability: refuse
+    # to create volumes when full replica availability cannot be satisfied.
+    allowVolumeCreationWithDegradedAvailability: false
+    # Best-practices io-performance/data-locality: prefer a local replica on the
+    # workload node; best-effort keeps scheduling flexible in a small homelab.
+    defaultDataLocality: best-effort
+    # Best-practices (Longhorn 1.12.1, dedicated disk): reserve the upstream
+    # default 30% on the default disk; only lower with measured headroom.
+    storageReservedPercentageForDefaultDisk: 30
+    # Best-practices (Longhorn 1.12.1): 25% minimal-available is the root-disk
+    # default; /var/mnt/data is a dedicated disk so 10% applies.
+    storageMinimalAvailablePercentage: 10
+    # Best-practices (Longhorn 1.12.1): 100 is the safe upstream default;
+    # 200 is only justified when volumes average ~50% fill (not observed here).
+    storageOverProvisioningPercentage: 100
     nodeDownPodDeletionPolicy: delete-both-statefulset-and-deployment-pod
     # must match UserVolumeConfig name=data -> /var/mnt/data
     defaultDataPath: /var/mnt/data
@@ -40,6 +55,9 @@ longhorn:
   persistence:
     defaultClass: true
     defaultClassReplicaCount: 2
+    # Best-practices io-performance/data-locality: mirror defaultSettings so the
+    # default StorageClass prefers a local replica (best-effort scheduling).
+    defaultDataLocality: best-effort
     migratable: true
     reclaimPolicy: Delete
   ingress:
