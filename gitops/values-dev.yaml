@@ -3,9 +3,10 @@ repoURL: https://github.com/Seom88/secured-gitops-tailscale-homelab.git
 platformApps:
   enabled: true
 
-# Same single source as prod (CI vars S3_ENDPOINT via --set) — see values.yaml.
+# Same single source as prod: literal in git (see values.yaml).
+# No fallback anywhere — `required` fails loudly on drift.
 veleroS3:
-  tailnetFqdn: ""
+  tailnetFqdn: "rustfs.lonk-mirfak.ts.net"
 
 developmentApp:
   enabled: true

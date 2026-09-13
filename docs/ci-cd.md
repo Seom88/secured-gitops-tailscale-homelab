@@ -74,9 +74,8 @@ env:
    KUBECONFIG=/tmp/kubeconfig.yaml kubectl get nodes --request-timeout=10s
    ```
    Fails fast if `infra/environments/proxmox/${ENV}` is missing or resulting kubeconfig is empty.
- 9. `ensure Tailscale operator Secret` — `kubectl create secret generic operator-oauth -n tailscale` from `K8S_TS_OAUTH_*`, then rollout restart of the operator.
- 10. `ensure Velero S3 ConfigMap` — CI-owned informational mirror `velero/s3-endpoint` (`tailnet-fqdn`, `s3-url`, `bucket`, `region`) derived from `S3_ENDPOINT` (GitHub Vars). The chart does not template it.
- 11. `bootstrap (delegates to init-gitops.sh — single source of truth)` (`KUBECONFIG=/tmp/kubeconfig.yaml`):
+  9. `ensure Tailscale operator Secret` — `kubectl create secret generic operator-oauth -n tailscale` from `K8S_TS_OAUTH_*`, then rollout restart of the operator.
+  10. `bootstrap (delegates to init-gitops.sh — single source of truth)` (`KUBECONFIG=/tmp/kubeconfig.yaml`):
    ```bash
    ENV="${{ inputs.environment || 'prod' }}"
    FORCE="--force" # only if inputs.force_reapply == true
@@ -84,7 +83,7 @@ env:
    ./bootstrap/init-gitops.sh "$ENV" $FORCE
    ```
    `init-gitops.sh` is idempotent: `helm upgrade --install gitops`, Longhorn CSI gate (wave 0), `ensureVeleroCredentials()` (see [Velero](./velero.md)), `bootstrap-vault.sh`, status verifier. See [Getting Started](./getting-started.md).
-10. `cleanup kubeconfig` (`if: always()`) — `shred -u /tmp/kubeconfig.yaml || rm -f /tmp/kubeconfig.yaml /tmp/tfstate.json`
+  11. `cleanup kubeconfig` (`if: always()`) — `shred -u /tmp/kubeconfig.yaml || rm -f /tmp/kubeconfig.yaml /tmp/tfstate.json`
 
 > `deploy.yaml` never runs `terraform apply` — infra is owned by `infra-talos-homelab`. This repo only fetches kubeconfig and delegates to `bootstrap/init-gitops.sh`, which in turn applies the ArgoCD App-of-Apps (`gitops/` chart, wave-ordered).
 

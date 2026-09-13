@@ -53,9 +53,9 @@ kubectl -n velero get secret cloud-credentials -o jsonpath='{.data.cloud}' | bas
 
 In CI, `.github/workflows/deploy.yaml` already injects `AWS_*`; optional `VELERO_AWS_*` repo secrets can be added for separation.
 
-## 4b. Endpoint ConfigMap (CI-owned)
+## 4b. Endpoint source (Git, no CI vars)
 
-The informational ConfigMap `velero/s3-endpoint` (`tailnet-fqdn`, `s3-url`, `bucket`, `region`) is created by the `Ensure Velero S3 ConfigMap` step in `.github/workflows/deploy.yaml` from GitHub Vars `S3_ENDPOINT`. It is not templated by the chart — the chart only carries the URL-bearing manifests (Service, bucket-init Job, network policies, BackupStorageLocation) derived from `s3.tailnetFqdn`.
+The S3 endpoint FQDN is a literal in git — `gitops/values.yaml` (`veleroS3.tailnetFqdn`, same in `gitops/values-dev.yaml`). It flows `gitops/values.yaml` → `gitops/templates/platform/00-velero.yaml` (ArgoCD `helm.parameters`) → `s3.tailnetFqdn`, from which the chart derives every URL-bearing manifest (Service, bucket-init Job, network policies, BackupStorageLocation). The platform chart carries no fallback literal: `s3.tailnetFqdn` is `""` + `required`, so a missing value fails the sync loudly instead of pointing at a dead RustFS. There is intentionally no `velero/s3-endpoint` ConfigMap and no CI-vars path — if the RustFS host changes, update the git literal (and, independently, the Terraform-state `S3_ENDPOINT` CI var, which points at the same host).
 
 ## 5. Verification
 

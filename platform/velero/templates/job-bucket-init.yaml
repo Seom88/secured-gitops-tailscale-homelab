@@ -1,5 +1,5 @@
 {{- if .Values.velero.enabled }}
-{{- $fqdn := required "s3.tailnetFqdn is required (set via CI vars S3_ENDPOINT)" .Values.s3.tailnetFqdn }}
+{{- $fqdn := required "s3.tailnetFqdn is required (set gitops/values.yaml veleroS3.tailnetFqdn)" .Values.s3.tailnetFqdn }}
 apiVersion: batch/v1
 kind: Job
 metadata:

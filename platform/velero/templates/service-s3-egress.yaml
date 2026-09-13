@@ -5,7 +5,7 @@ metadata:
   name: s3-egress
   namespace: velero
   annotations:
-    tailscale.com/tailnet-fqdn: {{ required "s3.tailnetFqdn is required (set via CI vars S3_ENDPOINT)" .Values.s3.tailnetFqdn }}
+    tailscale.com/tailnet-fqdn: {{ required "s3.tailnetFqdn is required (set gitops/values.yaml veleroS3.tailnetFqdn)" .Values.s3.tailnetFqdn }}
     {{- with .Values.s3.hostname }}
     tailscale.com/hostname: {{ . }}
     {{- end }}

@@ -12,47 +12,23 @@ _default:
 
 # ── Bootstrap ─────────────────────────────────
 
-# S3_ENDPOINT — required by bootstrap/init-gitops.sh (resolveS3Endpoint derives
-# Velero s3.tailnetFqdn from it). Define it in one of:
-#   - .env (see .env.example: S3_ENDPOINT=https://<fqdn>), auto-loaded via `set dotenv-load`
-#     and exported to every recipe (including ./bootstrap/init-gitops.sh below)
-#   - shell env: export S3_ENDPOINT=https://...
-#   - CI vars: GitHub Vars S3_ENDPOINT (deploy.yaml passes it through)
-# Empty or placeholder ("...") values fail loudly before any mutation.
-_require-s3-endpoint:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    # Explicit .env load in case just runs with --no-dotenv or outside dotenv context
-    if [ -f .env ]; then
-      set -a; source .env; set +a
-    fi
-    if [ -z "${S3_ENDPOINT:-}" ] || [ "${S3_ENDPOINT}" = "..." ]; then
-      echo "ERROR: S3_ENDPOINT is not set (or is still a placeholder)." >&2
-      echo "  Set S3_ENDPOINT to the full S3 URL (e.g. https://rustfs.<tailnet>.ts.net) in .env (see .env.example), shell env, or CI vars (GitHub Vars S3_ENDPOINT)." >&2
-      exit 1
-    fi
-    case "${S3_ENDPOINT}" in
-      https://*) ;;
-      *) echo "ERROR: S3_ENDPOINT must start with https:// (got '${S3_ENDPOINT}')." >&2; exit 1 ;;
-    esac
-
 # Full bootstrap (production) — idempotent; rerun for status check, --force to reapply
-init-prod: _require-s3-endpoint
+init-prod:
     just secrets-apply
     ./bootstrap/init-gitops.sh prod
 
 # Force reapply App-of-Apps (production)
-init-prod-force: _require-s3-endpoint
+init-prod-force:
     just secrets-apply
     ./bootstrap/init-gitops.sh prod --force
 
 # Full bootstrap (development mode) — idempotent; rerun for status check, --force to reapply
-init-dev: _require-s3-endpoint
+init-dev:
     just secrets-apply
     ./bootstrap/init-gitops.sh dev
 
 # Force reapply App-of-Apps (development)
-init-dev-force: _require-s3-endpoint
+init-dev-force:
     just secrets-apply
     ./bootstrap/init-gitops.sh dev --force
 
