@@ -60,7 +60,6 @@ Remaining scope for v1.0.0. The Cilium CNI (breaking change at the infrastructur
 **Security hardening (requires Cilium, planned for v1.0.0):**
 - [ ] Complete NetworkPolicies (default deny-all + explicit allows) — requires Cilium
 - [ ] Pod Security Admission in `restricted` mode
-- [ ] Centralized audit logging (Kubernetes API + Vault → Loki)
 - [ ] Container image vulnerability scanning (Trivy) integrated into CI
 - [ ] Git secrets detection (`detect-secrets`) before every commit/push
 - [ ] Security architecture documentation (minimal threat model, attack surface, incident response)
@@ -69,7 +68,7 @@ Remaining scope for v1.0.0. The Cilium CNI (breaking change at the infrastructur
 - [x] Bootstrap guard with `--force` flag for safe reapply
 - [x] Status verifier (rerun bootstrap to check cluster health)
 - [x] `just validate` as a local mirror of CI validation
-- [ ] Real application example deployed (Homarr — lightweight dashboard as first real app)
+- [x] Real application example deployed (Homepage — lightweight dashboard as first real app, wave 3 `apps/homepage`)
 - [ ] Customization guide tested end-to-end
 
 ---
@@ -132,6 +131,7 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 
 ### Operational excellence
 
+- Centralized audit logging (Kubernetes API + Vault → Loki) — moved from v1, requires infra-talos-homelab changes + control-plane restart
 - Automated secrets rotation (Tailscale, S3, API keys) via CronJob
 - Supply chain hardening — chart signing, SBOM, dependency scanning
 - Velero restore drills (RTO/RPO validation)
@@ -162,17 +162,16 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 - [x] Cilium CNI (eBPF, Gateway API, CiliumNetworkPolicy) — Cilium 1.20.1 + Gateway API 1.2.3 (ADR-014) ✅ Complete
 - [x] CiliumNetworkPolicy — 9 charts with allow-dns / allow-egress / allow-ingress (ADR-014) ✅ Complete
 - [ ] Pod Security Admission `restricted`
-- [ ] Centralized audit logging (K8s API + Vault → Loki)
 - [ ] Trivy in CI
 - [ ] Git secrets detection (`detect-secrets`)
 - [ ] Security architecture documentation (minimal threat model)
-- [ ] Real application example (Homarr)
+- [x] Real application example (Homepage, wave 3 `apps/homepage`)
 - [ ] Customization guide tested end-to-end
 
 **Planned for v2.0:**
 - [ ] Decoupling & vendor-agnostic ingress — Gateway API BYOD (Envoy Gateway, `GatewayClass: tailscale`; 4→3 devices — `vault-my-cluster` merged into `gateway-envoy`; MagicDNS kept, own-domain split DNS deferred)
 - [ ] Compliance & policy (Kyverno, CIS Benchmark, RBAC audit, compliance dashboard)
-- [ ] Operational excellence (automated secrets rotation, supply chain hardening, Velero restore drills)
+- [ ] Operational excellence (centralized audit logging, automated secrets rotation, supply chain hardening, Velero restore drills)
 - [ ] Python automation & image security (Ops CLI, infrastructure tests, observability exporter, compliance scanning)
 
 ---
