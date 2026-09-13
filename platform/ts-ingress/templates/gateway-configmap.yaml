@@ -27,17 +27,17 @@ data:
       proxy_send_timeout 60s;
 
       # Cilium hardening: kubeProxyReplacement=strict uses eBPF service translation,
-      # L7 DNS policy may briefly delay initial resolution, and nginx caches DNS
-      # forever via getaddrinfo at startup. Add in-cluster resolver for re-resolution
-      # and periodic refresh. Use FQDN (kube-dns.kube-system.svc.cluster.local) not
-      # ClusterIP (10.96.0.10 drifts across reinstalls). valid=10s enables TTL-based
-      # refresh; resolver_timeout guards against DNS stalls. For true per-request
-      # re-resolution, replace proxy_pass with variable indirection:
-      #   set $backend "svc.namespace.svc.cluster.local";
-      #   proxy_pass http://$backend:80;
-      # Static proxy_pass below is kept for exact URI semantics (Grafana preserve
-      # prefix, ArgoCD strip prefix + sub_filter, Longhorn websocket). Resolver is
-      # still required for startup retry and for any future variable-based locations.
+      # L7 DNS policy may briefly delay initial resolution. All proxy_pass below
+      # use variable indirection (set $upstream_* + proxy_pass http://$upstream_*:port)
+      # so nginx resolves at request time via this resolver instead of getaddrinfo
+      # at startup — a missing backend Service returns 502 for its prefix instead
+      # of emerg/CrashLooping the whole gateway. Use FQDN
+      # (kube-dns.kube-system.svc.cluster.local) not ClusterIP (10.96.0.10 drifts
+      # across reinstalls). valid=10s enables TTL-based refresh; resolver_timeout
+      # guards against DNS stalls. Prefix-strip locations pair the variable with
+      # an explicit rewrite (^/prefix/(.*)$ /$1 break) to preserve the old
+      # `proxy_pass http://host/;` URI semantics; prefix-preserving locations
+      # (Grafana, Prometheus, Homepage) proxy the original URI unchanged.
       resolver kube-dns.kube-system.svc.cluster.local valid=10s ipv6=off;
       resolver_timeout 5s;
 
@@ -81,8 +81,13 @@ data:
 {{- if .Values.argocd.enabled }}
         # ArgoCD — backend serves at / (no basehref needed); strip /argocd prefix and rewrite HTML
         # so assets/base href stay under /argocd/. Tested: ARGOCD_SERVER_BASEHREF not reliably rewrites HTML base on v3.4.4.
+        # NOTE: upstream via variable (not static proxy_pass) so nginx starts even
+        # when the backend Service doesn't exist yet (e.g. monitoring OutOfSync)
+        # and returns 502 for that prefix instead of CrashLooping the whole gateway.
         location /argocd/ {
-          proxy_pass http://argocd-server.argocd.svc.cluster.local:80/;
+          set $upstream_argocd argocd-server.argocd.svc.cluster.local;
+          rewrite ^/argocd/(.*)$ /$1 break;
+          proxy_pass http://$upstream_argocd:80;
           proxy_http_version 1.1;
           proxy_set_header Connection "";
           proxy_set_header Host $host;
@@ -110,7 +115,8 @@ data:
         # Preserve /grafana prefix — stripping (proxy_pass .../ ) causes infinite 301 loop.
         # Grafana Live uses WebSocket at /api/live/ws — requires Upgrade headers.
         location /grafana/ {
-          proxy_pass http://monitoring-grafana.monitoring.svc.cluster.local:80;
+          set $upstream_grafana monitoring-grafana.monitoring.svc.cluster.local;
+          proxy_pass http://$upstream_grafana:80;
           proxy_http_version 1.1;
           proxy_set_header Upgrade $http_upgrade;
           proxy_set_header Connection $connection_upgrade;
@@ -130,7 +136,8 @@ data:
 {{- end }}
 {{- if .Values.prometheus.enabled }}
         location /prometheus/ {
-          proxy_pass http://monitoring-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090;
+          set $upstream_prometheus monitoring-kube-prometheus-prometheus.monitoring.svc.cluster.local;
+          proxy_pass http://$upstream_prometheus:9090;
           proxy_http_version 1.1;
           proxy_set_header Connection "";
           proxy_set_header Host $host;
@@ -148,7 +155,9 @@ data:
         # Hubble UI — backend serves at / (no subpath support); strip /hubble prefix and rewrite HTML
         # like ArgoCD. Without sub_filter, browser requests /bundle.* from root and hits 404.
         location /hubble/ {
-          proxy_pass http://hubble-ui.kube-system.svc.cluster.local:80/;
+          set $upstream_hubble hubble-ui.kube-system.svc.cluster.local;
+          rewrite ^/hubble/(.*)$ /$1 break;
+          proxy_pass http://$upstream_hubble:80;
           proxy_http_version 1.1;
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
@@ -177,7 +186,9 @@ data:
 {{- /* Vault is served via dedicated Tailscale device vault-my-cluster (vault-ingress.yaml), not via gateway — see ADR-012 Amendment */ -}}
 {{- if .Values.longhorn.enabled }}
         location /longhorn/ {
-          proxy_pass http://longhorn-frontend.longhorn-system.svc.cluster.local:80/;
+          set $upstream_longhorn longhorn-frontend.longhorn-system.svc.cluster.local;
+          rewrite ^/longhorn/(.*)$ /$1 break;
+          proxy_pass http://$upstream_longhorn:80;
           proxy_http_version 1.1;
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
@@ -198,7 +209,9 @@ data:
 {{- end }}
 {{- if .Values.seaweedfs.s3.enabled }}
         location /seaweedfs-s3/ {
-          proxy_pass http://seaweedfs-s3.seaweedfs.svc.cluster.local:8333/;
+          set $upstream_s3 seaweedfs-s3.seaweedfs.svc.cluster.local;
+          rewrite ^/seaweedfs-s3/(.*)$ /$1 break;
+          proxy_pass http://$upstream_s3:8333;
           proxy_http_version 1.1;
           proxy_set_header Connection "";
           proxy_set_header Host $host;
@@ -214,7 +227,9 @@ data:
 {{- if .Values.seaweedfs.admin.enabled }}
         # SeaweedFS admin redirects / → /login and serves /static/* — keep under prefix
         location /seaweedfs-admin/ {
-          proxy_pass http://seaweedfs-admin.seaweedfs.svc.cluster.local:23646/;
+          set $upstream_swadmin seaweedfs-admin.seaweedfs.svc.cluster.local;
+          rewrite ^/seaweedfs-admin/(.*)$ /$1 break;
+          proxy_pass http://$upstream_swadmin:23646;
           proxy_http_version 1.1;
           proxy_set_header Connection "";
           proxy_set_header Host $host;
@@ -241,7 +256,8 @@ data:
         # Homepage — serves at / (root dashboard, no subpath support); preserve URI (no trailing slash).
         # Prefix location / so /api/, /_next/, etc work. Longest-prefix wins, so /argocd/ /grafana/ etc still route correctly.
         location / {
-          proxy_pass http://homepage.homepage.svc.cluster.local:3000;
+          set $upstream_homepage homepage.homepage.svc.cluster.local;
+          proxy_pass http://$upstream_homepage:3000;
           proxy_http_version 1.1;
           proxy_set_header Connection "";
           proxy_set_header Host $host;
