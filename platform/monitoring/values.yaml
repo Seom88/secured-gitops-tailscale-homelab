@@ -248,6 +248,12 @@ kube-prometheus-stack:
       tls:
         - hosts:
             - prometheus
+    # Chart-native selector for the Prometheus pods. The upstream knob exposes
+    # no ingress/egress rule fields, so this renders an empty policy and every
+    # effective allow stays in the Cilium overlay; enabled for knob parity
+    # across the stack. No egress key exists upstream, so none is set here.
+    networkPolicy:
+      enabled: true
 
   # Alertmanager configuration:
   alertmanager:
@@ -261,6 +267,13 @@ kube-prometheus-stack:
         limits:
           cpu: 100m
           memory: 128Mi
+    # Chart-native ingress allows: Prometheus scrapes (9093) and the
+    # config-reloader sidecar (8080) reach Alertmanager without custom rules.
+    # Egress stays disabled so the Cilium overlay remains the sole egress authority.
+    networkPolicy:
+      enabled: true
+      egress:
+        enabled: false
 
   # Prometheus Operator: admission webhook + config reconciliation only.
   prometheusOperator:
@@ -271,6 +284,12 @@ kube-prometheus-stack:
       limits:
         cpu: 200m
         memory: 256Mi
+    # Chart-native allows for the operator pod: ingress on 10250
+    # (TLS webhook/metrics) plus unrestricted egress. Both only widen the
+    # Cilium overlay allowlist (union semantics); the chart defines no egress
+    # restriction, so no new denial is introduced.
+    networkPolicy:
+      enabled: true
 
   # kube-state-metrics: small in-memory metrics cache.
   kube-state-metrics:
