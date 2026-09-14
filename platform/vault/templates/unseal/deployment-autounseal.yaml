@@ -79,12 +79,14 @@ spec:
               value: "vault"
             - name: VAULT_CACERT
               value: "/vault/userconfig/vault-tls/ca.crt"
-            # Kept comfortably under Vault's readinessProbe budget (30s
-            # initial delay + 6*10s = ~90s until NotReady): with direct
-            # curl calls the per-cycle cost drops a lot, so 15s/5s gives
-            # headroom without adding unnecessary load.
+            # Kept under Vault's readinessProbe budget (30s initial delay +
+            # 6x10s period = ~90s until NotReady): a 60s healthy sleep still
+            # unseals restarted pods inside that window, while forking two
+            # kubectl processes 4x less often — the watcher otherwise burns
+            # ~24m CPU doing nothing but idle polling. Unhealthy fast-retry
+            # stays at 5s so real seal events still converge in seconds.
             - name: SLEEP_HEALTHY
-              value: "15"
+              value: "60"
             - name: SLEEP_UNHEALTHY
               value: "5"
 
