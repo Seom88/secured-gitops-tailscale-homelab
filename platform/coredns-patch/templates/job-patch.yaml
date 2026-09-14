@@ -1,4 +1,5 @@
 {{- $imageTag := .Values.image.tag -}}
+{{- $cleanTag := first (splitList "@" $imageTag) -}}
 {{- $imageRepo := .Values.image.repository -}}
 {{- $imageDigest := .Values.image.digest -}}
 apiVersion: batch/v1
@@ -23,7 +24,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: patch
-          image: "{{ $imageRepo }}:{{ $imageTag }}{{ if $imageDigest }}@{{ $imageDigest }}{{ end }}"
+          image: "{{ $imageRepo }}:{{ $cleanTag }}{{ if $imageDigest }}@{{ $imageDigest }}{{ end }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["/bin/sh", "-c"]
           args:
