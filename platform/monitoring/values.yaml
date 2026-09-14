@@ -80,6 +80,17 @@ loki:
     # Disable test schema to use our custom schemaConfig
     useTestSchema: false
 
+    # Grafana Logs Drilldown requirements
+    limits_config:
+      volume_enabled: true
+      discover_log_levels: true
+      discover_service_name:
+        - service_name
+        - app
+        - container
+    pattern_ingester:
+      enabled: true
+
   # Enable gateway (default is true, but we ensure it)
   gateway:
     enabled: true
@@ -302,6 +313,18 @@ alloy:
           rule {
             source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
             target_label  = "app"
+          }
+
+          rule {
+            source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+            target_label  = "service_name"
+          }
+
+          rule {
+            source_labels = ["service_name", "__meta_kubernetes_pod_container_name"]
+            regex         = "^$;(.+)"
+            replacement   = "$1"
+            target_label  = "service_name"
           }
         }
 
