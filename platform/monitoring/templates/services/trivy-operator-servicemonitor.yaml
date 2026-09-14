@@ -1,0 +1,32 @@
+{{- if not (eq (index .Values "kube-prometheus-stack" "enabled") false) }}
+# Trivy Operator ServiceMonitor managed by monitoring chart.
+# Decoupled from platform/trivy-operator so the Prometheus Operator CRDs
+# (owned by kube-prometheus-stack) must exist before this renders.
+# Scrape target: trivy-operator metrics Service, port `metrics` (8080),
+# path /metrics, interval 60s to match the platform scrapeInterval.
+# Cilium ingress already allows monitoring -> trivy-system:8080
+# (see platform/trivy-operator/templates/cilium-networkpolicies.yaml doc 3).
+# Gated on kube-prometheus-stack.enabled so CRDs must exist first.
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: trivy-operator
+  namespace: trivy-system
+  labels:
+    release: monitoring
+spec:
+  namespaceSelector:
+    matchNames:
+      - trivy-system
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: trivy-operator
+      app.kubernetes.io/instance: trivy-operator
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 60s
+      scrapeTimeout: 10s
+      honorLabels: true
+{{- end }}
