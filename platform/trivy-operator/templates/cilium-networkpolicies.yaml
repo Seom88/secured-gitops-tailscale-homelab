@@ -1,10 +1,17 @@
 {{- if .Values.ciliumNetworkPolicy.enabled }}
-# CiliumNetworkPolicies for trivy-operator — PERMISSIVE observe mode.
-# Upstream chart ships no NetworkPolicy, so we mirror the repo pattern
-# (gated by ciliumNetworkPolicy.enabled) but wide-open: nothing is blocked,
-# Hubble still shows all flows and trivy config-audit stops flagging
-# missing policy while other misconfigs keep surfacing as warns.
-# Tighten later once you know the egress footprint (registries + DB mirrors).
+# CiliumNetworkPolicies for trivy-operator — scoped allowlist.
+# Upstream chart ships no NetworkPolicy; this mirrors the repo pattern
+# (velero/monitoring): separate DNS doc, port-scoped egress/ingress docs,
+# toFQDNs always paired with inline rules.dns in the same rule.
+# Notes:
+# - Namespace `trivy-system` is hardcoded following the repo pattern.
+# - endpointSelector {} is intentional: scan Jobs share this namespace with
+#   varying job labels (operator pods carry app.kubernetes.io/name=trivy-operator,
+#   scan jobs do not), so a narrow selector would leave scan jobs uncovered.
+# - Webhook is disabled upstream (webhookBroadcastURL=""), so no ingress
+#   from kube-apiserver is opened.
+# - Pod ports: metrics 8080, probes 9090 (Service 80 maps to targetPort
+#   `metrics` = 8080; Cilium enforces at pod level, so pod ports apply).
 
 # 1) DNS (standard, same as velero/monitoring)
 ---
@@ -30,38 +37,111 @@ spec:
             dns:
               - matchPattern: "*"
 ---
-# 2) Permissive DNS-aware (observe only, no enforcement).
-# Allow-all via toFQDNs "*" forces DNS proxy learning, so Hubble shows
-# FQDNs + kube-apiserver/cluster instead of only `world`.
-# See https://docs.cilium.io/en/stable/security/dns/ (toFQDNs needs rules.dns).
+# 2) Egress — kube-apiserver + explicit registry allowlist + scoped intra-cluster.
+# Scan jobs pull the Trivy DB (ghcr.io) and scanned images (ghcr.io, docker.io).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  name: trivy-operator-permissive-cilium
+  name: trivy-operator-allow-egress-cilium
   namespace: trivy-system
 spec:
   endpointSelector: {}
-  ingress:
-    - fromEntities:
-        - cluster
-        - host
-        - remote-node
-        - kube-apiserver
   egress:
-    # Internal: API + intra-cluster + host (probes, operator watch)
+    # Operator watch/listing against the API server.
     - toEntities:
         - kube-apiserver
-        - cluster
-        - host
-        - remote-node
-    # External: any FQDN 80/443 — DNS learning comes from doc 1 above,
-    # policies compose for the same pods.
-    - toFQDNs:
-        - matchPattern: "*"
       toPorts:
         - ports:
             - port: "443"
               protocol: TCP
-            - port: "80"
+            - port: "6443"
+              protocol: TCP
+    # Trivy DB + container images via ghcr.io.
+    - toFQDNs:
+        - matchName: ghcr.io
+        - matchPattern: "*.ghcr.io"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: ghcr.io
+              - matchPattern: "*.ghcr.io"
+    # Trivy DB release assets.
+    - toFQDNs:
+        - matchName: pkg-containers.githubusercontent.com
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: pkg-containers.githubusercontent.com
+    # Scanned public images via Docker Hub.
+    - toFQDNs:
+        - matchName: docker.io
+        - matchPattern: "*.docker.io"
+        - matchName: registry-1.docker.io
+        - matchName: auth.docker.io
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: docker.io
+              - matchPattern: "*.docker.io"
+              - matchPattern: registry-1.docker.io
+              - matchPattern: auth.docker.io
+    # Default image pull-through mirror (chart default image.registry).
+    - toFQDNs:
+        - matchName: mirror.gcr.io
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: mirror.gcr.io
+    # Intra-cluster + node-scoped HTTPS (node-collector footprint,
+    # in-cluster services). Port-scoped — refine via Hubble if flows show
+    # additional ports.
+    - toEntities:
+        - cluster
+        - host
+        - remote-node
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+---
+# 3) Ingress — Prometheus scraping (monitoring) + kubelet probes (host).
+# No cluster-wide entity, no kube-apiserver ingress (webhook disabled).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: trivy-operator-allow-ingress-cilium
+  namespace: trivy-system
+spec:
+  endpointSelector: {}
+  ingress:
+    # Prometheus scraping the operator metrics endpoint (pod port 8080).
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+    # Kubelet liveness/readiness probes (9090) + host-level scrape (8080).
+    - fromEntities:
+        - host
+        - remote-node
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+            - port: "9090"
               protocol: TCP
 {{- end }}
