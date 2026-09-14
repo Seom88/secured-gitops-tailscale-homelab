@@ -119,6 +119,7 @@ spec:
             dns:
               - matchPattern: grafana.com
               - matchPattern: "*.grafana.com"
+              - matchPattern: "*.grafana.org"
     # Hubble relay (optional observability)
     - toEndpoints:
         - matchLabels:
