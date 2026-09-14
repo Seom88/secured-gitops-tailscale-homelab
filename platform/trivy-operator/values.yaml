@@ -7,6 +7,9 @@
 # (`trivy-operator`), so the official `trivy.ignoreUnfixed` setting becomes
 # `trivy-operator.trivy.ignoreUnfixed` here. A top-level `trivy:` key would
 # be dead values — Helm only forwards the subchart-name subtree.
+ciliumNetworkPolicy:
+  enabled: true
+
 trivy-operator:
   operator:
     # + OOMKilled on small Talos nodes. 2 is slower on first sync but stable.

@@ -1,0 +1,45 @@
+{{- if .Values.ciliumNetworkPolicy.enabled }}
+# CiliumNetworkPolicies for trivy-operator — PERMISSIVE observe mode.
+# Upstream chart ships no NetworkPolicy, so we mirror the repo pattern
+# (gated by ciliumNetworkPolicy.enabled) but wide-open: nothing is blocked,
+# Hubble still shows all flows and trivy config-audit stops flagging
+# missing policy while other misconfigs keep surfacing as warns.
+# Tighten later once you know the egress footprint (registries + DB mirrors).
+
+# 1) DNS (standard, same as velero/monitoring)
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: trivy-operator-allow-dns-cilium
+  namespace: trivy-system
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+# 2) Permissive allow-all (observe only, no enforcement)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: trivy-operator-permissive-cilium
+  namespace: trivy-system
+spec:
+  endpointSelector: {}
+  ingress:
+    - {}
+  egress:
+    - {}
+{{- end }}
