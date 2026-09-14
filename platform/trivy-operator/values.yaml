@@ -11,10 +11,22 @@ ciliumNetworkPolicy:
   enabled: true
 
 trivy-operator:
+  # Skip DaemonSet-heavy namespaces (e.g. 6-container Cilium agents) to avoid scan lock-contention.
+  # NOTE: subchart-top-level key (sibling of `operator:`/`trivy:`), NOT `operator.excludeNamespaces`.
+  excludeNamespaces: "kube-system,monitoring"
   operator:
     # + OOMKilled on small Talos nodes. 2 is slower on first sync but stable.
     scanJobsConcurrentLimit: 2
+    # Disabled: node-collector relies on mutable host rootfs, incompatible with Talos immutable OS.
+    infraAssessmentScannerEnabled: false
   trivy:
     # Show only vulnerabilities with a known fix (same policy as
     # CI `--ignore-unfixed`: cuts unactionable noise).
     ignoreUnfixed: true
+    resources:
+      requests:
+        # Floor to avoid CPU/memory throttling on small Talos nodes (cpu left at chart default).
+        memory: 256Mi
+      limits:
+        # Raised from 500M chart default that caused OOMKilled on vulnerability scans.
+        memory: 1Gi
