@@ -30,7 +30,10 @@ spec:
             dns:
               - matchPattern: "*"
 ---
-# 2) Permissive allow-all (observe only, no enforcement)
+# 2) Permissive DNS-aware (observe only, no enforcement).
+# Allow-all via toFQDNs "*" forces DNS proxy learning, so Hubble shows
+# FQDNs + kube-apiserver/cluster instead of only `world`.
+# See https://docs.cilium.io/en/stable/security/dns/ (toFQDNs needs rules.dns).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -39,7 +42,26 @@ metadata:
 spec:
   endpointSelector: {}
   ingress:
-    - {}
+    - fromEntities:
+        - cluster
+        - host
+        - remote-node
+        - kube-apiserver
   egress:
-    - {}
+    # Internal: API + intra-cluster + host (probes, operator watch)
+    - toEntities:
+        - kube-apiserver
+        - cluster
+        - host
+        - remote-node
+    # External: any FQDN 80/443 — DNS learning comes from doc 1 above,
+    # policies compose for the same pods.
+    - toFQDNs:
+        - matchPattern: "*"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "80"
+              protocol: TCP
 {{- end }}
