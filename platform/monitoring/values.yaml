@@ -138,6 +138,13 @@ kube-prometheus-stack:
         secureJsonData:
           httpHeaderValue1: "fake"
 
+    # Trivy Operator community dashboard (templates/dashboards/) carries
+    # annotation grafana_folder=Trivy; the sidecar only honors it when
+    # folderAnnotation is set (upstream default null drops it in General).
+    sidecar:
+      dashboards:
+        folderAnnotation: grafana_folder
+
     resources:
       requests:
         cpu: 200m

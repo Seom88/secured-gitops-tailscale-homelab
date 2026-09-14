@@ -1,0 +1,21 @@
+# Trivy Operator Grafana dashboard
+# Source: https://grafana.com/grafana/dashboards/16337-trivy-operator-vulnerabilities/ (rev 16)
+# Upstream repo: https://github.com/dotdc/grafana-dashboards-kubernetes (Apache-2.0),
+# file dashboards/k8s-addons-trivy-operator.json, stored pristine at
+# dashboards/trivy-operator.json so it can be diffed against upstream.
+# Only the folder placement below is ours. Picked up by the Grafana sidecar
+# (label grafana_dashboard=1, searchNamespace ALL) and placed in the "Trivy"
+# folder via kube-prometheus-stack.grafana.sidecar.dashboards.folderAnnotation.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: trivy-operator-dashboard
+  namespace: {{ .Release.Namespace }}
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: "Trivy"
+data:
+  trivy-operator.json: |-
+{{ .Files.Get "dashboards/trivy-operator.json" | nindent 4 }}
