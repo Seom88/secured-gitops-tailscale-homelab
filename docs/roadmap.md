@@ -12,12 +12,12 @@ The cluster runs on end-to-end GitOps: ArgoCD as the App-of-Apps, Vault HA for s
 
 **What's already running in CI/CD**, verified directly against `.github/workflows/`:
 - `validate.yaml`: Helm dependency builds, `helm lint` and `helm template` (both prod and dev values), secret scan (`detect-secrets` baseline-gated), ShellCheck on the bootstrap scripts, YAML/JSON sanity checks, and `yamllint` as a non-blocking extra check.
-- `security.yaml`: Trivy image scans over the dynamically discovered chart images (matrix from rendered manifests) + repo misconfig scan, SARIF upload to code scanning, weekly cron — non-blocking until images are pinned to digests.
+- `security.yaml`: Trivy image scans over the dynamically discovered chart images (matrix from rendered manifests) + repo misconfig scan, SARIF upload to code scanning, weekly cron — fail-closed for digest-pinned first-party images (upstream subchart images advisory).
 - `deploy.yaml`: auto-deploy on `Validate` success (main) plus manual `workflow_dispatch` with environment selection (prod/dev), a Tailscale connection step, kubeconfig retrieval from Terraform state, and a `force_reapply` flag for safe retries.
 - Pre-commit (local mirror of the fast gates): `detect-secrets`, `check-yaml`/`check-json`, `yamllint`, `shellcheck`; `just validate` + `just scan` as local mirrors.
 - `renovate.json`: weekly updates (Mondays before 5am), with differentiated rules — critical cluster components (Vault, Longhorn, cert-manager) require explicit manual review via labels, while non-critical charts and GitHub Actions are grouped and auto-merged; regex managers also cover hardcoded images and `HELM_VERSION`.
 
-That's already a real, guided CI/CD foundation with image scanning and secrets detection live (both non-blocking) — not a full DevSecOps pipeline yet (still missing fail-closed gates, completed network policies, audit logging, etc.), but not "nothing" either.
+That's already a real, guided CI/CD foundation with fail-closed image scanning (pinned images) and secrets detection live — not a full DevSecOps pipeline yet (still missing completed network policies, audit logging, etc.), but not "nothing" either.
 
 ---
 
@@ -60,7 +60,7 @@ Remaining scope for v1.0.0. The Cilium CNI (breaking change at the infrastructur
 - [x] Cilium CNI (eBPF, Gateway API, CiliumNetworkPolicy) — Cilium 1.20.1 + Gateway API 1.2.3 (ADR-014) — NetworkPolicy enforcement, Hubble observability, eBPF kubeProxyReplacement
 
 **Security hardening (requires Cilium, planned for v1.0.0):**
-- [ ] Container image vulnerability scanning (Trivy) integrated into CI — non-blocking `Security` workflow live; fail-closed after digest pinning
+- [x] Container image vulnerability scanning (Trivy) integrated into CI — fail-closed `Security` workflow (digest-pinned first-party images block on HIGH/CRITICAL outside `.trivyignore`; upstream subchart images advisory; deploy gated on Security + Validate)
 - [x] Git secrets detection (`detect-secrets`) — pre-commit hook + `.secrets.baseline` (audited) + CI step, fails on new secrets
 
 **Developer experience (v1.0):**
@@ -173,15 +173,15 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 - [x] Velero — backup/restore (Wave 0, RustFS S3, chart `12.1.0`)
 - [x] Validation CI (GitHub Actions)
 - [x] Git secrets gate (pre-commit + baseline + CI step)
-- [x] Trivy `Security` workflow (non-blocking image + misconfig scans, SARIF)
+- [x] Trivy `Security` workflow (fail-closed image scans for pinned images + advisory misconfig scans, SARIF)
 - [x] Architecture Decision Records
 
 **Still pending for v1.0:**
 - [x] Cilium CNI (eBPF, Gateway API, CiliumNetworkPolicy) — Cilium 1.20.1 + Gateway API 1.2.3 (ADR-014) ✅ Complete
 - [x] CiliumNetworkPolicy — 10 charts with allow-dns / allow-egress / allow-ingress (ADR-014) ✅ Complete
-- [ ] Trivy in CI (non-blocking `Security` workflow live; fail-closed after digest pinning)
+- [x] Trivy in CI (fail-closed `Security` workflow for digest-pinned images; deploy gated on Security + Validate) ✅ Complete
 - [x] Git secrets detection (`detect-secrets` hook + baseline + CI step) ✅ Complete
-- [x] Real application example (Homepage v2.3.0 pinned, wave 3 `apps/homepage`)
+- [x] Real application example (Homepage v2.3.0 digest-pinned, wave 3 `apps/homepage`)
 
 **Planned for v2.0:**
 - [ ] Decoupling & vendor-agnostic ingress — Gateway API BYOD (Envoy Gateway, `GatewayClass: tailscale`; 4→3 devices — `vault-my-cluster` merged into `gateway-envoy`; MagicDNS kept, own-domain split DNS deferred)

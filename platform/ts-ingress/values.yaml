@@ -11,8 +11,12 @@ gateway:
   enabled: true  # set false to disable the my-cluster gateway device; vault device controlled by vault.enabled below
   replicas: 1
   image:
+    # Digest-pinned (fail-closed Trivy gate): refresh with
+    # skopeo inspect docker://nginx:<tag> | jq -r .Digest
+    # Tag stays for Renovate (docker datasource bumps tag+digest together).
     repository: nginx
     tag: "1.29-alpine"
+    digest: "sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de"
     pullPolicy: IfNotPresent
   resources:
     requests:

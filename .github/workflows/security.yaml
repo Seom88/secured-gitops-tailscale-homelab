@@ -1,10 +1,13 @@
 # Security — image + config vulnerability scans (read-only, no cluster).
 # Runs weekly (cron) because images accumulate CVEs without repo changes.
-# NON-BLOCKING (`continue-on-error: true`) until images are pinned to digests —
-# the `:latest` tags drift daily and fail day 1. Tighten to fail-closed once
-# pinned. The deploy gate intentionally stays on Validate (see deploy.yaml):
-# gating deploy on a non-blocking scan is theater — wire fail-closed + gate
-# deploy only after digests are pinned.
+# FAIL-CLOSED for first-party (digest-pinned) images: the `trivy-images`
+# matrix blocks on any HIGH/CRITICAL finding outside `.trivyignore` for
+# images listed in `needs.discover.outputs.pinned`. Upstream subchart images
+# stay advisory — their CVEs can only be fixed by upstream chart releases
+# (Renovate weekly); visibility via table + SARIF + the in-cluster Trivy
+# Operator. `trivy-config` stays advisory until the misconfig baseline is
+# tuned (v2 PSA work). Deploy is gated on both Validate and Security
+# (see deploy.yaml): Security must be green on the head SHA before deploy.
 name: Security
 
 on:
@@ -31,6 +34,7 @@ jobs:
       contents: read
     outputs:
       images: ${{ steps.collect.outputs.images }}
+      pinned: ${{ steps.collect.outputs.pinned }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -68,7 +72,7 @@ jobs:
               echo "::warning::could not render $dir — skipping"
               continue
             fi
-            printf '%s\n' "$rendered" | awk '/^[[:space:]]*image:[[:space:]]/ && !/\{\{/ {sub(/^[[:space:]]*image:[[:space:]]+/, ""); gsub(/^"|"$|^[ \t]+|[ \t]+$/, ""); if ($0 != "") print}' >> "$imglist" || true
+            printf '%s\n' "$rendered" | awk '/^[[:space:]]*(-[[:space:]]+)?image:[[:space:]]/ && !/\{\{/ {sub(/^[[:space:]]*(-[[:space:]]+)?image:[[:space:]]+/, ""); gsub(/^"|"$|^[ \t]+|[ \t]+$/, ""); if ($0 != "") print}' >> "$imglist" || true
           done
           images_json="$(sort -u "$imglist" | grep -v '^$' | jq -R -s -c 'split("\n") | map(select(length > 0))')"
           rm -f "$imglist"
@@ -78,6 +82,14 @@ jobs:
           fi
           echo "Discovered: $images_json"
           echo "images=$images_json" >> "$GITHUB_OUTPUT"
+          # Fail-closed set: first-party images we author and digest-pin
+          # (repo prefixes below). Matched by prefix so Renovate tag/digest
+          # bumps keep flowing into the blocking gate without workflow edits.
+          # Upstream subchart images are excluded — pinned transitively via
+          # Chart.lock, fixed only by upstream releases (Renovate weekly).
+          pinned_json="$(printf '%s' "$images_json" | jq -c '[.[] | select(test("^(ghcr\\.io/gethomepage/homepage|bitnami/kubectl|(docker\\.io/library/)?nginx:|velero/velero-plugin-for-aws|amazon/aws-cli:)"))]')"
+          echo "Pinned (fail-closed): $pinned_json"
+          echo "pinned=$pinned_json" >> "$GITHUB_OUTPUT"
 
   trivy-images:
     needs: [discover]
@@ -91,6 +103,11 @@ jobs:
       matrix:
         image: ${{ fromJson(needs.discover.outputs.images) }}
     steps:
+      - name: Checkout (for .trivyignore)
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
       - name: Derive sanitized image name
         id: name
         env:
@@ -104,11 +121,15 @@ jobs:
           format: table
           severity: HIGH,CRITICAL
           ignore-unfixed: true
+          exit-code: '1'
           limit-severities-for-sarif: "true"
-        # Non-blocking until images are pinned to digests.
-        continue-on-error: true
+        # Fail-closed for digest-pinned first-party images (exact ref present
+        # in the `pinned` discovery output); upstream subchart images stay
+        # advisory until fixed upstream.
+        continue-on-error: ${{ !contains(needs.discover.outputs.pinned, matrix.image) }}
 
       - name: Trivy image scan (SARIF, ${{ matrix.image }})
+        if: always()
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ matrix.image }}
@@ -116,9 +137,11 @@ jobs:
           output: trivy-${{ steps.name.outputs.safe }}.sarif
           severity: HIGH,CRITICAL
           ignore-unfixed: true
+          exit-code: '1'
           limit-severities-for-sarif: "true"
-        # Non-blocking until images are pinned to digests.
-        continue-on-error: true
+        # Same gate as the table scan (runs even when the table scan failed
+        # so SARIF is still uploaded below).
+        continue-on-error: ${{ !contains(needs.discover.outputs.pinned, matrix.image) }}
 
       - name: Upload SARIF (${{ matrix.image }})
         uses: github/codeql-action/upload-sarif@v4
@@ -149,7 +172,9 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           limit-severities-for-sarif: "true"
-        # Non-blocking: complements the PSA restricted policy (v2) — advisory until tuned.
+        # Advisory: ~100 HIGH/CRITICAL misconfigs (default securityContexts
+        # etc.) need baseline tuning first (v2 PSA work) — blocking now would
+        # fail day 1. The fail-closed gate is the image scan above.
         continue-on-error: true
 
       - name: Upload SARIF (config)

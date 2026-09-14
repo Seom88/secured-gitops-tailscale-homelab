@@ -11,12 +11,12 @@ Both workflows live in `.github/workflows/` and are distro-agnostic — no Terra
 | Workflow | Trigger | Needs cluster | What it does |
 |----------|---------|---------------|--------------|
 | `validate.yaml` | `push` + `pull_request` (all branches) | No | Helm lint/template, platform lint, shellcheck, YAML/JSON sanity |
-| `security.yaml` | `push` + `pull_request` + weekly cron (`0 4 * * 1`) + manual | No | Trivy image + config scans (SARIF, non-blocking) |
-| `deploy.yaml` | `workflow_dispatch` (manual) | Yes | Restore kubeconfig from infra state → `bootstrap/init-gitops.sh` |
+| `security.yaml` | `push` + `pull_request` + weekly cron (`0 4 * * 1`) + manual | No | Trivy image + config scans (SARIF; fail-closed for pinned images) |
+| `deploy.yaml` | `workflow_run` (Validate + Security on `main`) + `workflow_dispatch` (manual) | Yes | Gate on Validate + Security green → restore kubeconfig from infra state → `bootstrap/init-gitops.sh` |
 
-### `deploy.yaml` — Deploy GitOps (manual)
+### `deploy.yaml` — Deploy GitOps (gated auto + manual)
 
-Triggers: `workflow_dispatch` only (manual from GitHub UI / `gh`). Concurrency `deploy-${{ github.ref_name }}` (`cancel-in-progress: false`), `environment: ${{ inputs.environment || 'prod' }}`.
+Triggers: `workflow_run` (auto on `Validate` + `Security` completion on `main`, gated by the `gate` job) + `workflow_dispatch` (manual from GitHub UI / `gh`). Concurrency `deploy-main` (`cancel-in-progress: false`), `environment: ${{ inputs.environment || 'prod' }}` (manual) — auto-deploy targets `prod`.
 
 ```yaml
 # .github/workflows/deploy.yaml — triggers
@@ -48,7 +48,8 @@ env:
 
 | Job | Runs | What it does |
 |-----|------|--------------|
-| `deploy` | manual (`workflow_dispatch`) | Restore kubeconfig from infra S3 state + Tailscale, run `bootstrap/init-gitops.sh` |
+| `gate` | auto (`workflow_run`) + manual | For `push` events: require latest `Validate` + `Security` runs on the head SHA to be `success` (via `gh api`, `actions: read`); skipped for cron events (never deploy on schedule) and manual dispatch (explicit operator action) |
+| `deploy` | manual (`workflow_dispatch`) + auto when `gate` passes | Restore kubeconfig from infra S3 state + Tailscale, run `bootstrap/init-gitops.sh` |
 
 **Deploy job** (`runs-on: ubuntu-latest`, `timeout-minutes: 15`, `environment: ${{ inputs.environment || 'prod' }}`):
 
@@ -150,17 +151,17 @@ Local equivalent: `just validate` (same checks, no creds). Sub-recipes: `just va
 
 ### `security.yaml` — Security (Trivy scans, no cluster)
 
-Triggers: `push` + `pull_request` + weekly cron (`0 4 * * 1`, Mondays 04:00 UTC — images accumulate CVEs without repo changes) + `workflow_dispatch`. Top-level `permissions: contents: read`. No cluster, no creds. The deploy gate intentionally stays on Validate: gating deploy on a non-blocking scan is theater — fail-closed wiring happens after digests are pinned (see follow-ups below).
+Triggers: `push` + `pull_request` + weekly cron (`0 4 * * 1`, Mondays 04:00 UTC — images accumulate CVEs without repo changes) + `workflow_dispatch`. Top-level `permissions: contents: read`. No cluster, no creds. The deploy gate requires both Validate and Security green on the head SHA (see `deploy.yaml` `gate` job): the gate re-runs on every completion of either workflow, so the first finisher waits and the second finisher opens the gate.
 
 | Job | What it does |
 |-----|--------------|
-| `discover` | Renders every chart (`platform/*/` + `apps/*/`, same repo/dependency prep as Validate, `s3.tailnetFqdn=s3-validate.invalid` for Velero) and collects the unique `image:` refs into a JSON array output (`images`) — no hardcoded list, so Renovate bumps are scanned automatically |
-| `trivy-images` | [`aquasecurity/trivy-action@v0.36.0`](https://github.com/aquasecurity/trivy-action) matrix over `fromJson(needs.discover.outputs.images)` with `severity: HIGH,CRITICAL`, `ignore-unfixed: true`, `limit-severities-for-sarif: "true"` — per image a visible `table` scan plus a `sarif` scan uploaded via `github/codeql-action/upload-sarif@v4` (`if: always()`, `category: trivy-<sanitized-name>`) |
+| `discover` | Renders every chart (`platform/*/` + `apps/*/`, same repo/dependency prep as Validate, `s3.tailnetFqdn=s3-validate.invalid` for Velero) and collects the unique `image:` refs into a JSON array output (`images`) — no hardcoded list, so Renovate bumps are scanned automatically; a second output (`pinned`) holds the digest-pinned first-party subset that gates fail-closed (matched by repo prefix, so tag/digest bumps keep flowing into the gate). The `image:` matcher also covers `- image:` list-item form (initContainers) |
+| `trivy-images` | [`aquasecurity/trivy-action@v0.36.0`](https://github.com/aquasecurity/trivy-action) matrix over `fromJson(needs.discover.outputs.images)` with `severity: HIGH,CRITICAL`, `ignore-unfixed: true`, `exit-code: '1'` — per image a visible `table` scan plus a `sarif` scan uploaded via `github/codeql-action/upload-sarif@v4` (`if: always()`, `category: trivy-<sanitized-name>`). Fail-closed (`continue-on-error: false`) when the exact ref is in `pinned`; upstream subchart images stay advisory. The job checks out the repo so Trivy applies `.trivyignore` |
 | `trivy-config` | `scan-type: config`, `scan-ref: .` → `trivy-config.sarif` + SARIF upload — complements the PSA restricted policy (v2) |
 
-All jobs run with `permissions: contents: read` + `security-events: write` (least privilege for SARIF upload) and image scans are **non-blocking** (`continue-on-error: true`) because the `:latest` tags drift daily and fail day 1. Image names contain `/` and `:`, so the SARIF filename is derived in bash (`safe=${IMAGE//[:\/]/_}`). A chart that fails to render is skipped with a warning instead of breaking discovery; empty discovery fails loudly rather than passing vacuously. Consciously accepted CVEs go in `.trivyignore` (one per line, with justification).
+All jobs run with `permissions: contents: read` + `security-events: write` (least privilege for SARIF upload). Digest-pinned first-party images (homepage, kubectl jobs, nginx gateway, velero plugin, aws-cli bucket-init) block the workflow on HIGH/CRITICAL findings outside `.trivyignore`; upstream subchart images are advisory (`continue-on-error: true`) because only upstream releases fix them — they stay pinned transitively via `Chart.lock` and are re-scanned weekly. Image names contain `/` and `:`, so the SARIF filename is derived in bash (`safe=${IMAGE//[:\/]/_}`). A chart that fails to render is skipped with a warning instead of breaking discovery; empty discovery fails loudly rather than passing vacuously. Consciously accepted CVEs go in `.trivyignore` (one per line, with justification and review date).
 
-Non-blocking policy + follow-ups: pin images to digests → drop `continue-on-error` (fail-closed) → gate deploy on Security. Renovate's `github-actions` manager already groups these actions for automatic weekly bumps.
+First-party images are digest-pinned (`tag@sha256:…`, tag kept for Renovate); `tailscale/k8s-nameserver:stable` is tag-only because the DNSConfig CRD exposes no digest field (digest tracked in a comment). Upstream subchart images are pinned transitively via `Chart.lock`. Renovate's `github-actions` manager already groups these actions for automatic weekly bumps, and the `kubectl jobs` group (`pinDigests: true`) plus the docker regex managers track the pinned refs.
 
 Local equivalent: `just scan` (same discovery loop + `HIGH,CRITICAL` table summary; soft-fails if `trivy` is not installed — heavy network pulls, deliberately not part of `just validate`).
 
@@ -179,7 +180,7 @@ Local equivalent: `just scan` (same discovery loop + `HIGH,CRITICAL` table summa
 | YAML syntax | `PyYAML safe_load_all` (Helm templates skipped) + `.yamllint.yaml` | `validate.yaml`, `just validate-yaml` |
 | JSON syntax | `python3 -m json.tool` over `**/*.json` | `validate.yaml`, `just validate-json` |
 | Secret scan | `detect-secrets-hook --baseline .secrets.baseline` (fail on new) | `validate.yaml`, `.pre-commit-config.yaml` |
-| Image scan | `trivy-action@v0.36.0`, `HIGH,CRITICAL` + SARIF (non-blocking until pinned) | `security.yaml` (`trivy-images` + `trivy-config`), `just scan`, `.trivyignore` |
+| Image scan | `trivy-action@v0.36.0`, `HIGH,CRITICAL` + SARIF (fail-closed for pinned images, advisory for upstream) | `security.yaml` (`trivy-images` + `trivy-config`), `just scan`, `.trivyignore` |
 | Full local CI | `just validate` (gitops + platform + scripts + yaml + json) | `justfile` |
 | Hardened inputs | `helm lint` strict, `null` guards in bootstrap, CSI wait gate before Vault | [Getting Started](./getting-started.md), `bootstrap/init-gitops.sh` |
 
@@ -227,7 +228,7 @@ Local equivalent: `just scan` (same discovery loop + `HIGH,CRITICAL` table summa
 | Group non-critical Helm charts (loki, kube-prometheus-stack, seaweedfs, tailscale-operator, external-secrets) | `helm` excl. vault/longhorn/cert-manager | `helm charts` (`helm-charts`), `helm` | grouped PR |
 | Group GitHub Actions | `github-actions` | `github actions` (`github-actions`), `github-actions` | grouped PR |
 
-No custom regex managers — Helm versions are pinned in `Chart.yaml` / `values.yaml` and picked up natively. Validate Vault/Longhorn/cert-manager upgrades via `just validate` + `helm template` before merging.
+Regex managers also cover hardcoded images (`platform/*/templates`, `apps/*/templates`, `apps/*/values*`, coredns-patch split repo/tag, Velero initContainers), `tailscale/k8s-nameserver`, and `HELM_VERSION` in workflows — so digest-pinned refs (`tag@sha256:…`) keep tag bumps flowing with refreshed digests. Validate Vault/Longhorn/cert-manager upgrades via `just validate` + `helm template` before merging.
 
 ## Velero bootstrap
 

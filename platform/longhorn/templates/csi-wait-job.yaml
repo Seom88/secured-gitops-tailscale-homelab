@@ -48,7 +48,11 @@ spec:
       restartPolicy: Never
       containers:
         - name: csi-wait
-          image: bitnami/kubectl:latest
+          # Digest-pinned (fail-closed Trivy gate); Renovate-tracked via the
+          # `kubectl jobs` group. Bitnami publishes only `latest` for kubectl
+          # (holds kubectl 1.37.0, image build 2026-09-03) — digest is the pin.
+          # Refresh: skopeo inspect docker://bitnami/kubectl:latest | jq -r .Digest
+          image: bitnami/kubectl:latest@sha256:b29d8c1665b70817259ceecaea16ab27aab6368b48daf485d19436c809067492
           command:
             - /bin/bash
             - -ec

@@ -35,7 +35,9 @@ spec:
 
       containers:
         - name: autounseal
-          image: bitnami/kubectl:latest
+          # Digest-pinned (fail-closed Trivy gate); Renovate `kubectl jobs` group.
+          # Refresh: skopeo inspect docker://bitnami/kubectl:latest | jq -r .Digest
+          image: bitnami/kubectl:latest@sha256:b29d8c1665b70817259ceecaea16ab27aab6368b48daf485d19436c809067492
           imagePullPolicy: IfNotPresent
 
           command:

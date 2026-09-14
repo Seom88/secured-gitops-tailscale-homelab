@@ -3,7 +3,7 @@ name: Deploy GitOps
 
 on:
   workflow_run:
-    workflows: ["Validate"]
+    workflows: ["Validate", "Security"]
     types: [completed]
     branches: [main]
   workflow_dispatch:
@@ -37,8 +37,44 @@ env:
   S3_BUCKET: ${{ vars.S3_BUCKET }}
 
 jobs:
+  # Fail-closed gate: auto-deploy only when BOTH Validate and Security are
+  # green on the head SHA. The gate re-runs on every completion of either
+  # workflow, so the first finisher waits (gate fails, no deploy) and the
+  # second finisher opens the gate — no polling needed. Non-push events
+  # (e.g. the weekly Security cron) and manual dispatches skip the gate:
+  # cron must never deploy, dispatch is an explicit operator action.
+  gate:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.event == 'push' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Require Validate + Security green on head SHA
+        if: ${{ github.event_name != 'workflow_dispatch' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -e
+          echo "Head SHA: $SHA (triggered by ${{ github.event.workflow_run.name }})"
+          runs="$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=$SHA&event=push&per_page=50" --jq '.workflow_runs')"
+          fail=0
+          for wf in Validate Security; do
+            concl="$(printf '%s' "$runs" | jq -r --arg wf "$wf" '[.[] | select(.name==$wf and .status=="completed")] | sort_by(.updated_at) | last | .conclusion // "missing"')"
+            echo "$wf: $concl"
+            if [ "$concl" != "success" ]; then fail=1; fi
+          done
+          if [ "$fail" != "0" ]; then
+            echo "::error::gate closed — waiting for both Validate and Security to succeed on $SHA (this run was triggered by the first finisher; the second finisher re-opens the gate)"
+            exit 1
+          fi
+          echo "Gate open — both workflows green on $SHA"
+
   deploy:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    needs: [gate]
+    if: ${{ github.event_name == 'workflow_dispatch' || needs.gate.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: ${{ inputs.environment || 'prod' }}

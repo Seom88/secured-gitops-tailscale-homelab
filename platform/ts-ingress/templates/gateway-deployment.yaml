@@ -30,7 +30,7 @@ spec:
               app.kubernetes.io/name: cluster-gateway
       containers:
         - name: nginx
-          image: "{{ .Values.gateway.image.repository }}:{{ .Values.gateway.image.tag }}"
+          image: "{{ .Values.gateway.image.repository }}:{{ .Values.gateway.image.tag }}{{ if .Values.gateway.image.digest }}@{{ .Values.gateway.image.digest }}{{ end }}"
           imagePullPolicy: {{ .Values.gateway.image.pullPolicy }}
           ports:
             - name: http

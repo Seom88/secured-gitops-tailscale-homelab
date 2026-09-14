@@ -437,7 +437,7 @@ scan:
         echo "  ⚠️  scan: could not render $dir locally — skipping (chart needs cluster values)"
         continue
       fi
-      printf '%s\n' "$rendered" | awk '/^[[:space:]]*image:[[:space:]]/ && !/\{\{/ {sub(/^[[:space:]]*image:[[:space:]]+/, ""); gsub(/^"|"$|^[ \t]+|[ \t]+$/, ""); if ($0 != "") print}' >> "$imglist" || true
+      printf '%s\n' "$rendered" | awk '/^[[:space:]]*(-[[:space:]]+)?image:[[:space:]]/ && !/\{\{/ {sub(/^[[:space:]]*(-[[:space:]]+)?image:[[:space:]]+/, ""); gsub(/^"|"$|^[ \t]+|[ \t]+$/, ""); if ($0 != "") print}' >> "$imglist" || true
     done
     images="$(sort -u "$imglist" | grep -v '^$' || true)"
     rm -f "$imglist"
@@ -447,6 +447,7 @@ scan:
     fi
     echo "==> scan: discovered $(printf '%s\n' "$images" | wc -l | xargs) image(s) from charts (no hardcoded list)"
     failed=0
+    advisory=0
     printf '%-42s %8s %8s %8s\n' IMAGE CRITICAL HIGH TOTAL
     while IFS= read -r image; do
       out="$(mktemp)"
@@ -455,7 +456,14 @@ scan:
       if trivy image --severity HIGH,CRITICAL --ignore-unfixed --scanners vuln --exit-code 1 --format json --output "$out" --quiet "$image" >/dev/null 2>&1; then
         crit=0; high=0
       else
-        failed=1
+        # Same two-tier gate as CI Security: digest-pinned first-party images
+        # block; upstream subchart images are advisory (fixed upstream only).
+        case "$image" in
+          ghcr.io/gethomepage/homepage*|bitnami/kubectl*|nginx:*|docker.io/library/nginx:*|velero/velero-plugin-for-aws*|amazon/aws-cli:*)
+            failed=1 ;;
+          *)
+            advisory=1 ;;
+        esac
         if [ "$JQ" = "1" ]; then
           crit=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' "$out")
           high=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' "$out")
@@ -467,10 +475,14 @@ scan:
       printf '%-42s %8s %8s %8s\n' "$image" "$crit" "$high" "$total"
       rm -f "$out"
     done <<< "$images"
+    if [ "$advisory" != "0" ]; then
+      echo "⚠️  scan: upstream (advisory) findings above — fixed only by upstream releases; tracked via CI SARIF + Trivy Operator"
+    fi
     if [ "$failed" != "0" ]; then
-      echo "⚠️  scan: findings reported (non-blocking until digests pinned; details: trivy image <name> or CI logs)"
+      echo "❌ scan: pinned-image HIGH/CRITICAL findings above fail the gate (mirrors CI Security fail-closed; conscious accepts go in .trivyignore with justification)"
+      exit 1
     else
-      echo "✅ scan: OK"
+      echo "✅ scan: OK (pinned images clean)"
     fi
 
 # ── GitOps ────────────────────────────────────

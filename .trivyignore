@@ -13,3 +13,77 @@
 # HIGH/CRITICAL findings, and add accepted CVEs here with justification.
 # Follow-up: publish SARIF to GitHub code scanning (needs a separate job with
 # `permissions: security-events: write`; current workflows keep `contents: read`).
+#
+# Triaged 2026-09-14 (trivy CLI, --severity HIGH,CRITICAL --ignore-unfixed):
+# all digests below were the latest published digests on that date (resolved
+# via `skopeo inspect docker://<image> | jq -r .Digest`), i.e. fixes exist in
+# individual packages but no rebuilt image was published upstream yet. Every
+# entry is re-checked automatically: the weekly Security cron re-scans, and
+# Renovate bumps (tag or digest) change the image under test. Review date for
+# all entries below: 2026-12-14.
+#
+# amazon/aws-cli was bumped 2.15.0 -> 2.36.44 instead (clean scan, no entries
+# needed); bitnami/kubectl:latest@sha256:b29d8... scans clean.
+#
+# --- nginx:1.29-alpine@sha256:56168782 (gateway, ts-ingress) ---
+# Alpine base packages with fixes upstream but no rebuilt nginx image
+# published as of 2026-09-14 (1.29-alpine already points at 1.29.8, newest).
+CVE-2026-11352  # nginx:1.29-alpine libcurl — fixed 8.22.0-r0, no rebuilt image, re-check 2026-12-14
+CVE-2026-11586  # nginx:1.29-alpine libcurl — fixed 8.22.0-r0, no rebuilt image, re-check 2026-12-14
+CVE-2026-12064  # nginx:1.29-alpine libcurl — fixed 8.22.0-r0, no rebuilt image, re-check 2026-12-14
+CVE-2026-14456  # nginx:1.29-alpine libssl3 — fixed 3.5.8-r0, no rebuilt image, re-check 2026-12-14
+CVE-2026-27135  # nginx:1.29-alpine nghttp2-libs — fixed 1.68.1, no rebuilt image, re-check 2026-12-14
+CVE-2026-33630  # nginx:1.29-alpine c-ares — fixed 1.34.8-r0, no rebuilt image, re-check 2026-12-14
+CVE-2026-45186  # nginx:1.29-alpine libexpat — fixed 2.8.1-r0, no rebuilt image, re-check 2026-12-14
+CVE-2026-45447  # nginx:1.29-alpine libssl3 — fixed 3.5.7-r0, no rebuilt image, re-check 2026-12-14
+CVE-2026-53612  # nginx:1.29-alpine libuuid — fixed 2.41.6-r0, no rebuilt image, re-check 2026-12-14
+CVE-2026-53613  # nginx:1.29-alpine libuuid — fixed 2.41.6-r0, no rebuilt image, re-check 2026-12-14
+CVE-2026-53614  # nginx:1.29-alpine libuuid — fixed 2.41.6-r0, no rebuilt image, re-check 2026-12-14
+CVE-2026-5773  # nginx:1.29-alpine libcurl — fixed 8.20.0-r0, no rebuilt image, re-check 2026-12-14
+CVE-2026-6276  # nginx:1.29-alpine libcurl — fixed 8.20.0-r0, no rebuilt image, re-check 2026-12-14
+CVE-2026-6732  # nginx:1.29-alpine libxml2 — fixed 2.13.9-r1, no rebuilt image, re-check 2026-12-14
+CVE-2026-76642  # nginx:1.29-alpine libuuid — fixed 2.41.6-r0, no rebuilt image, re-check 2026-12-14
+CVE-2026-76956  # nginx:1.29-alpine libexpat — fixed 2.8.4-r0, no rebuilt image, re-check 2026-12-14
+CVE-2026-76957  # nginx:1.29-alpine libexpat — fixed 2.8.4-r0, no rebuilt image, re-check 2026-12-14
+CVE-2026-78408  # nginx:1.29-alpine libuuid — fixed 2.41.6-r1, no rebuilt image, re-check 2026-12-14
+CVE-2026-78410  # nginx:1.29-alpine libuuid — fixed 2.41.6-r0, no rebuilt image, re-check 2026-12-14
+CVE-2026-8286  # nginx:1.29-alpine libcurl — fixed 8.22.0-r0, no rebuilt image, re-check 2026-12-14
+CVE-2026-8458  # nginx:1.29-alpine libcurl — fixed 8.22.0-r0, no rebuilt image, re-check 2026-12-14
+CVE-2026-8925  # nginx:1.29-alpine libcurl — fixed 8.22.0-r0, no rebuilt image, re-check 2026-12-14
+CVE-2026-8927  # nginx:1.29-alpine libcurl — fixed 8.22.0-r0, no rebuilt image, re-check 2026-12-14
+CVE-2026-9547  # nginx:1.29-alpine libcurl — fixed 8.22.0-r0, no rebuilt image, re-check 2026-12-14
+#
+# --- velero/velero-plugin-for-aws:v1.14.2@sha256:0751144c (initContainer) ---
+# v1.14.2 is the newest plugin release; built with Go 1.25.11, fixes need an
+# upstream rebuild with Go >= 1.25.12/1.26.5. InitContainer runs only at pod
+# start to copy the plugin binary (no network service, minimal exposure).
+CVE-2026-33818  # velero-plugin Go stdlib — fixed 1.25.13, needs upstream rebuild, re-check 2026-12-14
+CVE-2026-39821  # velero-plugin Go stdlib — fixed 1.25.13, needs upstream rebuild, re-check 2026-12-14
+CVE-2026-39822  # velero-plugin Go stdlib — fixed 1.25.12, needs upstream rebuild, re-check 2026-12-14
+CVE-2026-46600  # velero-plugin golang.org/x/net — fixed 0.56.0, needs upstream rebuild, re-check 2026-12-14
+CVE-2026-56852  # velero-plugin golang.org/x/text — fixed 0.39.0, needs upstream rebuild, re-check 2026-12-14
+CVE-2026-56853  # velero-plugin Go stdlib — fixed 1.25.13, needs upstream rebuild, re-check 2026-12-14
+CVE-2026-56858  # velero-plugin Go stdlib — fixed 1.25.13, needs upstream rebuild, re-check 2026-12-14
+CVE-2026-56859  # velero-plugin Go stdlib — fixed 1.25.13, needs upstream rebuild, re-check 2026-12-14
+CVE-2026-56860  # velero-plugin Go stdlib — fixed 1.25.13, needs upstream rebuild, re-check 2026-12-14
+CVE-2026-56862  # velero-plugin Go stdlib — fixed 1.25.13, needs upstream rebuild, re-check 2026-12-14
+CVE-2026-84304  # velero-plugin grpc — fixed 1.83.1, needs upstream rebuild, re-check 2026-12-14
+CVE-2026-84445  # velero-plugin grpc — fixed 1.82.2/1.83.2, needs upstream rebuild, re-check 2026-12-14
+GHSA-hrxh-6v49-42gf  # velero-plugin grpc — fixed 1.82.1, needs upstream rebuild, re-check 2026-12-14
+#
+# --- ghcr.io/gethomepage/homepage:v2.3.0@sha256:f8202766 (dashboard) ---
+# v2.3.0 is the newest homepage release; Node.js/npm packages with fixes
+# upstream but no rebuilt image published as of 2026-09-14. Build-time /
+# bundled-web dependencies, not reachable as a network service at runtime.
+CVE-2026-13149  # homepage brace-expansion — fixed 2.1.2, no rebuilt image, re-check 2026-12-14
+CVE-2026-14257  # homepage brace-expansion — fixed 2.1.3, no rebuilt image, re-check 2026-12-14
+CVE-2026-14456  # homepage libssl3 — fixed 3.5.8-r0, no rebuilt image, re-check 2026-12-14
+CVE-2026-33671  # homepage picomatch — fixed 4.0.4, no rebuilt image, re-check 2026-12-14
+CVE-2026-48815  # homepage sigstore — fixed 4.1.1, no rebuilt image, re-check 2026-12-14
+CVE-2026-59873  # homepage tar CRITICAL — fixed 7.5.19, build-time dep, no rebuilt image, re-check 2026-12-14
+CVE-2026-59874  # homepage tar — fixed 7.5.18, build-time dep, no rebuilt image, re-check 2026-12-14
+CVE-2026-69152  # homepage brace-expansion — fixed 2.1.4, no rebuilt image, re-check 2026-12-14
+CVE-2026-69192  # homepage ip-address — fixed 10.3.1, no rebuilt image, re-check 2026-12-14
+CVE-2026-73566  # homepage tar — fixed 7.5.21, build-time dep, no rebuilt image, re-check 2026-12-14
+CVE-2026-9496  # homepage pacote — fixed 21.5.1, build-time dep, no rebuilt image, re-check 2026-12-14
+GHSA-rgj7-g3m4-5g8c  # homepage sharp — fixed 0.35.4, no rebuilt image, re-check 2026-12-14

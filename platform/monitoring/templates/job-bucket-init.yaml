@@ -26,7 +26,10 @@ spec:
       dnsPolicy: ClusterFirst
       containers:
         - name: bucket-init
-          image: amazon/aws-cli:2.15.0
+          # Digest-pinned (fail-closed Trivy gate); Renovate-tracked (regex manager
+          # covers platform/*/templates). Refresh:
+          # skopeo inspect docker://amazon/aws-cli:<tag> | jq -r .Digest
+          image: amazon/aws-cli:2.36.44@sha256:e8467f2c319f9bc9a1471808a69949a76915e9c95eaf4a09ece9f9e85fd32747
           imagePullPolicy: IfNotPresent
           env:
             - name: AWS_ACCESS_KEY_ID
