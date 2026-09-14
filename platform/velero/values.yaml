@@ -188,12 +188,13 @@ velero:
         defaultVolumesToFsBackup: false
 
   # Resource requests — conservative homelab defaults.
+  # Phase 1 CPU rightsizing: 200m/500m -> 100m/300m (memory untouched).
   resources:
     requests:
-      cpu: 200m
+      cpu: 100m
       memory: 128Mi
     limits:
-      cpu: 500m
+      cpu: 300m
       memory: 512Mi
 
   metrics:

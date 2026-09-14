@@ -18,12 +18,14 @@ gateway:
     tag: "1.31-alpine"
     digest: "sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de"
     pullPolicy: IfNotPresent
+  # Phase 1 CPU rightsizing: 100m/400m -> 25m/300m (data-plane nginx is
+  # mostly idle; limit keeps burst headroom. Memory untouched).
   resources:
     requests:
-      cpu: 100m
+      cpu: 25m
       memory: 128Mi
     limits:
-      cpu: 400m
+      cpu: 300m
       memory: 256Mi
 
 # Per-service toggles — argocd/grafana/prometheus/longhorn/seaweedfs control gateway ConfigMap locations.

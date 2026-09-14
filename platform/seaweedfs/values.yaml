@@ -3,9 +3,10 @@ seaweedfs:
   master:
     enabled: true
     replicas: 1
+    # Phase 1 CPU rightsizing: request 50m -> 20m (limit 500m untouched).
     resources:
       requests:
-        cpu: 50m
+        cpu: 20m
         memory: 64Mi
       limits:
         cpu: 500m
@@ -19,9 +20,10 @@ seaweedfs:
   volume:
     enabled: true
     replicas: 1
+    # Phase 1 CPU rightsizing: request 100m -> 30m (limit 1000m untouched).
     resources:
       requests:
-        cpu: 100m
+        cpu: 30m
         memory: 96Mi
       limits:
         cpu: 1000m
@@ -38,9 +40,10 @@ seaweedfs:
   filer:
     enabled: true
     replicas: 1
+    # Phase 1 CPU rightsizing: request 50m -> 20m (limit 500m untouched).
     resources:
       requests:
-        cpu: 50m
+        cpu: 20m
         memory: 64Mi
       limits:
         cpu: 500m
@@ -57,9 +60,10 @@ seaweedfs:
     enabled: true
     enableAuth: true
     existingConfigSecret: seaweedfs-s3-credentials
+    # Phase 1 CPU rightsizing: request 50m -> 20m (limit 500m untouched).
     resources:
       requests:
-        cpu: 50m
+        cpu: 20m
         memory: 64Mi
       limits:
         cpu: 500m
@@ -70,9 +74,10 @@ seaweedfs:
   # Admin UI — consolidated management console
   admin:
     enabled: true
+    # Phase 1 CPU rightsizing: request 20m -> 10m (limit 200m untouched).
     resources:
       requests:
-        cpu: 20m
+        cpu: 10m
         memory: 32Mi
       limits:
         cpu: 200m

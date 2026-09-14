@@ -144,12 +144,14 @@ vault:
       mountPath: /vault/userconfig/vault-tls
       readOnly: true
 
+    # Phase 1 CPU rightsizing: 500m/2000m -> 250m/1000m (cluster avg 17%,
+    # zero throttling; raft tolerates lean requests, limit keeps burst headroom).
     resources:
       requests:
-        cpu: 500m
+        cpu: 250m
         memory: 128Mi
       limits:
-        cpu: 2000m
+        cpu: 1000m
         memory: 512Mi
 
     affinity: |

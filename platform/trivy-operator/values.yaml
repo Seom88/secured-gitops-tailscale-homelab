@@ -25,8 +25,12 @@ trivy-operator:
     ignoreUnfixed: true
     resources:
       requests:
-        # Floor to avoid CPU/memory throttling on small Talos nodes (cpu left at chart default).
+        # Phase 1 CPU floor: 50m request avoids unscheduled scan-job CPU
+        # starvation on small Talos nodes (memory floor pre-existing).
+        cpu: 50m
         memory: 256Mi
       limits:
-        # Raised from 500M chart default that caused OOMKilled on vulnerability scans.
+        # CPU cap keeps scan bursts (peaks 40-47% cluster) from starving
+        # neighbors; memory floor pre-existing (raised from 500M chart default).
+        cpu: 600m
         memory: 1Gi

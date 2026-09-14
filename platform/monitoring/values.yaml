@@ -22,12 +22,13 @@ loki:
           name: loki-s3-credentials
     # Right-sized for 3x4cpu/6GB workers: lean requests, headroom for
     # immich/nextcloud/cloud-pg. Limits cap spikes without starving neighbors.
+    # Phase 1 CPU rightsizing: 300m/1000m -> 100m/800m (memory untouched).
     resources:
       requests:
-        cpu: 300m
+        cpu: 100m
         memory: 512Mi
       limits:
-        cpu: 1000m
+        cpu: 800m
         memory: 1024Mi
 
   # Component replicas (set to 0 for Monolithic mode)
@@ -145,12 +146,13 @@ kube-prometheus-stack:
       dashboards:
         folderAnnotation: grafana_folder
 
+    # Phase 1 CPU rightsizing: 200m/1000m -> 80m/500m (prod only; memory untouched).
     resources:
       requests:
-        cpu: 200m
+        cpu: 80m
         memory: 256Mi
       limits:
-        cpu: 1000m
+        cpu: 500m
         memory: 768Mi
     livenessProbe:
       initialDelaySeconds: 90
@@ -183,12 +185,13 @@ kube-prometheus-stack:
       # Single-host gateway subpath — ADR-012
       externalUrl: https://my-cluster.lonk-mirfak.ts.net/prometheus
       routePrefix: /prometheus
+      # Phase 1 CPU rightsizing: 500m/1000m -> 150m/800m (memory, retention untouched).
       resources:
         requests:
-          cpu: 500m
+          cpu: 150m
           memory: 512Mi
         limits:
-          cpu: 1000m
+          cpu: 800m
           memory: 2048Mi
       storageSpec:
         volumeClaimTemplate:
@@ -273,9 +276,10 @@ alloy:
     mounts:
       varlog: true
     # Lean log shipper (DaemonSet, per node): tail + forward only.
+    # Phase 1 CPU rightsizing: 100m/200m -> 50m/200m (memory untouched).
     resources:
       requests:
-        cpu: 100m
+        cpu: 50m
         memory: 128Mi
       limits:
         cpu: 200m
