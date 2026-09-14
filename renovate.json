@@ -17,9 +17,9 @@
     },
     {
       "customType": "regex",
-      "description": "coredns-patch values with split repo/tag",
+      "description": "coredns-patch values with split repo/tag/digest",
       "managerFilePatterns": ["^platform/coredns-patch/values\\.yaml$"],
-      "matchStrings": ["repository:\\s*['\"]?(?<depName>[^\\s'\";]+)['\"]?\\s*\\n\\s*tag:\\s*['\"]?(?<currentValue>[^'\"\\s]+)['\"]?"],
+      "matchStrings": ["repository:\\s*['\"]?(?<depName>[^\\s'\";]+)['\"]?\\s*\\n\\s*tag:\\s*['\"]?(?<currentValue>[^'\"\\s]+)['\"]?(\\s*\\n\\s*digest:\\s*['\"]?(?<currentDigest>[^'\"\\s]+)['\"]?)?"],
       "datasourceTemplate": "docker"
     },
     {
