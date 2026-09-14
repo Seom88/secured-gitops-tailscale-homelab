@@ -25,8 +25,8 @@ trivy-operator:
     ignoreUnfixed: true
     resources:
       requests:
-        # Phase 1 CPU floor: 50m request avoids unscheduled scan-job CPU
-        # starvation on small Talos nodes (memory floor pre-existing).
+        # Lean homelab sizing (prod): minimal scheduling floor so scan jobs
+        # still run on small Talos nodes (memory floor pre-existing).
         cpu: 50m
         memory: 256Mi
       limits:

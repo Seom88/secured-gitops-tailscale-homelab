@@ -1,0 +1,9 @@
+# Dev overlay — merges on top of values.yaml (prod). Loaded only when
+# developmentApp.enabled (ArgoCD ignoreMissingValueFiles), so prod never sees it.
+trivy-operator:
+  trivy:
+    # Dev sizing: full floor and cap so parallel image scans run without
+    # starving neighbors; prod stays lean and throttles bursts visibly.
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 1Gi }

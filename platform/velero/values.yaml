@@ -193,8 +193,8 @@ velero:
         storageLocation: default
         defaultVolumesToFsBackup: false
 
-  # Resource requests — conservative homelab defaults.
-  # Phase 1 CPU rightsizing: 200m/500m -> 100m/300m (memory untouched).
+  # Lean homelab sizing (prod): idle server steady state; minimal request
+  # keeps it schedulable, tight limit caps backup-burst pressure.
   resources:
     requests:
       cpu: 100m

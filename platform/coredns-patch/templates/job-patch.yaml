@@ -28,8 +28,8 @@ spec:
         - name: patch
           image: "{{ $imageRepo }}:{{ $cleanTag }}{{ if $imageDigest }}@{{ $imageDigest }}{{ end }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          # Phase 1 CPU floor: short-lived kubectl job, 10m/100m keeps it
-          # schedulable without reserving idle capacity.
+          # Short-lived kubectl job: 10m/100m keeps it schedulable without
+          # reserving idle capacity.
           resources:
             requests:
               cpu: 10m

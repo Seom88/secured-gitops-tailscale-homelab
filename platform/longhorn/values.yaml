@@ -24,10 +24,11 @@ longhorn:
     # Best-practices (Longhorn 1.12.1): 100 is the safe upstream default;
     # 200 is only justified when volumes average ~50% fill (not observed here).
     storageOverProvisioningPercentage: 100
-    # Phase 1 CPU rightsizing: upstream Longhorn has no instanceManager.resources
-    # key — instance-manager CPU reservation is this percentage of each node's
-    # allocatable CPU (default {"v1":"12","v2":"12"} ~= 714m request). v1 "4" lands
-    # ~250m on ~6-CPU nodes; v2 stays 12 (SPDK needs dedicated cores for stability).
+    # Lean homelab sizing (prod): upstream Longhorn has no
+    # instanceManager.resources key — instance-manager CPU reservation is
+    # this percentage of each node's allocatable CPU (default
+    # {"v1":"12","v2":"12"} ~= 714m request). v1 "4" lands ~250m on ~6-CPU
+    # nodes; v2 stays 12 (SPDK needs dedicated cores for stability).
     # No CPU limit is ever set on instance-manager pods — never cap engine IO.
     # WARNING: changing this restarts instance-manager pods; apply only with
     # volumes detached or during a maintenance window.

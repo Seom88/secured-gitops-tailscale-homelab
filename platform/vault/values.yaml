@@ -144,8 +144,8 @@ vault:
       mountPath: /vault/userconfig/vault-tls
       readOnly: true
 
-    # Phase 1 CPU rightsizing: 500m/2000m -> 250m/1000m (cluster avg 17%,
-    # zero throttling; raft tolerates lean requests, limit keeps burst headroom).
+    # Lean homelab sizing (prod): cluster avg 13-17% of 22 CPUs with zero
+    # throttling; raft tolerates lean requests, limit keeps burst headroom.
     resources:
       requests:
         cpu: 250m

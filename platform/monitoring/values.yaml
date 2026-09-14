@@ -20,9 +20,8 @@ loki:
     extraEnvFrom:
       - secretRef:
           name: loki-s3-credentials
-    # Right-sized for 3x4cpu/6GB workers: lean requests, headroom for
-    # immich/nextcloud/cloud-pg. Limits cap spikes without starving neighbors.
-    # Phase 1 CPU rightsizing: 300m/1000m -> 100m/800m (memory untouched).
+    # Lean homelab sizing (prod): log volume fits the small request; the
+    # limit caps query spikes without starving neighbors.
     resources:
       requests:
         cpu: 100m
@@ -172,7 +171,8 @@ kube-prometheus-stack:
       dashboards:
         folderAnnotation: grafana_folder
 
-    # Phase 1 CPU rightsizing: 200m/1000m -> 80m/500m (prod only; memory untouched).
+    # Lean homelab sizing (prod): dashboard rendering bursts fit the small
+    # request; idle is near zero.
     resources:
       requests:
         cpu: 80m
@@ -211,7 +211,8 @@ kube-prometheus-stack:
       # Single-host gateway subpath — ADR-012
       externalUrl: https://my-cluster.lonk-mirfak.ts.net/prometheus
       routePrefix: /prometheus
-      # Phase 1 CPU rightsizing: 500m/1000m -> 150m/800m (memory, retention untouched).
+      # Lean homelab sizing (prod): 60s scrapes keep TSDB steady state small;
+      # measured with zero throttling (memory, retention untouched).
       resources:
         requests:
           cpu: 150m
@@ -301,8 +302,8 @@ alloy:
   alloy:
     mounts:
       varlog: true
-    # Lean log shipper (DaemonSet, per node): tail + forward only.
-    # Phase 1 CPU rightsizing: 100m/200m -> 50m/200m (memory untouched).
+    # Lean homelab sizing (prod): per-node tail volume is small; minimal
+    # request keeps the DaemonSet schedulable.
     resources:
       requests:
         cpu: 50m

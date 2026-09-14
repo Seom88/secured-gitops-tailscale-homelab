@@ -3,7 +3,8 @@ seaweedfs:
   master:
     enabled: true
     replicas: 1
-    # Phase 1 CPU rightsizing: request 50m -> 20m (limit 500m untouched).
+    # Lean homelab sizing (prod): idle control plane; minimal scheduling
+    # request, limit caps spikes.
     resources:
       requests:
         cpu: 20m
@@ -20,7 +21,8 @@ seaweedfs:
   volume:
     enabled: true
     replicas: 1
-    # Phase 1 CPU rightsizing: request 100m -> 30m (limit 1000m untouched).
+    # Lean homelab sizing (prod): homelab disk IO fits the small request;
+    # the generous limit never throttles engine bursts.
     resources:
       requests:
         cpu: 30m
@@ -40,7 +42,8 @@ seaweedfs:
   filer:
     enabled: true
     replicas: 1
-    # Phase 1 CPU rightsizing: request 50m -> 20m (limit 500m untouched).
+    # Lean homelab sizing (prod): idle metadata plane; minimal scheduling
+    # request, limit caps spikes.
     resources:
       requests:
         cpu: 20m
@@ -60,7 +63,8 @@ seaweedfs:
     enabled: true
     enableAuth: true
     existingConfigSecret: seaweedfs-s3-credentials
-    # Phase 1 CPU rightsizing: request 50m -> 20m (limit 500m untouched).
+    # Lean homelab sizing (prod): Loki-only S3 traffic; minimal scheduling
+    # request, limit caps spikes.
     resources:
       requests:
         cpu: 20m
@@ -74,7 +78,7 @@ seaweedfs:
   # Admin UI — consolidated management console
   admin:
     enabled: true
-    # Phase 1 CPU rightsizing: request 20m -> 10m (limit 200m untouched).
+    # Lean homelab sizing (prod): idle console; minimal scheduling request.
     resources:
       requests:
         cpu: 10m

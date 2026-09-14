@@ -3,6 +3,12 @@ developmentApp:
 
 # Loki S3 endpoint — unified service name (no -dev suffix after ADR-012 simplification)
 loki:
+  singleBinary:
+    # Dev sizing: full requests/limits for rich query metrics and to catch
+    # pressure in dev before prod.
+    resources:
+      requests: { cpu: 300m, memory: 512Mi }
+      limits: { cpu: 1000m, memory: 1024Mi }
   loki:
     storage:
       s3:
@@ -25,7 +31,7 @@ kube-prometheus-stack:
               requests:
                 storage: 10Gi
       resources:
-        requests: { cpu: 200m, memory: 512Mi }
+        requests: { cpu: 500m, memory: 512Mi }
         limits: { cpu: 1000m, memory: 1Gi }
   alertmanager:
     alertmanagerSpec:
@@ -37,12 +43,22 @@ kube-prometheus-stack:
       server:
         domain: dev-my-cluster.lonk-mirfak.ts.net
         root_url: https://dev-my-cluster.lonk-mirfak.ts.net/grafana/
+    # Dev sizing: full requests/limits so dashboard bursts and TSDB load
+    # surface real metrics in dev before prod.
     resources:
-      requests: { cpu: 100m, memory: 256Mi }
-      limits: { cpu: 500m, memory: 512Mi }
+      requests: { cpu: 200m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 512Mi }
     livenessProbe:
       initialDelaySeconds: 120
     readinessProbe:
       initialDelaySeconds: 30
       timeoutSeconds: 5
     persistence: { enabled: false }
+
+# Dev sizing: full per-node floor so log tail fan-out is never starved
+# while testing; prod stays lean.
+alloy:
+  alloy:
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 200m, memory: 256Mi }

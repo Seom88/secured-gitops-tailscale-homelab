@@ -1,21 +1,32 @@
 # Dev overrides — merges on top of values.yaml (prod)
 
 seaweedfs:
+  master:
+    # Dev sizing: full scheduling floor for metadata bursts; prod stays lean.
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
   volume:
+    # Dev sizing: full floor for disk IO bursts; generous limit untouched.
+    resources:
+      requests: { cpu: 100m, memory: 96Mi }
     dataDirs:
       - name: data1
         type: "persistentVolumeClaim"
         size: "5Gi"
         storageClass: ""
         maxVolumes: 0
-
-  resources:
-    requests:
-      cpu: 500m
-      memory: 512Mi
-    limits:
-      cpu: 1000m
-      memory: 1Gi
+  filer:
+    # Dev sizing: full scheduling floor for metadata bursts; prod stays lean.
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+  s3:
+    # Dev sizing: full scheduling floor; prod stays lean.
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+  admin:
+    # Dev sizing: full console floor; prod stays lean.
+    resources:
+      requests: { cpu: 20m, memory: 32Mi }
 
 developmentApp:
   enabled: true

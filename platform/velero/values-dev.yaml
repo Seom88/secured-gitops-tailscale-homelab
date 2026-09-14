@@ -7,5 +7,11 @@ s3:
   prefix: velero-dev
   tailnetFqdn: ""
 
+velero:
+  # Dev sizing: full requests/limits for parallel volume backups; prod stays lean.
+  resources:
+    requests: { cpu: 200m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
 developmentApp:
   enabled: true
