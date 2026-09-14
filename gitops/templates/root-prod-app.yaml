@@ -3,6 +3,10 @@ kind: Application
 metadata:
   annotations:
     argocd.argoproj.io/tracking-id: gitops:argoproj.io/Application:argocd/gitops
+    # Self-reference must sync LAST: parent aggregates children health,
+    # otherwise any wave waits for gitops Healthy
+    # that can never happen until children sync (ADR-006/008 loop).
+    argocd.argoproj.io/sync-wave: "100"
   name: gitops{{- if .Values.developmentApp.enabled }}-dev{{- end }}
   namespace: argocd
   labels:
