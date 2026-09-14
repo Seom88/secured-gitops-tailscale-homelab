@@ -1,0 +1,32 @@
+# Pre-commit — fast local checks. Install once: `pre-commit install`.
+# detect-secrets is baseline-gated (never auto-update the baseline — audit
+# false positives with `detect-secrets audit .secrets.baseline`). check-yaml /
+# check-json replace the old custom sanity loops for staged files; yamllint and
+# shellcheck mirror the CI validate job. Renovate's `pre-commit` manager bumps
+# these revs automatically.
+repos:
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: '^platform/.*/Chart\.lock$'
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      # Helm templates contain Go sprig ({{ }}) — not valid YAML. helm lint owns them.
+      # Note: `gitops/templates/` (root-level chart templates) needs its own
+      # alternative — `(platform|apps|gitops)/.*/templates/` only matches nested paths.
+      - id: check-yaml
+        exclude: ^(platform/longhorn/charts/|(platform|apps|gitops)/.*/templates/|gitops/templates/)
+      - id: check-json
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
+        args: [-c, .yamllint.yaml]
+        exclude: ^(platform/longhorn/charts/|(platform|apps|gitops)/.*/templates/|gitops/templates/)
+  - repo: https://github.com/koalaman/shellcheck-precommit
+    rev: v0.11.0
+    hooks:
+      - id: shellcheck

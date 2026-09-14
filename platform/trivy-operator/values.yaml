@@ -1,0 +1,14 @@
+# Trivy Operator — in-cluster vulnerability/config scanning.
+# Reports + metrics only: the admission webhook stays disabled (upstream
+# default), so nothing blocks deploys. Complements the CI Trivy scans in
+# .github/workflows/security.yaml and `just scan`.
+#
+# Wrapper note: upstream keys live under the dependency name
+# (`trivy-operator`), so the official `trivy.ignoreUnfixed` setting becomes
+# `trivy-operator.trivy.ignoreUnfixed` here. A top-level `trivy:` key would
+# be dead values — Helm only forwards the subchart-name subtree.
+trivy-operator:
+  trivy:
+    # Show only vulnerabilities with a known fix (same policy as
+    # CI `--ignore-unfixed`: cuts unactionable noise).
+    ignoreUnfixed: true

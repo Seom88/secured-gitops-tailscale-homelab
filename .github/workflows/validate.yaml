@@ -25,6 +25,13 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Secret scan (detect-secrets, baseline-gated)
+        run: |
+          python3 -m pip install --quiet detect-secrets==1.5.0
+          # Fails on NEW secrets vs .secrets.baseline; never auto-updates it.
+          # To accept a finding: `detect-secrets audit .secrets.baseline` locally.
+          git ls-files -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline
+
       - name: Setup Helm (${{ env.HELM_VERSION }})
         uses: azure/setup-helm@v5
         with:

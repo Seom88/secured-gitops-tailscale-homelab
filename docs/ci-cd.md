@@ -11,6 +11,7 @@ Both workflows live in `.github/workflows/` and are distro-agnostic — no Terra
 | Workflow | Trigger | Needs cluster | What it does |
 |----------|---------|---------------|--------------|
 | `validate.yaml` | `push` + `pull_request` (all branches) | No | Helm lint/template, platform lint, shellcheck, YAML/JSON sanity |
+| `security.yaml` | `push` + `pull_request` + weekly cron (`0 4 * * 1`) + manual | No | Trivy image + config scans (SARIF, non-blocking) |
 | `deploy.yaml` | `workflow_dispatch` (manual) | Yes | Restore kubeconfig from infra state → `bootstrap/init-gitops.sh` |
 
 ### `deploy.yaml` — Deploy GitOps (manual)
@@ -131,6 +132,7 @@ jobs:
 | Step | What it does |
 |------|--------------|
 | `checkout` | `actions/checkout@v7` `persist-credentials: false` |
+| `secret scan` | `detect-secrets-hook --baseline .secrets.baseline` — fail on new secrets, never auto-updates |
 | `setup-helm` | `azure/setup-helm@v5` `version: v3.18.4` |
 | `helm dependency build (gitops)` | `helm dependency build gitops` (no-op if no deps) |
 | `helm dependency build (platform charts)` | `helm repo add` longhorn/grafana/prometheus-community/seaweedfs/tailscale/hashicorp + `helm repo update`; loop `platform/*/` → `helm dependency update/build` |
@@ -146,6 +148,26 @@ jobs:
 
 Local equivalent: `just validate` (same checks, no creds). Sub-recipes: `just validate-gitops`, `just validate-platform`, `just validate-scripts`, `just validate-yaml`, `just validate-json`.
 
+### `security.yaml` — Security (Trivy scans, no cluster)
+
+Triggers: `push` + `pull_request` + weekly cron (`0 4 * * 1`, Mondays 04:00 UTC — images accumulate CVEs without repo changes) + `workflow_dispatch`. Top-level `permissions: contents: read`. No cluster, no creds. The deploy gate intentionally stays on Validate: gating deploy on a non-blocking scan is theater — fail-closed wiring happens after digests are pinned (see follow-ups below).
+
+| Job | What it does |
+|-----|--------------|
+| `discover` | Renders every chart (`platform/*/` + `apps/*/`, same repo/dependency prep as Validate, `s3.tailnetFqdn=s3-validate.invalid` for Velero) and collects the unique `image:` refs into a JSON array output (`images`) — no hardcoded list, so Renovate bumps are scanned automatically |
+| `trivy-images` | [`aquasecurity/trivy-action@v0.36.0`](https://github.com/aquasecurity/trivy-action) matrix over `fromJson(needs.discover.outputs.images)` with `severity: HIGH,CRITICAL`, `ignore-unfixed: true`, `limit-severities-for-sarif: "true"` — per image a visible `table` scan plus a `sarif` scan uploaded via `github/codeql-action/upload-sarif@v4` (`if: always()`, `category: trivy-<sanitized-name>`) |
+| `trivy-config` | `scan-type: config`, `scan-ref: .` → `trivy-config.sarif` + SARIF upload — complements the PSA restricted policy (v2) |
+
+All jobs run with `permissions: contents: read` + `security-events: write` (least privilege for SARIF upload) and image scans are **non-blocking** (`continue-on-error: true`) because the `:latest` tags drift daily and fail day 1. Image names contain `/` and `:`, so the SARIF filename is derived in bash (`safe=${IMAGE//[:\/]/_}`). A chart that fails to render is skipped with a warning instead of breaking discovery; empty discovery fails loudly rather than passing vacuously. Consciously accepted CVEs go in `.trivyignore` (one per line, with justification).
+
+Non-blocking policy + follow-ups: pin images to digests → drop `continue-on-error` (fail-closed) → gate deploy on Security. Renovate's `github-actions` manager already groups these actions for automatic weekly bumps.
+
+Local equivalent: `just scan` (same discovery loop + `HIGH,CRITICAL` table summary; soft-fails if `trivy` is not installed — heavy network pulls, deliberately not part of `just validate`).
+
+### Secret scan (`Secret scan` step in `validate` job)
+
+`detect-secrets-hook --baseline .secrets.baseline` fails the run on any new potential secret; the baseline is never auto-updated (audit locally with `detect-secrets audit .secrets.baseline`). Same hook runs locally via `pre-commit install` — see [Getting Started](./getting-started.md#pre-commit-fast-local-checks).
+
 ## Quality gates
 
 | Gate | How | Where |
@@ -156,6 +178,8 @@ Local equivalent: `just validate` (same checks, no creds). Sub-recipes: `just va
 | Shell lint | `shellcheck bootstrap/init-gitops.sh` + `platform/vault/scripts/bootstrap-vault.sh` | `validate.yaml`, `just validate-scripts` |
 | YAML syntax | `PyYAML safe_load_all` (Helm templates skipped) + `.yamllint.yaml` | `validate.yaml`, `just validate-yaml` |
 | JSON syntax | `python3 -m json.tool` over `**/*.json` | `validate.yaml`, `just validate-json` |
+| Secret scan | `detect-secrets-hook --baseline .secrets.baseline` (fail on new) | `validate.yaml`, `.pre-commit-config.yaml` |
+| Image scan | `trivy-action@v0.36.0`, `HIGH,CRITICAL` + SARIF (non-blocking until pinned) | `security.yaml` (`trivy-images` + `trivy-config`), `just scan`, `.trivyignore` |
 | Full local CI | `just validate` (gitops + platform + scripts + yaml + json) | `justfile` |
 | Hardened inputs | `helm lint` strict, `null` guards in bootstrap, CSI wait gate before Vault | [Getting Started](./getting-started.md), `bootstrap/init-gitops.sh` |
 
@@ -183,6 +207,7 @@ Local equivalent: `just validate` (same checks, no creds). Sub-recipes: `just va
 | `validate-scripts` | `shellcheck bootstrap/init-gitops.sh` + `platform/vault/scripts/bootstrap-vault.sh` (soft-fail if missing) |
 | `validate-yaml` | `PyYAML` sanity + `yamllint -c .yamllint.yaml gitops/ platform/ bootstrap/` |
 | `validate-json` | `python3 -m json.tool` over `**/*.json` |
+| `scan` | Discover images from charts + `trivy image --severity HIGH,CRITICAL` per image (soft-fail if missing; not part of `validate`) |
 | `sync` | `kubectl apply -n argocd -f gitops/` — force ArgoCD sync (App-of-Apps) |
 | `diff` | `helm diff upgrade --install gitops gitops/ -n argocd -f gitops/values.yaml` or `helm template` fallback |
 | `docs` | `ls -1 docs/*.md docs/**/*.md` |

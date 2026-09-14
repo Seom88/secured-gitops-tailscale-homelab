@@ -1,0 +1,18 @@
+apiVersion: v2
+name: trivy-operator
+description: "In-cluster vulnerability/config scanning: Trivy Operator reports + metrics (complements CI Trivy scans)"
+type: application
+version: 1.0.0
+appVersion: "0.34.0"
+home: https://github.com/aquasecurity/trivy-operator
+icon: https://raw.githubusercontent.com/aquasecurity/trivy-operator/main/docs/images/trivy-operator-logo.png
+sources:
+  - https://github.com/aquasecurity/trivy-operator
+maintainers:
+  - name: Seom88
+    url: https://github.com/Seom88
+
+dependencies:
+  - name: trivy-operator
+    version: 0.36.0
+    repository: https://aquasecurity.github.io/helm-charts

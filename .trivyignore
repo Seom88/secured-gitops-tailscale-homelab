@@ -1,0 +1,15 @@
+# .trivyignore — accepted CVEs (one `CVE-YYYY-NNNN` per line, optional trailing comment).
+#
+# Usage: Trivy drops any finding listed here from the CI report, so use this
+# file only for vulnerabilities you consciously accept (e.g. no upstream fix
+# yet, or not exploitable in this deployment). Every entry MUST carry a short
+# justification and, when possible, an expiry/review date.
+#
+# Example:
+#   CVE-2024-12345  # nginx:1.29-alpine — no fixed release yet, re-check 2026-12-01
+#
+# No local Trivy run was available when this file was created, so it starts
+# empty on purpose: run `trivy image <image>` (or the CI `scan` job), triage
+# HIGH/CRITICAL findings, and add accepted CVEs here with justification.
+# Follow-up: publish SARIF to GitHub code scanning (needs a separate job with
+# `permissions: security-events: write`; current workflows keep `contents: read`).

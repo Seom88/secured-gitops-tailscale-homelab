@@ -88,3 +88,14 @@ If you have the Tailscale operator configured, your services will be reachable t
   open https://vault-my-cluster.lonk-mirfak.ts.net/      # Vault is a dedicated device (no subpath)
   ```
    Services use single-host path routing; per-service hostnames are not used. Vault is available at its dedicated device `https://vault-my-cluster.lonk-mirfak.ts.net`.
+
+## Pre-commit (fast local checks)
+
+This repo ships a `.pre-commit-config.yaml` with fast local checks. Enable it once with `pre-commit install` (after `pip install pre-commit`):
+
+- `detect-secrets` (gated by `.secrets.baseline`) — blocks commits introducing new potential secrets; CI re-checks every push via the `Secret scan` step in `validate.yaml`. If the hook flags a false positive, mark it inline with `# pragma: allowlist secret`, or — for a genuinely safe pattern — run `detect-secrets audit .secrets.baseline` to record the verdict; never hand-edit or auto-regenerate the baseline to make CI pass.
+- `check-yaml` / `check-json` (`pre-commit-hooks`) — syntax check staged YAML/JSON files, replacing the old custom sanity loops.
+- `yamllint` (`-c .yamllint.yaml`) — style lint for staged YAML.
+- `shellcheck` (binary download, no system dependency) — lint staged shell scripts.
+
+Helm templates (`(platform|apps|gitops)/*/templates/`, `platform/longhorn/charts/`) are excluded from `check-yaml`/`yamllint` — they contain Go sprig (`{{ }}`), which is not valid YAML; `helm lint` owns them. Hook revs are bumped automatically by Renovate's `pre-commit` manager.

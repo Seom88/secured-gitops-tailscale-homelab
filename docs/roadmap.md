@@ -1,6 +1,6 @@
 # Roadmap
 
-**Status:** v1.0-beta · Cilium 1.20.1 (ADR-014) · Last updated: 05 Sep 2026
+**Status:** v1.0-beta · Cilium 1.20.1 (ADR-014) · Last updated: 14 Sep 2026
 
 This document tracks what is currently deployed in the cluster, what is required to complete the **v1.0.0** release, and what is planned for **v2.0**. The cluster uses Cilium 1.20.1 + Gateway API 1.2.3 + CiliumNetworkPolicy (ADR-014); subsequent releases are expected to be additive. The [README](./README.md) contains a short summary and links here.
 
@@ -8,14 +8,16 @@ This document tracks what is currently deployed in the cluster, what is required
 
 ## Where the project stands today
 
-The cluster runs on end-to-end GitOps: ArgoCD as the App-of-Apps, Vault HA for secrets, Tailscale as the single ingress point, and distributed storage via Longhorn + SeaweedFS. On top of that there's a CI layer that validates every push (`validate.yaml`) and a controlled, manual workflow for deploys (`deploy.yaml`).
+The cluster runs on end-to-end GitOps: ArgoCD as the App-of-Apps, Vault HA for secrets, Tailscale as the single ingress point, and distributed storage via Longhorn + SeaweedFS. On top of that there's a CI layer that validates every push (`validate.yaml`), scans images and misconfigs weekly (`security.yaml`), and a controlled workflow for deploys (`deploy.yaml`).
 
 **What's already running in CI/CD**, verified directly against `.github/workflows/`:
-- `validate.yaml`: Helm dependency builds, `helm lint` and `helm template` (both prod and dev values), ShellCheck on the bootstrap scripts, YAML/JSON sanity checks, and `yamllint` as a non-blocking extra check.
-- `deploy.yaml`: manual deploy via `workflow_dispatch` (not on every push), with environment selection (prod/dev), a Tailscale connection step, kubeconfig retrieval from Terraform state, and a `force_reapply` flag for safe retries.
-- `renovate.json`: weekly updates (Mondays before 5am), with differentiated rules — critical cluster components (Vault, Longhorn, cert-manager) require explicit manual review via labels, while non-critical charts and GitHub Actions are grouped and auto-merged.
+- `validate.yaml`: Helm dependency builds, `helm lint` and `helm template` (both prod and dev values), secret scan (`detect-secrets` baseline-gated), ShellCheck on the bootstrap scripts, YAML/JSON sanity checks, and `yamllint` as a non-blocking extra check.
+- `security.yaml`: Trivy image scans over the dynamically discovered chart images (matrix from rendered manifests) + repo misconfig scan, SARIF upload to code scanning, weekly cron — non-blocking until images are pinned to digests.
+- `deploy.yaml`: auto-deploy on `Validate` success (main) plus manual `workflow_dispatch` with environment selection (prod/dev), a Tailscale connection step, kubeconfig retrieval from Terraform state, and a `force_reapply` flag for safe retries.
+- Pre-commit (local mirror of the fast gates): `detect-secrets`, `check-yaml`/`check-json`, `yamllint`, `shellcheck`; `just validate` + `just scan` as local mirrors.
+- `renovate.json`: weekly updates (Mondays before 5am), with differentiated rules — critical cluster components (Vault, Longhorn, cert-manager) require explicit manual review via labels, while non-critical charts and GitHub Actions are grouped and auto-merged; regex managers also cover hardcoded images and `HELM_VERSION`.
 
-That's already a real, guided CI/CD foundation — not a full DevSecOps pipeline yet (still missing image scanning, git secrets detection, network policies, etc.), but not "nothing" either.
+That's already a real, guided CI/CD foundation with image scanning and secrets detection live (both non-blocking) — not a full DevSecOps pipeline yet (still missing fail-closed gates, completed network policies, audit logging, etc.), but not "nothing" either.
 
 ---
 
@@ -40,7 +42,7 @@ The scope for v1.0 is defined as Phases 1 through 4. Items previously labeled "P
 
 - [x] Monitoring stack deployed (Prometheus + Grafana + Loki + Alloy — Alloy `chart 1.12.1` DaemonSet via `discovery.kubernetes` → `loki.source.kubernetes` → `loki.write` to Loki gateway; stateless, RBAC auto-created; replaces Promtail — deprecated)
 - [x] Dashboards reachable via Tailscale ingress (Grafana at `/grafana`, Prometheus at `/prometheus`; Loki datasource with `X-Scope-OrgID: fake`, Explore + LogQL)
-- [x] CI pipeline — `validate.yaml` (lint, render, ShellCheck, sanity checks) + `deploy.yaml` (guided, manual deploy)
+- [x] CI pipeline — `validate.yaml` (lint, render, secret scan, ShellCheck, sanity checks) + `security.yaml` (Trivy images + misconfig, SARIF, weekly cron, non-blocking) + `deploy.yaml` (auto on Validate success + guided manual deploy)
 - [x] Renovate — weekly updates with mandatory manual review for critical components (Vault, Longhorn, cert-manager) and grouped automerge for the rest
 
 ### Phase 3 — Storage & Scale ✅ Complete
@@ -58,18 +60,15 @@ Remaining scope for v1.0.0. The Cilium CNI (breaking change at the infrastructur
 - [x] Cilium CNI (eBPF, Gateway API, CiliumNetworkPolicy) — Cilium 1.20.1 + Gateway API 1.2.3 (ADR-014) — NetworkPolicy enforcement, Hubble observability, eBPF kubeProxyReplacement
 
 **Security hardening (requires Cilium, planned for v1.0.0):**
-- [ ] Complete NetworkPolicies (default deny-all + explicit allows) — requires Cilium
-- [ ] Pod Security Admission in `restricted` mode
-- [ ] Container image vulnerability scanning (Trivy) integrated into CI
-- [ ] Git secrets detection (`detect-secrets`) before every commit/push
-- [ ] Security architecture documentation (minimal threat model, attack surface, incident response)
+- [ ] Container image vulnerability scanning (Trivy) integrated into CI — non-blocking `Security` workflow live; fail-closed after digest pinning
+- [x] Git secrets detection (`detect-secrets`) — pre-commit hook + `.secrets.baseline` (audited) + CI step, fails on new secrets
 
 **Developer experience (v1.0):**
 - [x] Bootstrap guard with `--force` flag for safe reapply
 - [x] Status verifier (rerun bootstrap to check cluster health)
-- [x] `just validate` as a local mirror of CI validation
-- [x] Real application example deployed (Homepage — lightweight dashboard as first real app, wave 3 `apps/homepage`)
-- [ ] Customization guide tested end-to-end
+- [x] `just validate` + `just scan` as local mirrors of CI validation (incl. Trivy summary table)
+- [x] Pre-commit fast gates (secrets, yaml/json, yamllint, shellcheck)
+- [x] Real application example deployed (Homepage v2.3.0 pinned via `.Values.image`, wave 3 `apps/homepage`)
 
 ---
 
@@ -124,17 +123,30 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 
 ### Compliance & policy
 
+- Pod Security Admission `restricted` rollout — Talos enforces `baseline` by default; 6 infra namespaces stay `privileged` by exception (Longhorn, monitoring, etc.); homepage is restricted-ready pilot — moved from v1, requires full project to validate
+- NetworkPolicy gap-closing & hardening — per-namespace allows exist (10 charts); missing policies for external-secrets/argocd, Vault Raft 8201 audit, tighten broad allows — moved from v1, must re-validate with every new app
+- Security architecture documentation (minimal threat model, attack surface, incident response) — moved from v1
 - Kyverno — admission-time policy enforcement (policy-as-code)
 - CIS Benchmark — automated Kubernetes security validation
 - RBAC audit — access pattern reports
 - Compliance dashboard (SOC 2 / PCI-DSS) in Grafana
 
-### Operational excellence
+### Observability & audit
 
 - Centralized audit logging (Kubernetes API + Vault → Loki) — moved from v1, requires infra-talos-homelab changes + control-plane restart
-- Automated secrets rotation (Tailscale, S3, API keys) via CronJob
+
+### Supply chain & image security
+
 - Supply chain hardening — chart signing, SBOM, dependency scanning
+- Trivy Operator via ArgoCD (`trivy-system`, automated sync, `ignoreUnfixed: true`) — ✅ chart + Application added (`platform/trivy-operator`, wave 3); continuous in-cluster scanning every 6h, results as CRDs integrated with Prometheus; complements CI-time `Security` workflow
+
+### Backup & recovery
+
 - Velero restore drills (RTO/RPO validation)
+
+### Automation
+
+- Automated secrets rotation (Tailscale, S3, API keys) via CronJob
 
 ### Python automation & image security
 
@@ -142,6 +154,10 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 - Infrastructure tests with pytest + testinfra (Vault unsealed, ArgoCD healthy, secrets synced, no root pods)
 - Observability exporter with custom Prometheus metrics (Vault seal state, ArgoCD drift, Longhorn rebuilds)
 - Automated compliance scanning (CIS, PCI-DSS checklist, policy violation alerts)
+
+### Documentation & onboarding
+
+- Customization guide refreshed (current `platform/*.yaml` layout + real wave table) and tested end-to-end — moved from v1, waits until the app set stabilizes (v2 changes ingress)
 
 ---
 
@@ -156,22 +172,25 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 - [x] Prometheus + Grafana + Loki + Alloy (DaemonSet log collector)
 - [x] Velero — backup/restore (Wave 0, RustFS S3, chart `12.1.0`)
 - [x] Validation CI (GitHub Actions)
+- [x] Git secrets gate (pre-commit + baseline + CI step)
+- [x] Trivy `Security` workflow (non-blocking image + misconfig scans, SARIF)
 - [x] Architecture Decision Records
 
 **Still pending for v1.0:**
 - [x] Cilium CNI (eBPF, Gateway API, CiliumNetworkPolicy) — Cilium 1.20.1 + Gateway API 1.2.3 (ADR-014) ✅ Complete
-- [x] CiliumNetworkPolicy — 9 charts with allow-dns / allow-egress / allow-ingress (ADR-014) ✅ Complete
-- [ ] Pod Security Admission `restricted`
-- [ ] Trivy in CI
-- [ ] Git secrets detection (`detect-secrets`)
-- [ ] Security architecture documentation (minimal threat model)
-- [x] Real application example (Homepage, wave 3 `apps/homepage`)
-- [ ] Customization guide tested end-to-end
+- [x] CiliumNetworkPolicy — 10 charts with allow-dns / allow-egress / allow-ingress (ADR-014) ✅ Complete
+- [ ] Trivy in CI (non-blocking `Security` workflow live; fail-closed after digest pinning)
+- [x] Git secrets detection (`detect-secrets` hook + baseline + CI step) ✅ Complete
+- [x] Real application example (Homepage v2.3.0 pinned, wave 3 `apps/homepage`)
 
 **Planned for v2.0:**
 - [ ] Decoupling & vendor-agnostic ingress — Gateway API BYOD (Envoy Gateway, `GatewayClass: tailscale`; 4→3 devices — `vault-my-cluster` merged into `gateway-envoy`; MagicDNS kept, own-domain split DNS deferred)
-- [ ] Compliance & policy (Kyverno, CIS Benchmark, RBAC audit, compliance dashboard)
-- [ ] Operational excellence (centralized audit logging, automated secrets rotation, supply chain hardening, Velero restore drills)
+- [ ] Compliance & policy (PSA restricted rollout, NetworkPolicy hardening, threat-model doc, Kyverno, CIS Benchmark, RBAC audit, compliance dashboard)
+- [ ] Documentation & onboarding (customization guide refresh + e2e)
+- [ ] Observability & audit (centralized audit logging)
+- [ ] Supply chain & image security (supply chain hardening + Trivy Operator)
+- [ ] Backup & recovery (Velero restore drills)
+- [ ] Automation (secrets rotation via CronJob)
 - [ ] Python automation & image security (Ops CLI, infrastructure tests, observability exporter, compliance scanning)
 
 ---

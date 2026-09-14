@@ -1,0 +1,160 @@
+# Security — image + config vulnerability scans (read-only, no cluster).
+# Runs weekly (cron) because images accumulate CVEs without repo changes.
+# NON-BLOCKING (`continue-on-error: true`) until images are pinned to digests —
+# the `:latest` tags drift daily and fail day 1. Tighten to fail-closed once
+# pinned. The deploy gate intentionally stays on Validate (see deploy.yaml):
+# gating deploy on a non-blocking scan is theater — wire fail-closed + gate
+# deploy only after digests are pinned.
+name: Security
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 4 * * 1'
+
+permissions:
+  contents: read
+
+env:
+  HELM_VERSION: v3.18.4
+
+jobs:
+  # Dynamic image discovery: render every chart (platform/* + apps/*) and
+  # collect unique `image:` refs, so Renovate bumps are scanned without
+  # anyone maintaining a hardcoded list. trivy-images consumes the JSON.
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      images: ${{ steps.collect.outputs.images }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Helm (${{ env.HELM_VERSION }})
+        uses: azure/setup-helm@v5
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Discover runtime images from charts
+        id: collect
+        run: |
+          helm repo add longhorn https://charts.longhorn.io >/dev/null 2>&1 || true
+          helm repo add grafana https://grafana.github.io/helm-charts >/dev/null 2>&1 || true
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null 2>&1 || true
+          helm repo add seaweedfs https://seaweedfs.github.io/seaweedfs/helm >/dev/null 2>&1 || true
+          helm repo add tailscale https://pkgs.tailscale.com/helmcharts >/dev/null 2>&1 || true
+          helm repo add hashicorp https://helm.releases.hashicorp.com >/dev/null 2>&1 || true
+          helm repo add aquasecurity https://aquasecurity.github.io/helm-charts >/dev/null 2>&1 || true
+          helm repo update >/dev/null 2>&1 || true
+          imglist="$(mktemp)"
+          for dir in platform/*/ apps/*/; do
+            if [ ! -f "${dir}Chart.yaml" ]; then continue; fi
+            name="$(basename "$dir")"
+            helm dependency update "$dir" >/dev/null 2>&1 || helm dependency build "$dir" >/dev/null 2>&1 || true
+            # Velero s3.tailnetFqdn is required (CI-supplied) — render with a test value.
+            extra=""
+            if [ "$dir" = "platform/velero/" ]; then
+              extra="--set s3.tailnetFqdn=s3-validate.invalid"
+            fi
+            # shellcheck disable=SC2086
+            if ! rendered="$(helm template "$name" "$dir" $extra 2>/dev/null)"; then
+              echo "::warning::could not render $dir — skipping"
+              continue
+            fi
+            printf '%s\n' "$rendered" | awk '/^[[:space:]]*image:[[:space:]]/ && !/\{\{/ {sub(/^[[:space:]]*image:[[:space:]]+/, ""); gsub(/^"|"$|^[ \t]+|[ \t]+$/, ""); if ($0 != "") print}' >> "$imglist" || true
+          done
+          images_json="$(sort -u "$imglist" | grep -v '^$' | jq -R -s -c 'split("\n") | map(select(length > 0))')"
+          rm -f "$imglist"
+          if [ "$images_json" = "[]" ]; then
+            echo "::error::no images discovered from charts"
+            exit 1
+          fi
+          echo "Discovered: $images_json"
+          echo "images=$images_json" >> "$GITHUB_OUTPUT"
+
+  trivy-images:
+    needs: [discover]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJson(needs.discover.outputs.images) }}
+    steps:
+      - name: Derive sanitized image name
+        id: name
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: echo "safe=${IMAGE//[:\/]/_}" >> "$GITHUB_OUTPUT"
+
+      - name: Trivy image scan (table, ${{ matrix.image }})
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ matrix.image }}
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          limit-severities-for-sarif: "true"
+        # Non-blocking until images are pinned to digests.
+        continue-on-error: true
+
+      - name: Trivy image scan (SARIF, ${{ matrix.image }})
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ matrix.image }}
+          format: sarif
+          output: trivy-${{ steps.name.outputs.safe }}.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          limit-severities-for-sarif: "true"
+        # Non-blocking until images are pinned to digests.
+        continue-on-error: true
+
+      - name: Upload SARIF (${{ matrix.image }})
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: trivy-${{ steps.name.outputs.safe }}.sarif
+          category: trivy-${{ steps.name.outputs.safe }}
+
+  trivy-config:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Trivy config scan (SARIF)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          format: sarif
+          output: trivy-config.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          limit-severities-for-sarif: "true"
+        # Non-blocking: complements the PSA restricted policy (v2) — advisory until tuned.
+        continue-on-error: true
+
+      - name: Upload SARIF (config)
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: trivy-config.sarif
+          category: trivy-config

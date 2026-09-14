@@ -22,11 +22,18 @@ spec:
     spec:
       serviceAccountName: homepage
       automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       dnsPolicy: ClusterFirst
       enableServiceLinks: true
       containers:
         - name: homepage
-          image: "ghcr.io/gethomepage/homepage:latest"
+          image: {{ .Values.image | quote }}
           imagePullPolicy: Always
           securityContext:
             allowPrivilegeEscalation: false

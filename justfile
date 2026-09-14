@@ -393,6 +393,86 @@ validate-json:
     fi
     echo "✅ validate-json: OK"
 
+# ── Security (local — mirrors CI security.yaml; heavy, NOT in validate chain) ─
+
+# Trivy image scan (HIGH,CRITICAL) — images discovered dynamically from charts (no hardcoded list); soft-fail if trivy not installed; network pulls, keep out of `validate`
+scan:
+    #!/usr/bin/env bash
+    set -e
+    if ! command -v trivy >/dev/null 2>&1; then
+      echo "⚠️  trivy not found — skipping (install with: https://aquasecurity.github.io/trivy/latest/getting-started/installation/)"
+      echo "   CI still runs trivy in security.yaml; local check is non-blocking"
+      exit 0
+    fi
+    if ! command -v jq >/dev/null 2>&1; then
+      echo "⚠️  jq not found — summary needs it (showing full tables instead)"
+      JQ=0
+    else
+      JQ=1
+    fi
+    # ── Discover images dynamically: render every chart, collect unique image: refs ──
+    # Same repo/dependency prep as validate-platform (idempotent adds); a chart
+    # that needs cluster values and fails to render locally is skipped with a
+    # warning instead of breaking the scan.
+    helm repo add longhorn https://charts.longhorn.io >/dev/null 2>&1 || true
+    helm repo add grafana https://grafana.github.io/helm-charts >/dev/null 2>&1 || true
+    helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null 2>&1 || true
+    helm repo add seaweedfs https://seaweedfs.github.io/seaweedfs/helm >/dev/null 2>&1 || true
+    helm repo add tailscale https://pkgs.tailscale.com/helmcharts >/dev/null 2>&1 || true
+    helm repo add hashicorp https://helm.releases.hashicorp.com >/dev/null 2>&1 || true
+    helm repo add aquasecurity https://aquasecurity.github.io/helm-charts >/dev/null 2>&1 || true
+    helm repo update >/dev/null 2>&1 || true
+    imglist="$(mktemp)"
+    for dir in platform/*/ apps/*/; do
+      if [ ! -f "${dir}Chart.yaml" ]; then continue; fi
+      name="$(basename "$dir")"
+      helm dependency update "$dir" >/dev/null 2>&1 || helm dependency build "$dir" >/dev/null 2>&1 || true
+      # Velero s3.tailnetFqdn is required (CI-supplied) — render with a test value.
+      extra=""
+      if [ "$dir" = "platform/velero/" ]; then
+        extra="--set s3.tailnetFqdn=s3-validate.invalid"
+      fi
+      # shellcheck disable=SC2086
+      if ! rendered="$(helm template "$name" "$dir" $extra 2>/dev/null)"; then
+        echo "  ⚠️  scan: could not render $dir locally — skipping (chart needs cluster values)"
+        continue
+      fi
+      printf '%s\n' "$rendered" | awk '/^[[:space:]]*image:[[:space:]]/ && !/\{\{/ {sub(/^[[:space:]]*image:[[:space:]]+/, ""); gsub(/^"|"$|^[ \t]+|[ \t]+$/, ""); if ($0 != "") print}' >> "$imglist" || true
+    done
+    images="$(sort -u "$imglist" | grep -v '^$' || true)"
+    rm -f "$imglist"
+    if [ -z "$images" ]; then
+      echo "❌ scan: no images discovered — refusing to pass vacuously" >&2
+      exit 1
+    fi
+    echo "==> scan: discovered $(printf '%s\n' "$images" | wc -l | xargs) image(s) from charts (no hardcoded list)"
+    failed=0
+    printf '%-42s %8s %8s %8s\n' IMAGE CRITICAL HIGH TOTAL
+    while IFS= read -r image; do
+      out="$(mktemp)"
+      # --exit-code 1: findings must flip the summary (trivy defaults to 0).
+      # --ignore-unfixed + --scanners vuln: cut unactionable noise.
+      if trivy image --severity HIGH,CRITICAL --ignore-unfixed --scanners vuln --exit-code 1 --format json --output "$out" --quiet "$image" >/dev/null 2>&1; then
+        crit=0; high=0
+      else
+        failed=1
+        if [ "$JQ" = "1" ]; then
+          crit=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' "$out")
+          high=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' "$out")
+        else
+          crit="?"; high="?"
+        fi
+      fi
+      if [ "$JQ" = "1" ]; then total=$((crit + high)); else total="?"; fi
+      printf '%-42s %8s %8s %8s\n' "$image" "$crit" "$high" "$total"
+      rm -f "$out"
+    done <<< "$images"
+    if [ "$failed" != "0" ]; then
+      echo "⚠️  scan: findings reported (non-blocking until digests pinned; details: trivy image <name> or CI logs)"
+    else
+      echo "✅ scan: OK"
+    fi
+
 # ── GitOps ────────────────────────────────────
 
 # Force ArgoCD sync (App of Apps)
