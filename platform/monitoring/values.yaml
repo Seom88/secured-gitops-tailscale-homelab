@@ -109,6 +109,32 @@ loki:
 
 # Configuration for the Kube-Prometheus-Stack subchart
 kube-prometheus-stack:
+  # Control-plane scrapes: kube-scheduler and kube-controller-manager bind
+  # ports that are unreachable from Prometheus in this cluster (up==0 with
+  # 10s scrape timeouts sustained over the full sampler window, contributing
+  # only up/scrape meta-series). Disabling their ServiceMonitors removes the
+  # stalled scrape workers and error churn with zero usable-series loss; the
+  # chart also gates their KubeSchedulerDown/KubeControllerManagerDown alerts
+  # on these flags, so no absent-target alert fires.
+  kubeScheduler:
+    enabled: false
+  kubeControllerManager:
+    enabled: false
+
+  # API-server cardinality diet: ~43% of TSDB head series come from the
+  # apiserver job, ~23k of them verbose debug histogram buckets
+  # (request-body/response-size/watch internals) consumed by no bundled rule
+  # or dashboard. Dropping those families at scrape time cuts ~12% of
+  # appended samples while keeping request_total, request_duration and the
+  # SLI families that feed the burn-rate rules and API-server dashboard, so
+  # alerting and latency visibility are unchanged.
+  kubeApiServer:
+    serviceMonitor:
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          regex: "apiserver_(request_body_size_bytes|response_sizes|watch_list_duration_seconds|watch_cache_read_wait_seconds|watch_events_sizes)_(bucket|sum|count)"
+          action: drop
+
   # Grafana configuration
   grafana:
     admin:
