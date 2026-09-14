@@ -8,6 +8,9 @@
 # `trivy-operator.trivy.ignoreUnfixed` here. A top-level `trivy:` key would
 # be dead values — Helm only forwards the subchart-name subtree.
 trivy-operator:
+  operator:
+    # + OOMKilled on small Talos nodes. 2 is slower on first sync but stable.
+    scanJobsConcurrentLimit: 2
   trivy:
     # Show only vulnerabilities with a known fix (same policy as
     # CI `--ignore-unfixed`: cuts unactionable noise).
