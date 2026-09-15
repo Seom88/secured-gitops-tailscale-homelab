@@ -15,22 +15,44 @@ trivy-operator:
   # NOTE: subchart-top-level key (sibling of `operator:`/`trivy:`), NOT `operator.excludeNamespaces`.
   excludeNamespaces: "kube-system,monitoring"
   operator:
-    # + OOMKilled on small Talos nodes. 2 is slower on first sync but stable.
     scanJobsConcurrentLimit: 2
+    scanJobTimeout: 15m
     # Disabled: node-collector relies on mutable host rootfs, incompatible with Talos immutable OS.
     infraAssessmentScannerEnabled: false
+    # Built-in server caches trivy-db (113MiB) on a Longhorn PVC so every
+    # scan Job uses ClientServer mode instead of re-downloading from mirror.gcr.io.
+    # Eliminates per-Job EOF flakes and rate-limit pressure on small Talos nodes.
+    builtInTrivyServer: true
   trivy:
     # Show only vulnerabilities with a known fix (same policy as
     # CI `--ignore-unfixed`: cuts unactionable noise).
     ignoreUnfixed: true
+    slow: true
+    timeout: 10m
+    # Cache persistence for builtInTrivyServer — Longhorn PVC (5Gi conservative
+    # for limited resources) holds DB across Job restarts.
+    storageClassName: longhorn
+    storageSize: 5Gi
+    storageClassEnabled: true
+    server:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+          ephemeral-storage: 512Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
+          ephemeral-storage: 2Gi
     resources:
       requests:
-        # Lean homelab sizing (prod): minimal scheduling floor so scan jobs
-        # still run on small Talos nodes (memory floor pre-existing).
-        cpu: 50m
+        # Talos has immutable dirs (/etc, /var read-only overlays) and
+        # kubelet ephemeral-storage eviction; explicit requests/limits
+        # prevent 0-storage scheduling and eviction on small nodes.
+        cpu: 100m
         memory: 256Mi
+        ephemeralStorage: 512Mi
       limits:
-        # CPU cap keeps scan bursts (peaks 40-47% cluster) from starving
-        # neighbors; memory floor pre-existing (raised from 500M chart default).
-        cpu: 600m
-        memory: 1Gi
+        cpu: 1000m
+        memory: 1536Mi
+        ephemeralStorage: 3Gi

@@ -1,9 +1,36 @@
 # Dev overlay — merges on top of values.yaml (prod). Loaded only when
 # developmentApp.enabled (ArgoCD ignoreMissingValueFiles), so prod never sees it.
 trivy-operator:
+  operator:
+    scanJobsConcurrentLimit: 2
+    scanJobTimeout: 15m
+    builtInTrivyServer: true
   trivy:
-    # Dev sizing: full floor and cap so parallel image scans run without
-    # starving neighbors; prod stays lean and throttles bursts visibly.
+    # Mirrors prod policy: ignoreUnfixed + slow + 10m timeout; dev inherits
+    # prod but explicitly pins 1536Mi per user decision (limited resources).
+    ignoreUnfixed: true
+    slow: true
+    timeout: 10m
+    storageClassName: longhorn
+    storageSize: 5Gi
+    storageClassEnabled: true
+    server:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+          ephemeral-storage: 512Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
+          ephemeral-storage: 2Gi
     resources:
-      requests: { cpu: 100m, memory: 256Mi }
-      limits: { cpu: 1000m, memory: 1Gi }
+      requests:
+        # Talos immutable OS needs explicit ephemeral-storage (see values.yaml).
+        cpu: 100m
+        memory: 256Mi
+        ephemeralStorage: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1536Mi
+        ephemeralStorage: 3Gi
