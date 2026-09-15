@@ -80,6 +80,14 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
+    # ClientServer mode: scan jobs -> trivy-server:4954 (builtInTrivyServer)
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: trivy-system
+      toPorts:
+        - ports:
+            - port: "4954"
+              protocol: TCP
 ---
 # 3) Ingress — Prometheus scraping (monitoring) + kubelet probes (host).
 # No cluster-wide entity, no kube-apiserver ingress (webhook disabled).
@@ -108,5 +116,13 @@ spec:
             - port: "8080"
               protocol: TCP
             - port: "9090"
+              protocol: TCP
+    # ClientServer mode: scan jobs -> trivy-server:4954 (builtInTrivyServer)
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: trivy-system
+      toPorts:
+        - ports:
+            - port: "4954"
               protocol: TCP
 {{- end }}
