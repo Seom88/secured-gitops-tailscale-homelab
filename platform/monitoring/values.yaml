@@ -147,9 +147,10 @@ kube-prometheus-stack:
         domain: my-cluster.lonk-mirfak.ts.net
         root_url: https://my-cluster.lonk-mirfak.ts.net/grafana/
         serve_from_sub_path: true
-      # Enforce 1m minimum dashboard refresh: aligns with 60s scrapeInterval,
+      # Dashboard refresh floor 30s: global scrape stays 60s for energy,
+      # per-target fast scrapes (e.g. ecoflow 15-30s) render smoothly here.
       dashboards:
-        min_refresh_interval: 1m
+        min_refresh_interval: 30s
 
     # Add Loki as a data source
     additionalDataSources:
@@ -172,14 +173,15 @@ kube-prometheus-stack:
         folderAnnotation: grafana_folder
 
     # Lean homelab sizing (prod): dashboard rendering bursts fit the small
-    # request; idle is near zero.
+    # request; idle is near zero. Memory limit raised to 1Gi after observing
+    # 706Mi live usage against the old 768Mi cap (92% — OOM risk).
     resources:
       requests:
         cpu: 80m
         memory: 256Mi
       limits:
-        cpu: 500m
-        memory: 768Mi
+        cpu: 1000m
+        memory: 1024Mi
     livenessProbe:
       initialDelaySeconds: 90
     readinessProbe:
