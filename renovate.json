@@ -17,8 +17,8 @@
     },
     {
       "customType": "regex",
-      "description": "coredns-patch values with split repo/tag/digest",
-      "managerFilePatterns": ["^platform/coredns-patch/values\\.yaml$"],
+      "description": "Split repository/tag/digest image blocks in platform and app values (generic, covers present and future images)",
+      "managerFilePatterns": ["^platform/.*/values.*\\.yaml$", "^apps/.*/values.*\\.yaml$"],
       "matchStrings": ["repository:\\s*['\"]?(?<depName>[^\\s'\";]+)['\"]?\\s*\\n\\s*tag:\\s*['\"]?(?<currentValue>[^@'\"\\s]+)['\"]?(\\s*\\n\\s*digest:\\s*['\"]?(?<currentDigest>[^'\"\\s]+)['\"]?)?"],
       "datasourceTemplate": "docker"
     },
@@ -54,6 +54,11 @@
       "description": "Never use a release less than 1 day old - global setting already enforces this, except pinDigest",
       "matchDatasources": ["docker"],
       "minimumReleaseAge": "1 day"
+    },
+    {
+      "description": "Pin digests for all Docker images so tag bumps always refresh digests together",
+      "matchDatasources": ["docker"],
+      "pinDigests": true
     },
     {
       "description": "kubectl - group the 6 jobs, pin digest",

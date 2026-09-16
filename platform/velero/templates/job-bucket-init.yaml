@@ -30,7 +30,7 @@ spec:
           # Digest-pinned (fail-closed Trivy gate); Renovate-tracked (regex manager
           # covers platform/*/templates). Refresh:
           # skopeo inspect docker://amazon/aws-cli:<tag> | jq -r .Digest
-          image: amazon/aws-cli:2.36.44@sha256:e8467f2c319f9bc9a1471808a69949a76915e9c95eaf4a09ece9f9e85fd32747
+          image: amazon/aws-cli:2.36.47@sha256:b94fc7612d131f1a3cb76145ba3385c813ad7561ef2c2b60c89fbd5dfee93d39
           imagePullPolicy: IfNotPresent
           env:
             - name: AWS_EC2_METADATA_DISABLED
