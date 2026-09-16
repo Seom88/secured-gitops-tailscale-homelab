@@ -149,6 +149,10 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: us-east-1
+          AWS_ENDPOINT_URL_S3: ${{ env.S3_ENDPOINT }}
+          AWS_S3_FORCE_PATH_STYLE: "true"
+          AWS_EC2_METADATA_DISABLED: "true"
         run: |
           set -e
           ENV="${{ inputs.environment || 'prod' }}"
@@ -162,7 +166,9 @@ jobs:
           fi
 
           echo "→ terraform init -reconfigure ($TF_DIR)"
-          terraform -chdir="$TF_DIR" init -reconfigure -input=false
+          terraform -chdir="$TF_DIR" init -reconfigure -input=false \
+            -backend-config="endpoint=${{ env.S3_ENDPOINT }}" \
+            -backend-config="skip_s3_checksum=true"
 
           echo "→ terraform output -raw kubeconfig"
           if terraform -chdir="$TF_DIR" output -raw kubeconfig > /tmp/kubeconfig.yaml 2>/dev/null; then
@@ -175,6 +181,7 @@ jobs:
                 --bucket ${{ env.S3_BUCKET }} \
                 --key "proxmox/${ENV}/terraform.tfstate" \
                 --endpoint-url ${{ env.S3_ENDPOINT }} \
+                --region us-east-1 \
                 /tmp/tfstate.json 2>&1 || echo "S3 get-object failed"
               if [ -f /tmp/tfstate.json ]; then
                 jq -r '.outputs.kubeconfig.value // empty' /tmp/tfstate.json > /tmp/kubeconfig.yaml 2>/dev/null || true
