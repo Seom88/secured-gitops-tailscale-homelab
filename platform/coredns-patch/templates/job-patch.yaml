@@ -1,7 +1,3 @@
-{{- $imageTag := .Values.image.tag -}}
-{{- $cleanTag := first (splitList "@" $imageTag) -}}
-{{- $imageRepo := .Values.image.repository -}}
-{{- $imageDigest := .Values.image.digest -}}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -26,8 +22,8 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: patch
-          image: "{{ $imageRepo }}:{{ $cleanTag }}{{ if $imageDigest }}@{{ $imageDigest }}{{ end }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: "{{ .Values.image }}"
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
           # Short-lived kubectl job: 10m/100m keeps it schedulable without
           # reserving idle capacity.
           resources:

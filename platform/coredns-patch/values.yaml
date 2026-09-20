@@ -5,16 +5,13 @@ ciliumNetworkPolicy:
 dnsConfigName: ts-dns
 dnsConfigPollSeconds: 120
 dnsConfigPollInterval: 5
-# kubectl image with shell tools; digest-pinned for reproducibility.
+# kubectl image with shell tools; inline digest-pinned for reproducibility.
 # Bitnami publishes only the `latest` tag for kubectl (holds kubectl 1.37.0,
-# image build 2026-09-03) — the digest below is the actual pin. Refresh with
+# image build 2026-09-03) — the digest is the actual pin. Refresh with
 # skopeo inspect docker://bitnami/kubectl:latest | jq -r .Digest
-# (Renovate group `kubectl jobs` tracks tag+digest; refresh digest on tag bumps).
-image:
-  repository: bitnami/kubectl
-  tag: "latest"
-  digest: "sha256:b29d8c1665b70817259ceecaea16ab27aab6368b48daf485d19436c809067492"
-  pullPolicy: IfNotPresent
+# (Renovate group `kubectl jobs` tracks this line; digest bumps update it in place).
+image: bitnami/kubectl:latest@sha256:b29d8c1665b70817259ceecaea16ab27aab6368b48daf485d19436c809067492
+imagePullPolicy: IfNotPresent
 namespace: kube-system
 coredns:
   name: coredns

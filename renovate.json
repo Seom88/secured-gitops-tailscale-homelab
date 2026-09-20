@@ -11,7 +11,7 @@
     {
       "customType": "regex",
       "description": "Hardcoded k8s Job/CronJob images + app values image lines",
-      "managerFilePatterns": ["^platform/.*/templates/.*\\.yaml$", "^apps/.*/templates/.*\\.yaml$", "^apps/.*/values.*\\.yaml$"],
+      "managerFilePatterns": ["^platform/.*/templates/.*\\.yaml$", "^apps/.*/templates/.*\\.yaml$", "^apps/.*/values.*\\.yaml$", "^platform/coredns-patch/values\\.yaml$"],
       "matchStrings": ["image:\\s*['\"]?(?<depName>[^:'\"\\s]+):(?<currentValue>[^@'\"\\s]+)(?:@(?<currentDigest>sha256:[a-f0-9]+))?['\"]?"],
       "datasourceTemplate": "docker"
     },
