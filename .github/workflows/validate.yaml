@@ -30,7 +30,12 @@ jobs:
           python3 -m pip install --quiet detect-secrets==1.5.0
           # Fails on NEW secrets vs .secrets.baseline; never auto-updates it.
           # To accept a finding: `detect-secrets audit .secrets.baseline` locally.
-          git ls-files -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline
+          # SOPS ciphertext (*.enc.yaml) and public age keys (.sops.yaml) are excluded:
+          # ciphertext is safe-by-design and churns on every re-encryption
+          # (hash-baselining it would break CI on each rotation); .sops.yaml holds
+          # only public recipient keys. Templated placeholder field names stay scanned
+          # via the baseline.
+          git ls-files -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline --exclude-files '\.enc\.yaml$|\.sops\.yaml$'
 
       - name: Setup Helm (${{ env.HELM_VERSION }})
         uses: azure/setup-helm@v5
