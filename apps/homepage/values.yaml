@@ -8,3 +8,6 @@ ciliumNetworkPolicy:
 
 developmentApp:
   enabled: false
+
+vault:
+  enabled: false

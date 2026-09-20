@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Secret
+metadata:
+    name: grafana-admin-credentials
+    namespace: monitoring
+    annotations:
+        argocd.argoproj.io/sync-wave: "-1"
+stringData:
+    admin-user: ENC[AES256_GCM,data:AjCtXok=,iv:gxTtZB2bKws5Pz/4H6l3pjY1u8rgVwoMqRXD1IA4txA=,tag:0aaBXnolaAYcCj6VAReigQ==,type:str]
+    admin-password: ENC[AES256_GCM,data:2L13Pti/83TjnbuOn17C81I1BEkS3f4ELYkMUf7XGtuFux7oA2GLaUNlihI=,iv:W0fcPMQ1kDwgTGNVKbgPnR6RJVL46Dt6xH5YG06Qayo=,tag:V841Si5umiu3AmyXkc8qBw==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBDdTE2Tm53b0l3T3BLclJx
+            VXJaejV1ZWpkd0pGZ2pXclg2NmZhY1h4L2dRCnJjeWZFUXI0b1lUQkdoKy9VbHIx
+            cnU3cmxrTFZtMnNFbGFuWCtpQVVDWE0KLS0tIFBrdEtFNEY0NEtDd0RRVXhwTHdV
+            cDNBdEpnSncvZitTR3BKYUdwM1NiTEEK0L6ELKrO3rpIRzWjJoQp45Z6lcVJZHNM
+            szMpuQCdQAnkuN0BpXaEfY50oZ5QcprKihOVjqhrwcndkh2hM5ZHdQ==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1l8urdgwakvjweqwxuzma2k3lnz0rym2juyjn9uls330keufsqc7s65c5j5
+    encrypted_regex: ^(data|stringData)$
+    lastmodified: "2026-09-20T21:37:51Z"
+    mac: ENC[AES256_GCM,data:a42m2a25y1tbX2aQV+Wln23VT1irrxA2oU3A49R361nx7UEdMniNmdOTmbltLbz69urvepC/9HcuAoMJGLnJY0qJpDX8lfpkrq0SCwbQlhsPJHb9GRTRKKfuSwblwZpZtuWv4Cj8t/yWxIHf0eOFUko6TZKI0Agy1K0BZbgCSMk=,iv:pYrIjcVKljH9PihHzwJxxTfDYIiyShSkc2tqKrc3dmg=,tag:sf7ckEb/ccTqI1ZiIMaScg==,type:str]
+    version: 3.13.3

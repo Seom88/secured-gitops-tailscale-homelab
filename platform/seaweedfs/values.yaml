@@ -105,3 +105,7 @@ ciliumNetworkPolicy:
 
 developmentApp:
   enabled: false
+
+# See ADR 017
+vault:
+  enabled: false

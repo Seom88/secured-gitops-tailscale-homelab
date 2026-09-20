@@ -6,7 +6,6 @@ charts/
 .atl
 **/config.yaml
 **/*.env
-secrets/
 *asc
 *.tfstate*
 kubeconfig

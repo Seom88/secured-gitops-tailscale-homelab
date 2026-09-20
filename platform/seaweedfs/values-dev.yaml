@@ -30,3 +30,7 @@ seaweedfs:
 
 developmentApp:
   enabled: true
+
+# See ADR 017
+vault:
+  enabled: false

@@ -414,3 +414,7 @@ alloy:
         }
   controller:
     type: daemonset
+
+# See ADR 017
+vault:
+  enabled: false
