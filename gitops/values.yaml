@@ -15,3 +15,9 @@ veleroS3:
 
 developmentApp:
   enabled: false
+
+vault:
+  enabled: false
+
+eso:
+  enabled: false

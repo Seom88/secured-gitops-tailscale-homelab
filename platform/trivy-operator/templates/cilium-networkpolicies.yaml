@@ -1,8 +1,8 @@
 {{- if .Values.ciliumNetworkPolicy.enabled }}
 # CiliumNetworkPolicies for trivy-operator — scoped allowlist.
 # Upstream chart ships no NetworkPolicy; this mirrors the repo pattern
-# (velero/monitoring): separate DNS doc, port-scoped egress/ingress docs,
-# toFQDNs always paired with inline rules.dns in the same rule.
+# (velero/monitoring): separate DNS doc, port-scoped egress/ingress docs.
+# Registry egress is L4-only (toEntities world on 443) instead of toFQDNs.
 # Notes:
 # - Namespace `trivy-system` is hardcoded following the repo pattern.
 # - endpointSelector {} is intentional: scan Jobs share this namespace with
@@ -56,54 +56,19 @@ spec:
               protocol: TCP
             - port: "6443"
               protocol: TCP
-    # Trivy DB + container images via ghcr.io.
-    - toFQDNs:
-        - matchName: ghcr.io
-        - matchPattern: "*.ghcr.io"
+    # Trivy DB + scanned images via public registries (ghcr.io,
+    # pkg-containers.githubusercontent.com, docker.io, mirror.gcr.io).
+    # L4-only world egress on 443: the toFQDNs proxy path breaks outbound
+    # TLS on this cluster (redirect, zero drops, EOF mid-handshake; direct
+    # egress from unpolicied namespaces works), and scan jobs must reach
+    # whichever registry hosts the scanned image. DNS stays separately
+    # allowed in doc 1 above; port scope keeps default-deny for the rest.
+    - toEntities:
+        - world
       toPorts:
         - ports:
             - port: "443"
               protocol: TCP
-          rules:
-            dns:
-              - matchPattern: ghcr.io
-              - matchPattern: "*.ghcr.io"
-    # Trivy DB release assets.
-    - toFQDNs:
-        - matchName: pkg-containers.githubusercontent.com
-      toPorts:
-        - ports:
-            - port: "443"
-              protocol: TCP
-          rules:
-            dns:
-              - matchPattern: pkg-containers.githubusercontent.com
-    # Scanned public images via Docker Hub.
-    - toFQDNs:
-        - matchName: docker.io
-        - matchPattern: "*.docker.io"
-        - matchName: registry-1.docker.io
-        - matchName: auth.docker.io
-      toPorts:
-        - ports:
-            - port: "443"
-              protocol: TCP
-          rules:
-            dns:
-              - matchPattern: docker.io
-              - matchPattern: "*.docker.io"
-              - matchPattern: registry-1.docker.io
-              - matchPattern: auth.docker.io
-    # Default image pull-through mirror (chart default image.registry).
-    - toFQDNs:
-        - matchName: mirror.gcr.io
-      toPorts:
-        - ports:
-            - port: "443"
-              protocol: TCP
-          rules:
-            dns:
-              - matchPattern: mirror.gcr.io
     # Intra-cluster + node-scoped HTTPS (node-collector footprint,
     # in-cluster services). Port-scoped — refine via Hubble if flows show
     # additional ports.
@@ -114,6 +79,14 @@ spec:
       toPorts:
         - ports:
             - port: "443"
+              protocol: TCP
+    # ClientServer mode: scan jobs -> trivy-server:4954 (builtInTrivyServer)
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: trivy-system
+      toPorts:
+        - ports:
+            - port: "4954"
               protocol: TCP
 ---
 # 3) Ingress — Prometheus scraping (monitoring) + kubelet probes (host).
@@ -143,5 +116,13 @@ spec:
             - port: "8080"
               protocol: TCP
             - port: "9090"
+              protocol: TCP
+    # ClientServer mode: scan jobs -> trivy-server:4954 (builtInTrivyServer)
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: trivy-system
+      toPorts:
+        - ports:
+            - port: "4954"
               protocol: TCP
 {{- end }}

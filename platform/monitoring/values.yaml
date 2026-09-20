@@ -20,14 +20,14 @@ loki:
     extraEnvFrom:
       - secretRef:
           name: loki-s3-credentials
-    # Right-sized for 3x4cpu/6GB workers: lean requests, headroom for
-    # immich/nextcloud/cloud-pg. Limits cap spikes without starving neighbors.
+    # Lean homelab sizing (prod): log volume fits the small request; the
+    # limit caps query spikes without starving neighbors.
     resources:
       requests:
-        cpu: 300m
+        cpu: 100m
         memory: 512Mi
       limits:
-        cpu: 1000m
+        cpu: 800m
         memory: 1024Mi
 
   # Component replicas (set to 0 for Monolithic mode)
@@ -108,6 +108,32 @@ loki:
 
 # Configuration for the Kube-Prometheus-Stack subchart
 kube-prometheus-stack:
+  # Control-plane scrapes: kube-scheduler and kube-controller-manager bind
+  # ports that are unreachable from Prometheus in this cluster (up==0 with
+  # 10s scrape timeouts sustained over the full sampler window, contributing
+  # only up/scrape meta-series). Disabling their ServiceMonitors removes the
+  # stalled scrape workers and error churn with zero usable-series loss; the
+  # chart also gates their KubeSchedulerDown/KubeControllerManagerDown alerts
+  # on these flags, so no absent-target alert fires.
+  kubeScheduler:
+    enabled: false
+  kubeControllerManager:
+    enabled: false
+
+  # API-server cardinality diet: ~43% of TSDB head series come from the
+  # apiserver job, ~23k of them verbose debug histogram buckets
+  # (request-body/response-size/watch internals) consumed by no bundled rule
+  # or dashboard. Dropping those families at scrape time cuts ~12% of
+  # appended samples while keeping request_total, request_duration and the
+  # SLI families that feed the burn-rate rules and API-server dashboard, so
+  # alerting and latency visibility are unchanged.
+  kubeApiServer:
+    serviceMonitor:
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          regex: "apiserver_(request_body_size_bytes|response_sizes|watch_list_duration_seconds|watch_cache_read_wait_seconds|watch_events_sizes)_(bucket|sum|count)"
+          action: drop
+
   # Grafana configuration
   grafana:
     admin:
@@ -121,9 +147,10 @@ kube-prometheus-stack:
         domain: my-cluster.lonk-mirfak.ts.net
         root_url: https://my-cluster.lonk-mirfak.ts.net/grafana/
         serve_from_sub_path: true
-      # Enforce 1m minimum dashboard refresh: aligns with 60s scrapeInterval,
+      # Dashboard refresh floor 30s: global scrape stays 60s for energy,
+      # per-target fast scrapes (e.g. ecoflow 15-30s) render smoothly here.
       dashboards:
-        min_refresh_interval: 1m
+        min_refresh_interval: 30s
 
     # Add Loki as a data source
     additionalDataSources:
@@ -145,13 +172,16 @@ kube-prometheus-stack:
       dashboards:
         folderAnnotation: grafana_folder
 
+    # Lean homelab sizing (prod): dashboard rendering bursts fit the small
+    # request; idle is near zero. Memory limit raised to 1Gi after observing
+    # 706Mi live usage against the old 768Mi cap (92% — OOM risk).
     resources:
       requests:
-        cpu: 200m
+        cpu: 80m
         memory: 256Mi
       limits:
         cpu: 1000m
-        memory: 768Mi
+        memory: 1024Mi
     livenessProbe:
       initialDelaySeconds: 90
     readinessProbe:
@@ -183,12 +213,14 @@ kube-prometheus-stack:
       # Single-host gateway subpath — ADR-012
       externalUrl: https://my-cluster.lonk-mirfak.ts.net/prometheus
       routePrefix: /prometheus
+      # Lean homelab sizing (prod): 60s scrapes keep TSDB steady state small;
+      # measured with zero throttling (memory, retention untouched).
       resources:
         requests:
-          cpu: 500m
+          cpu: 150m
           memory: 512Mi
         limits:
-          cpu: 1000m
+          cpu: 800m
           memory: 2048Mi
       storageSpec:
         volumeClaimTemplate:
@@ -218,6 +250,12 @@ kube-prometheus-stack:
       tls:
         - hosts:
             - prometheus
+    # Chart-native selector for the Prometheus pods. The upstream knob exposes
+    # no ingress/egress rule fields, so this renders an empty policy and every
+    # effective allow stays in the Cilium overlay; enabled for knob parity
+    # across the stack. No egress key exists upstream, so none is set here.
+    networkPolicy:
+      enabled: true
 
   # Alertmanager configuration:
   alertmanager:
@@ -231,6 +269,13 @@ kube-prometheus-stack:
         limits:
           cpu: 100m
           memory: 128Mi
+    # Chart-native ingress allows: Prometheus scrapes (9093) and the
+    # config-reloader sidecar (8080) reach Alertmanager without custom rules.
+    # Egress stays disabled so the Cilium overlay remains the sole egress authority.
+    networkPolicy:
+      enabled: true
+      egress:
+        enabled: false
 
   # Prometheus Operator: admission webhook + config reconciliation only.
   prometheusOperator:
@@ -241,6 +286,12 @@ kube-prometheus-stack:
       limits:
         cpu: 200m
         memory: 256Mi
+    # Chart-native allows for the operator pod: ingress on 10250
+    # (TLS webhook/metrics) plus unrestricted egress. Both only widen the
+    # Cilium overlay allowlist (union semantics); the chart defines no egress
+    # restriction, so no new denial is introduced.
+    networkPolicy:
+      enabled: true
 
   # kube-state-metrics: small in-memory metrics cache.
   kube-state-metrics:
@@ -272,10 +323,11 @@ alloy:
   alloy:
     mounts:
       varlog: true
-    # Lean log shipper (DaemonSet, per node): tail + forward only.
+    # Lean homelab sizing (prod): per-node tail volume is small; minimal
+    # request keeps the DaemonSet schedulable.
     resources:
       requests:
-        cpu: 100m
+        cpu: 50m
         memory: 128Mi
       limits:
         cpu: 200m
@@ -362,3 +414,7 @@ alloy:
         }
   controller:
     type: daemonset
+
+# See ADR 017
+vault:
+  enabled: false

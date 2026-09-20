@@ -13,9 +13,11 @@ vault:
       limits: { cpu: 50m, memory: 64Mi }
   server:
     affinity: ""
+    # Dev sizing: full requests/limits for rich metrics and to catch
+    # throttling/OOM pressure in dev before prod.
     resources:
-      requests: { cpu: 200m, memory: 256Mi }
-      limits: { cpu: 500m, memory: 512Mi }
+      requests: { cpu: 500m, memory: 256Mi }
+      limits: { cpu: 2000m, memory: 512Mi }
     ha:
       enabled: true
       replicas: 1

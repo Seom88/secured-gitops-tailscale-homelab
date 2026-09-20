@@ -3,9 +3,11 @@ seaweedfs:
   master:
     enabled: true
     replicas: 1
+    # Lean homelab sizing (prod): idle control plane; minimal scheduling
+    # request, limit caps spikes.
     resources:
       requests:
-        cpu: 50m
+        cpu: 20m
         memory: 64Mi
       limits:
         cpu: 500m
@@ -19,9 +21,11 @@ seaweedfs:
   volume:
     enabled: true
     replicas: 1
+    # Lean homelab sizing (prod): homelab disk IO fits the small request;
+    # the generous limit never throttles engine bursts.
     resources:
       requests:
-        cpu: 100m
+        cpu: 30m
         memory: 96Mi
       limits:
         cpu: 1000m
@@ -38,9 +42,11 @@ seaweedfs:
   filer:
     enabled: true
     replicas: 1
+    # Lean homelab sizing (prod): idle metadata plane; minimal scheduling
+    # request, limit caps spikes.
     resources:
       requests:
-        cpu: 50m
+        cpu: 20m
         memory: 64Mi
       limits:
         cpu: 500m
@@ -57,9 +63,11 @@ seaweedfs:
     enabled: true
     enableAuth: true
     existingConfigSecret: seaweedfs-s3-credentials
+    # Lean homelab sizing (prod): Loki-only S3 traffic; minimal scheduling
+    # request, limit caps spikes.
     resources:
       requests:
-        cpu: 50m
+        cpu: 20m
         memory: 64Mi
       limits:
         cpu: 500m
@@ -70,9 +78,10 @@ seaweedfs:
   # Admin UI — consolidated management console
   admin:
     enabled: true
+    # Lean homelab sizing (prod): idle console; minimal scheduling request.
     resources:
       requests:
-        cpu: 20m
+        cpu: 10m
         memory: 32Mi
       limits:
         cpu: 200m
@@ -95,4 +104,8 @@ ciliumNetworkPolicy:
   enabled: true
 
 developmentApp:
+  enabled: false
+
+# See ADR 017
+vault:
   enabled: false

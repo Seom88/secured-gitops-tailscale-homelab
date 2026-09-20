@@ -59,7 +59,13 @@ velero:
     # General behaviour
     snapshotVolumes: false
     defaultVolumesToFsBackup: true
-    backupSyncPeriod: 1m
+    # BackupSyncPeriod — how often the server lists Backup objects from S3.
+    # 10m is the upstream Velero default and plenty here: schedule-driven
+    # backups run in-process, so this timer only governs how fast
+    # externally created Backup CRs appear. The 1m cadence was burning ~6m
+    # idle CPU on S3 LIST round-trips through the Tailscale egress sidecar
+    # with zero Backups present in the cluster.
+    backupSyncPeriod: 10m
     restoreOnlyMode: false
     # UI: keep default 60s.
     # Features: CSI if available (empty = defaults). Must NOT be a literal string.
@@ -187,13 +193,14 @@ velero:
         storageLocation: default
         defaultVolumesToFsBackup: false
 
-  # Resource requests — conservative homelab defaults.
+  # Lean homelab sizing (prod): idle server steady state; minimal request
+  # keeps it schedulable, tight limit caps backup-burst pressure.
   resources:
     requests:
-      cpu: 200m
+      cpu: 100m
       memory: 128Mi
     limits:
-      cpu: 500m
+      cpu: 300m
       memory: 512Mi
 
   metrics:

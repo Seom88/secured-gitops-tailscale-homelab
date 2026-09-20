@@ -28,10 +28,12 @@ data:
             icon: argo-cd
             href: https://my-cluster.lonk-mirfak.ts.net/argocd
             description: GitOps deployments, sync status and app history
+        {{- if .Values.vault.enabled }}
         - Vault:
             icon: vault
             href: https://vault-my-cluster.lonk-mirfak.ts.net
             description: Secrets, tokens and encryption key management
+        {{- end }}
     - Observability:
         - Grafana:
             icon: grafana

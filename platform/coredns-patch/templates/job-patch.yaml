@@ -28,6 +28,13 @@ spec:
         - name: patch
           image: "{{ $imageRepo }}:{{ $cleanTag }}{{ if $imageDigest }}@{{ $imageDigest }}{{ end }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Short-lived kubectl job: 10m/100m keeps it schedulable without
+          # reserving idle capacity.
+          resources:
+            requests:
+              cpu: 10m
+            limits:
+              cpu: 100m
           command: ["/bin/sh", "-c"]
           args:
             - |

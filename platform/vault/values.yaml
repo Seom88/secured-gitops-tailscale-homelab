@@ -144,12 +144,14 @@ vault:
       mountPath: /vault/userconfig/vault-tls
       readOnly: true
 
+    # Lean homelab sizing (prod): cluster avg 13-17% of 22 CPUs with zero
+    # throttling; raft tolerates lean requests, limit keeps burst headroom.
     resources:
       requests:
-        cpu: 500m
+        cpu: 250m
         memory: 128Mi
       limits:
-        cpu: 2000m
+        cpu: 1000m
         memory: 512Mi
 
     affinity: |
@@ -167,7 +169,7 @@ vault:
 
     ha:
       enabled: true
-      replicas: 3
+      replicas: 1
       raft:
         enabled: true
         setNodeId: true

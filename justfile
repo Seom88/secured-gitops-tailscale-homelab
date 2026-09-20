@@ -91,6 +91,9 @@ secrets-check:
 secrets-apply:
     #!/usr/bin/env bash
     set -euo pipefail
+    # Install secrets
+    ./bootstrap/init-sops.sh
+
     # Explicit .env load in case just is invoked with --no-dotenv or outside just
     if [ -f .env ]; then
       set -a; source .env; set +a
