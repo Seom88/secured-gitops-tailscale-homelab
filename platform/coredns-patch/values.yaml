@@ -10,7 +10,7 @@ dnsConfigPollInterval: 5
 # image build 2026-09-03) — the digest is the actual pin. Refresh with
 # skopeo inspect docker://bitnami/kubectl:latest | jq -r .Digest
 # (Renovate group `kubectl jobs` tracks this line; digest bumps update it in place).
-image: bitnami/kubectl:latest@sha256:b29d8c1665b70817259ceecaea16ab27aab6368b48daf485d19436c809067492
+image: bitnami/kubectl:latest@sha256:6e9c5284a0dac06e84de9f4d97852d2e6513442ee7ec3a66d35009eec86e1e62
 imagePullPolicy: IfNotPresent
 namespace: kube-system
 coredns:
