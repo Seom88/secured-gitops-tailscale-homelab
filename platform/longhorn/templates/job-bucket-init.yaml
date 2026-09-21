@@ -119,6 +119,14 @@ spec:
               else
                 if echo "$OUTPUT" | grep -qiE 'BucketAlreadyOwnedByYou|BucketAlreadyExists|already exists'; then
                   echo "[bucket-init] Bucket already exists — continuing (idempotent)."
+                elif echo "$OUTPUT" | grep -qiE 'AccessDenied'; then
+                  echo "[bucket-init] AccessDenied on create-bucket — checking if bucket already exists and is accessible..."
+                  if aws s3api head-bucket --bucket "$BUCKET" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" $AWS_S3_EXTRA 2>/dev/null; then
+                    echo "[bucket-init] Bucket exists and is accessible — continuing (pre-created, key lacks s3:CreateBucket)."
+                  else
+                    echo "[bucket-init] ERROR: create-bucket denied AND bucket not accessible — grant s3:CreateBucket on arn:aws:s3:::$BUCKET (see docs/rustfs-iam.md) or pre-create the bucket."
+                    exit $RC
+                  fi
                 else
                   echo "[bucket-init] ERROR: create-bucket failed with exit $RC"
                   exit $RC

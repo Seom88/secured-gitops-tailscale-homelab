@@ -34,6 +34,17 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: tailscale
+  # The Tailscale operator rewrites spec.externalName of the s3-egress
+  # Service to its MagicDNS name (ts-s3-egress-*.tailscale.svc.cluster.local).
+  # Without this, the app flaps OutOfSync forever against the `placeholder`
+  # in git (same pattern as the Job ignoreDifferences in 00-velero.yaml).
+  ignoreDifferences:
+  - group: ""
+    kind: Service
+    name: s3-egress
+    namespace: tailscale
+    jsonPointers:
+    - /spec/externalName
   syncPolicy:
     automated:
       prune: true
@@ -41,5 +52,6 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
+      - RespectIgnoreDifferences=true
       - Retry=true
 {{- end }}

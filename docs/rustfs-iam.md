@@ -49,13 +49,18 @@ bucket. (A WORM/archive key would deny deletes; not our case.)
 
 ### Longhorn (`longhorn-homelab`)
 
+` s3:CreateBucket` is required: the `longhorn-bucket-init` Job creates the
+bucket idempotently with the scoped key itself (scoped to this one ARN, so
+least-privilege still holds — the key cannot create or touch any other
+bucket).
+
 ```json
 {
   "Version": "2012-10-17",
   "Statement": [
     {
       "Effect": "Allow",
-      "Action": ["s3:GetBucketLocation", "s3:ListBucket"],
+      "Action": ["s3:GetBucketLocation", "s3:ListBucket", "s3:CreateBucket"],
       "Resource": ["arn:aws:s3:::longhorn-homelab"]
     },
     {
@@ -69,6 +74,9 @@ bucket. (A WORM/archive key would deny deletes; not our case.)
 
 ### Velero (`velero-homelab`)
 
+Same `s3:CreateBucket` requirement as Longhorn — the `velero-bucket-init`
+Job creates the bucket with the scoped key.
+
 Mirrors the upstream [minimal policy](https://github.com/velero-io/velero-plugin-for-aws/)
 (EC2 snapshot actions omitted — no EBS here; `GetBucketLocation` added: harmless
 read that helps `head-bucket`/diagnostics). No `ListAllMyBuckets` — Velero never
@@ -80,7 +88,7 @@ lists buckets, it goes straight to its own:
   "Statement": [
     {
       "Effect": "Allow",
-      "Action": ["s3:GetBucketLocation", "s3:ListBucket"],
+      "Action": ["s3:GetBucketLocation", "s3:ListBucket", "s3:CreateBucket"],
       "Resource": ["arn:aws:s3:::velero-homelab"]
     },
     {
