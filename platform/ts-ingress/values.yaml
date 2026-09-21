@@ -10,14 +10,10 @@ hostname: my-cluster
 gateway:
   enabled: true  # set false to disable the my-cluster gateway device; vault device controlled by vault.enabled below
   replicas: 1
-  image:
-    # Digest-pinned (fail-closed Trivy gate): refresh with
-    # skopeo inspect docker://nginx:<tag> | jq -r .Digest
-    # Tag stays for Renovate (docker datasource bumps tag+digest together).
-    repository: nginx
-    tag: "1.31-alpine"
-    digest: "sha256:c8497b180665e631ec92a5091125bec5b214f0e2b99409e30653a125b37557da"
-    pullPolicy: IfNotPresent
+  # Digest-pinned (fail-closed Trivy gate); inline format so Renovate tracks
+  # tag+digest as one dep. Refresh with skopeo inspect docker://nginx:<tag> | jq -r .Digest
+  image: nginx:1.31-alpine@sha256:c8497b180665e631ec92a5091125bec5b214f0e2b99409e30653a125b37557da
+  imagePullPolicy: IfNotPresent
   # Lean homelab sizing (prod): data-plane nginx is mostly idle; minimal
   # request keeps it schedulable while the limit holds burst headroom.
   resources:
