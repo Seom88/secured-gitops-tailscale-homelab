@@ -6,6 +6,4 @@ spec:
   nameserver:
     image:
       repo: tailscale/k8s-nameserver
-      tag: stable
-    # pinned digest for stable tag 2026-08-20: sha256:86b1eaa3d488f167cd70b8e6d22899c45d6334f0458a403786b359739bc8c476
-    # digest not exposed via DNSConfig spec (repo+tag only); pin via tag stable tracked with this comment
+      tag: stable@sha256:3676e2277ad16da948caee7952b2a27859a66b905edd981e1bb58b2626bc92a4
