@@ -25,7 +25,10 @@ env:
 
 jobs:
   # Dynamic image discovery: render every chart (platform/* + apps/*) and
-  # collect unique `image:` refs, so Renovate bumps are scanned without
+  # collect unique `image:` refs, supplemented by a repo-wide source grep
+  # (inline `image:` refs plus split `repo:`/`tag:` pairs such as the
+  # Tailscale DNSConfig, which never appears as an `image:` line in rendered
+  # output). The union is scanned, so Renovate bumps are covered without
   # anyone maintaining a hardcoded list. trivy-images consumes the JSON.
   discover:
     runs-on: ubuntu-latest
@@ -74,22 +77,72 @@ jobs:
             fi
             printf '%s\n' "$rendered" | awk '/^[[:space:]]*(-[[:space:]]+)?image:[[:space:]]/ && !/\{\{/ {sub(/^[[:space:]]*(-[[:space:]]+)?image:[[:space:]]+/, ""); gsub(/^"|"$|^[ \t]+|[ \t]+$/, ""); if ($0 != "") print}' >> "$imglist" || true
           done
-          images_json="$(sort -u "$imglist" | grep -v '^$' | jq -R -s -c 'split("\n") | map(select(length > 0))')"
+          images_json=""
+          pinned_json=""
+          python3 - "$imglist" << 'PY'
+          import json, os, re, sys
+          rendered_path = sys.argv[1]
+          rendered = set()
+          with open(rendered_path) as fh:
+              for line in fh:
+                  line = line.strip()
+                  if line:
+                      rendered.add(line)
+          inline_re = re.compile(r'^\s*(?:-\s+)?image:\s*["\']?([^"\'\s{}]+:[^"\'\s{}]+(?:@sha256:[a-fA-F0-9]+)?)["\']?\s*(?:#.*)?$')
+          repo_re = re.compile(r'^\s*repo:\s*["\']?([^"\'\s{};]+)["\']?\s*(?:#.*)?$')
+          tag_re = re.compile(r'^\s*tag:\s*["\']?([^"\'\s{};]+)["\']?\s*(?:#.*)?$')
+          source = set()
+          for root in ("platform", "apps"):
+              for dirpath, dirnames, filenames in os.walk(root):
+                  # Vendored upstream charts are scanned via their rendered
+                  # output, not their raw values (their image knobs differ).
+                  dirnames[:] = [d for d in dirnames if d != "charts"]
+                  for fn in filenames:
+                      if not (fn.endswith(".yaml") or fn.endswith(".yml")):
+                          continue
+                      if ".enc." in fn:
+                          continue
+                      p = os.path.join(dirpath, fn)
+                      with open(p, errors="replace") as fh:
+                          lines = fh.read().splitlines()
+                      for line in lines:
+                          if "{{" in line or "{%" in line:
+                              continue
+                          m = inline_re.match(line)
+                          if m:
+                              source.add(m.group(1))
+                      # Split repo:/tag: pairs (e.g. Tailscale DNSConfig
+                      # nameserver image) joined back into repo:tag refs.
+                      for i, line in enumerate(lines):
+                          if "{{" in line or "{%" in line:
+                              continue
+                          m = repo_re.match(line)
+                          if m:
+                              for nxt in lines[i + 1:i + 4]:
+                                  t = tag_re.match(nxt)
+                                  if t:
+                                      source.add(f"{m.group(1)}:{t.group(1)}")
+                                      break
+          images = sorted(rendered | source)
+          # Fail-closed blocking set: every digest-pinned image we author is
+          # gated. Derived from the repo (presence of @sha256:), never from a
+          # hardcoded family list, so Renovate bumps keep flowing into the
+          # blocking gate and a renamed/new family can never silently fall
+          # through to advisory-only.
+          pinned = sorted(i for i in images if "@sha256:" in i)
+          if not images:
+              print("::error::no images discovered from charts or source grep")
+              sys.exit(1)
+          if not pinned:
+              print("::error::no digest-pinned images derived — blocking gate would be empty, failing closed")
+              sys.exit(1)
+          print(f"Discovered: {json.dumps(images)}")
+          print(f"Pinned (fail-closed): {json.dumps(pinned)}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"images={json.dumps(images)}\n")
+              out.write(f"pinned={json.dumps(pinned)}\n")
+          PY
           rm -f "$imglist"
-          if [ "$images_json" = "[]" ]; then
-            echo "::error::no images discovered from charts"
-            exit 1
-          fi
-          echo "Discovered: $images_json"
-          echo "images=$images_json" >> "$GITHUB_OUTPUT"
-          # Fail-closed set: first-party images we author and digest-pin
-          # (repo prefixes below). Matched by prefix so Renovate tag/digest
-          # bumps keep flowing into the blocking gate without workflow edits.
-          # Upstream subchart images are excluded — pinned transitively via
-          # Chart.lock, fixed only by upstream releases (Renovate weekly).
-          pinned_json="$(printf '%s' "$images_json" | jq -c '[.[] | select(test("^(ghcr\\.io/gethomepage/homepage|bitnami/kubectl|(docker\\.io/library/)?nginx:|velero/velero-plugin-for-aws|amazon/aws-cli:)"))]')"
-          echo "Pinned (fail-closed): $pinned_json"
-          echo "pinned=$pinned_json" >> "$GITHUB_OUTPUT"
 
   trivy-images:
     needs: [discover]
