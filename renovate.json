@@ -11,15 +11,15 @@
     {
       "customType": "regex",
       "description": "Hardcoded k8s Job/CronJob images + app values image lines",
-      "managerFilePatterns": ["^platform/(?!velero/|ts-operator/).*/templates/.*\\.yaml$", "^apps/.*/templates/.*\\.yaml$", "^apps/.*/values.*\\.yaml$", "^platform/(?!velero/).*/values.*\\.yaml$"],
+      "managerFilePatterns": ["^platform/.*/templates/.*\\.yaml$", "^apps/.*/templates/.*\\.yaml$", "^apps/.*/values.*\\.yaml$", "^platform/.*/values.*\\.yaml$"],
       "matchStrings": ["image:\\s*['\"]?(?<depName>[^:'\"\\s]+):(?<currentValue>[^@'\"\\s]+)(?:@(?<currentDigest>sha256:[a-f0-9]+))?['\"]?"],
       "datasourceTemplate": "docker"
     },
     {
       "customType": "regex",
-      "description": "Tailscale DNSConfig and Velero initContainers",
+      "description": "Split repo:/tag: pairs (only pair in repo: Tailscale DNSConfig). Inline image: lines belong to Manager 1 — this manager intentionally has no inline matcher so a dep can never be extracted twice. Patterns must stay RE2-compatible: no lookahead, no backreferences (Renovate uses RE2).",
       "managerFilePatterns": ["^platform/velero/values\\.yaml$", "^platform/velero/templates/.*\\.yaml$", "^platform/ts-operator/templates/.*\\.yaml$"],
-      "matchStrings": ["image:\\s*['\"]?(?<depName>[^:'\"\\s]+):(?<currentValue>[^@'\"\\s]+)['\"]?", "repo:\\s*['\"]?(?<depName>[^\\s'\";]+)['\"]?\\s*\\n\\s*tag:\\s*['\"]?(?<currentValue>[^'\"\\s]+)['\"]?"],
+      "matchStrings": ["repo:\\s*['\"]?(?<depName>[^\\s'\";]+)['\"]?\\s*\\n\\s*tag:\\s*['\"]?(?<currentValue>[^'\"\\s]+)['\"]?"],
       "datasourceTemplate": "docker"
     },
     {
