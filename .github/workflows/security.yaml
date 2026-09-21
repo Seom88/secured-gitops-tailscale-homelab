@@ -21,7 +21,7 @@ permissions:
   contents: read
 
 env:
-  HELM_VERSION: v3.18.4
+  HELM_VERSION: v3.22.0
 
 jobs:
   # Dynamic image discovery: render every chart (platform/* + apps/*) and
