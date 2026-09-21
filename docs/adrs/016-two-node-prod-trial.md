@@ -1,6 +1,8 @@
 # ADR-016: Two-Worker Prod Trial (3w to 2w Topology)
 
-**Status:** Proposed (Experiment) · **Date:** 2026-09-16 · **Deciders:** Seom88 · **Related:** [ADR-015](015-lean-cpu-sizing-homelab-vs-datacenter.md)
+**Status:** Abandoned (rolled back to 3w on 2026-09-21) · **Date:** 2026-09-16 · **Deciders:** Seom88 · **Related:** [ADR-015](015-lean-cpu-sizing-homelab-vs-datacenter.md)
+
+> **Outcome:** trial reverted. 2w saved some RAM but no meaningful energy saving, and the extra RAM is not needed right now. Prod stays on 3 workers (Vault 3 replicas, `longhorn-prod` 3 replicas).
 
 Run prod on 2 workers instead of 3 to save resources. ADR-015 covered CPU sizing; this ADR covers topology and HA only.
 
@@ -38,4 +40,4 @@ Run prod on 2 workers instead of 3 to save resources. ADR-015 covered CPU sizing
 
 ## Next step
 
-Soak on 2 workers, then either accept this ADR (2-worker becomes prod topology) or roll back per the steps above.
+Closed — rolled back per the steps above (Vault `replicas: 3`, `longhorn-prod` `"3"`). No soak, no accept.
