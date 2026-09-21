@@ -3,14 +3,14 @@ repoURL: https://github.com/Seom88/secured-gitops-tailscale-homelab.git
 platformApps:
   enabled: true
 
-# Velero S3 endpoint — single source: this literal (GitOps-pure).
+# Shared S3 endpoint — single source: this literal (GitOps-pure).
 # ArgoCD repo-server renders path gitops ONLY from git, so a `--set`
-# side-channel never reaches it on re-render. The platform chart carries
+# side-channel never reaches it on re-render. The platform charts carry
 # NO fallback literal (s3.tailnetFqdn is "" + `required`): if this URL
 # changes, the old one points to no RustFS — fail loudly, never silently.
 # NOTE: the Terraform-state endpoint (CI var S3_ENDPOINT, same RustFS host)
 # is an independent source — if the RustFS host ever changes, update both.
-veleroS3:
+sharedS3:
   tailnetFqdn: "rustfs.lonk-mirfak.ts.net"
 
 developmentApp:

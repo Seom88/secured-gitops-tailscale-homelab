@@ -23,7 +23,7 @@ aws_secret_access_key=...
 
 ```mermaid
 flowchart LR
-    ENV["Env vars<br/>VELERO_AWS_*"] --> BOOT["bootstrap/init-gitops.sh<br/>Secret cloud-credentials"]
+    ENV["SOPS *.enc.yaml<br/>dedicated keys"] --> BOOT["bootstrap/init-sops.sh<br/>Secret cloud-credentials"]
     BOOT --> JOB["Job velero-bucket-init<br/>hook Sync wave 0"]
     JOB --> CHART["Helm chart velero<br/>vmware-tanzu 12.1.0 / app 1.18.1"]
     CHART --> BSL["BackupStorageLocation default<br/>bucket velero-homelab (RustFS)"]
@@ -55,8 +55,9 @@ Hourly crash-consistency for Vault volumes is a Longhorn local snapshot instead:
 ## Quick start
 
 ```bash
-# 1. Create Secret and sync
-VELERO_AWS_ACCESS_KEY_ID=... VELERO_AWS_SECRET_ACCESS_KEY=... ./bootstrap/init-gitops.sh prod
+# 1. Create Secret and sync (SOPS is primary — see docs/rustfs-iam.md;
+#    the command below is the AWS_* fallback when the Secret is missing)
+AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... ./bootstrap/init-gitops.sh prod
 
 # 2. Verify
 kubectl -n velero get backupstoragelocations -o yaml  # phase: Ready
@@ -72,7 +73,7 @@ velero backup get
 
 | Symptom | Fix |
 |---------|-----|
-| `secret cloud-credentials not found` | Re-run bootstrap with `VELERO_AWS_*` or `AWS_*` env vars |
+| `secret cloud-credentials not found` | Check SOPS secret applied (`init-sops.sh`), or re-run bootstrap with `AWS_*` env vars (fallback) |
 | `NoSuchBucket` | Check `kubectl -n velero logs job/velero-bucket-init`; re-sync ArgoCD |
 | `BSL not Ready` | Verify `s3Url`/`s3ForcePathStyle` and `cloud` key format is `[default]` ini |
 | `nslookup rustfs.lonk-mirfak.ts.net` fails | Verify `kubectl -n kube-system get cm coredns -o yaml | grep ts.net` |

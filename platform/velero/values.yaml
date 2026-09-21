@@ -2,7 +2,7 @@ ciliumNetworkPolicy:
   enabled: true
 
 # S3 backend — single source for the URL: gitops/values.yaml
-# veleroS3.tailnetFqdn (literal) -> gitops/templates/platform/00-velero.yaml
+# sharedS3.tailnetFqdn (literal) -> gitops/templates/platform/00-velero.yaml
 # helm.parameter s3.tailnetFqdn -> here.
 # tailnetFqdn is REQUIRED (empty on purpose — NO fallback literal:
 # a stale default would point to no RustFS, so Service, bucket-init Job,
@@ -123,6 +123,18 @@ velero:
           # Cilium CNI lives in kube-system (already excluded) but its
           # cluster-scoped runtime CRDs need excludedResources below.
           - argocd
+        # GitOps is source of truth for manifests — back up data only.
+        # Allowlist: PVCs + their bound PVs. Pods are required in the
+        # backup for FsBackup volume discovery (Velero creates
+        # PodVolumeBackup per included pod; without pods no data is
+        # copied, and PVC->Pod related-item backfill pulls them in
+        # anyway). Everything else (deployments, sts, svc, cm...)
+        # is dropped and re-created from Git on restore.
+        includedResources:
+          - persistentvolumeclaims
+          - persistentvolumes
+          - pods
+        includeClusterResources: true
         excludedResources:
           - replicas.longhorn.io
           - engines.longhorn.io

@@ -36,8 +36,13 @@
 # with the kubectl commands above, not via PVC template labels.
 #
 # Snapshot vs backup: `snapshot` is local + instant (no backup target needed);
-# `backup` requires a configured S3/NFS backup target (currently unconfigured
-# in the UI — intentionally out of scope).
+# `backup` uploads to the S3 backup target
+# (longhorn.defaultBackupStore.backupTarget = s3://longhorn-homelab@us-east-1/
+# on RustFS, creds from Secret longhorn-backup-secret). The
+# `default-daily-backup` job below uses it: 04:00 daily (after Velero
+# daily-full 02:00 to avoid I/O overlap), retain 3. Same group semantics:
+# applies ONLY to volumes with no `recurring-job-group.longhorn.io/*` label,
+# so vault-hourly / no-snapshot volumes stay excluded automatically.
 apiVersion: longhorn.io/v1beta2
 kind: RecurringJob
 metadata:
@@ -84,6 +89,30 @@ spec:
   concurrency: 2
   labels:
     snapshot: 2h
+    volume: default
+---
+# Daily S3 backup of every volume in the `default` group (i.e. volumes with
+# NO recurring-job-group label — vault-hourly and no-snapshot volumes are
+# excluded automatically). 04:00 avoids overlapping Velero daily-full (02:00).
+# Requires the backup target + credential secret (values longhorn.defaultBackupStore).
+apiVersion: longhorn.io/v1beta2
+kind: RecurringJob
+metadata:
+  name: default-daily-backup
+  namespace: longhorn-system
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: longhorn
+spec:
+  name: default-daily-backup
+  cron: "0 4 * * *"
+  task: backup
+  groups:
+    - default
+  retain: 3
+  concurrency: 1
+  labels:
+    backup: daily
     volume: default
 # ---------------------------------------------------------------------------
 # Optional future jobs (uncomment when needed). Same opt-in pattern: label the

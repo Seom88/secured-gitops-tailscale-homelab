@@ -1,5 +1,5 @@
 # Dev overlay. S3 endpoint: same single source as prod
-# (gitops/values-dev.yaml veleroS3.tailnetFqdn) — intentionally empty here; required at render time. Only prefix/hostname differ
+# (gitops/values-dev.yaml sharedS3.tailnetFqdn) — intentionally empty here; required at render time. Only prefix/hostname differ
 # (bucket/region inherit from values.yaml); the BackupStorageLocation CR is built
 # by templates/backupstoragelocation.yaml from s3.* (no BSL block here).
 s3:

@@ -36,9 +36,9 @@ metadata:
 spec:
   endpointSelector: {}
   egress:
-    # S3 via Tailscale (S3 at {{ required "s3.tailnetFqdn is required (set gitops/values.yaml veleroS3.tailnetFqdn)" .Values.s3.tailnetFqdn }}:443) — use FQDN + world with 443
+    # S3 via Tailscale (S3 at {{ required "s3.tailnetFqdn is required (set gitops/values.yaml sharedS3.tailnetFqdn)" .Values.s3.tailnetFqdn }}:443) — use FQDN + world with 443
     - toFQDNs:
-        - matchName: {{ required "s3.tailnetFqdn is required (set gitops/values.yaml veleroS3.tailnetFqdn)" .Values.s3.tailnetFqdn }}
+        - matchName: {{ required "s3.tailnetFqdn is required (set gitops/values.yaml sharedS3.tailnetFqdn)" .Values.s3.tailnetFqdn }}
         - matchPattern: "*.lonk-mirfak.ts.net"
       toPorts:
         - ports:

@@ -22,7 +22,7 @@ Decision: freeze `platform/vault/` in place, disable Vault/ESO via flags, and sh
 
 2. **SOPS + age is the default** for all app and platform secrets. Encrypted files (`*.enc.yaml`) live in git under `<chart>/sops/` (never inside `templates/`, enforced by `init-sops.sh`). Recipients in `.sops.yaml` (`platform/*/sops/*.enc.yaml` → single age recipient).
 
-3. **One external key store.** The age private key lives outside the cluster at `s3://secrets-homelab/sops/keys.txt` (RustFS, same host family as `veleroS3.tailnetFqdn`) plus one offline copy (USB / password manager). S3 holds only bootstrap roots (age key, S3 bootstrap creds, frozen Vault archive) — never live plaintext app secrets.
+3. **One external key store.** The age private key lives outside the cluster at `s3://secrets-homelab/sops/keys.txt` (RustFS, same host family as `sharedS3.tailnetFqdn`) plus one offline copy (USB / password manager). S3 holds only bootstrap roots (age key, S3 bootstrap creds, frozen Vault archive) — never live plaintext app secrets.
 
 4. **Bootstrap and CI auto-restore.** `bootstrap/init-sops.sh` (idempotent): pulls `keys.txt` from RustFS via `aws s3 cp` (`--endpoint-url $S3_ENDPOINT --no-verify-ssl`), rejects `*.enc.yaml` inside `templates/`, runs `sops decrypt | kubectl apply` for every `<chart>/sops/*.enc.yaml`, then `shred -u` the key file. Wired into `just secrets-apply` and `.github/workflows/deploy.yaml` (installs `sops v3.10.2`, then restores + applies before `init-gitops.sh`).
 

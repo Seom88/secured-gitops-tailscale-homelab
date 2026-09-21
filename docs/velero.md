@@ -12,8 +12,10 @@ Velero backs up cluster manifests and workload data — but explicitly NOT Vault
 
 ```mermaid
 flowchart LR
-    ENV[Env vars VELERO_AWS_*] --> SCRIPT[bootstrap/init-gitops.sh]
-    SCRIPT --> SECRET[(Secret cloud-credentials)]
+    SOPS[SOPS platform/velero/sops/*.enc.yaml<br/>dedicated keys] --> ISC[bootstrap/init-sops.sh]
+    ISC --> SECRET[(Secret cloud-credentials)]
+    ENV[Env vars AWS_*<br/>fallback, missing only] -.-> SCRIPT[bootstrap/init-gitops.sh]
+    SCRIPT -.-> SECRET
     SECRET --> CHART[Helm chart velero]
     CHART --> RUSTFS[(RustFS S3 velero-homelab)]
 ```
@@ -41,21 +43,23 @@ aws s3api create-bucket --bucket velero-homelab --endpoint-url https://rustfs.lo
 
 ## 4. Secrets
 
-Resolution order in `ensureVeleroCredentials()`:
+Primary source is SOPS: `platform/velero/sops/cloud-credentials.enc.yaml` (dedicated
+RustFS keys, see [RustFS IAM](./rustfs-iam.md)), applied by `bootstrap/init-sops.sh`.
 
-1. `VELERO_AWS_ACCESS_KEY_ID` / `VELERO_AWS_SECRET_ACCESS_KEY` (preferred)
-2. Fallback `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (shared with Terraform)
+Fallback in `ensureVeleroCredentials()` (only when the Secret is missing):
+
+1. `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (shared with Terraform)
 
 ```bash
-VELERO_AWS_ACCESS_KEY_ID=... VELERO_AWS_SECRET_ACCESS_KEY=... ./bootstrap/init-gitops.sh prod
+AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... ./bootstrap/init-gitops.sh prod
 kubectl -n velero get secret cloud-credentials -o jsonpath='{.data.cloud}' | base64 -d
 ```
 
-In CI, `.github/workflows/deploy.yaml` already injects `AWS_*`; optional `VELERO_AWS_*` repo secrets can be added for separation.
+In CI, `.github/workflows/deploy.yaml` already injects `AWS_*` for the fallback path.
 
 ## 4b. Endpoint source (Git, no CI vars)
 
-The S3 endpoint FQDN is a literal in git — `gitops/values.yaml` (`veleroS3.tailnetFqdn`, same in `gitops/values-dev.yaml`). It flows `gitops/values.yaml` → `gitops/templates/platform/00-velero.yaml` (ArgoCD `helm.parameters`) → `s3.tailnetFqdn`, from which the chart derives every URL-bearing manifest (Service, bucket-init Job, network policies, BackupStorageLocation). The platform chart carries no fallback literal: `s3.tailnetFqdn` is `""` + `required`, so a missing value fails the sync loudly instead of pointing at a dead RustFS. There is intentionally no `velero/s3-endpoint` ConfigMap and no CI-vars path — if the RustFS host changes, update the git literal (and, independently, the Terraform-state `S3_ENDPOINT` CI var, which points at the same host).
+The S3 endpoint FQDN is a literal in git — `gitops/values.yaml` (`sharedS3.tailnetFqdn`, same in `gitops/values-dev.yaml`). It flows `gitops/values.yaml` → ArgoCD `helm.parameters` → `s3.tailnetFqdn` in BOTH the velero chart (`gitops/templates/platform/00-velero.yaml`: BackupStorageLocation, bucket-init Job, network policies) AND the ts-operator chart (`gitops/templates/platform/-1-ts-operator.yaml`: shared Service `s3-egress` in the `tailscale` namespace, `platform/ts-operator/templates/service-s3-egress.yaml`). Both platform charts carry no fallback literal: `s3.tailnetFqdn` is `""` + `required`, so a missing value fails the sync loudly instead of pointing at a dead RustFS. There is intentionally no `velero/s3-endpoint` ConfigMap and no CI-vars path — if the RustFS host changes, update the git literal (and, independently, the Terraform-state `S3_ENDPOINT` CI var, which points at the same host).
 
 ## 5. Verification
 

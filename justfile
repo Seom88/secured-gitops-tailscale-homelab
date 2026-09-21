@@ -3,7 +3,7 @@
 # ──────────────────────────────────────────────
 
 # Auto-load .env if present — secrets for k8s (see .env.example)
-# .env is gitignored; every recipe inherits K8S_TS_OAUTH_* / VELERO_AWS_*
+# .env is gitignored; every recipe inherits K8S_TS_OAUTH_* / AWS_* / LONGHORN_AWS_*
 set dotenv-load
 
 # ── Default ───────────────────────────────────
@@ -87,7 +87,8 @@ secrets-check:
 
 # Load .env → k8s Secrets (idempotent, re-runnable)
 #   tailscale/operator-oauth  {client_id, client_secret}  <- K8S_TS_OAUTH_*
-# velero/cloud-credentials  {cloud: "[default]\\naws_access_key_id=..."} <- VELERO_AWS_*
+# velero/cloud-credentials  {cloud: "[default]\\naws_access_key_id=..."} <- AWS_* (SOPS owns dedicated keys; this is fallback only)
+# longhorn-system/longhorn-backup-secret {AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_ENDPOINTS} <- LONGHORN_AWS_*
 secrets-apply:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -123,21 +124,55 @@ secrets-apply:
     fi
 
     # ── Velero (RustFS S3) ─────────────────────────
-    VELERO_ID="${VELERO_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}"
-    VELERO_SECRET_VAL="${VELERO_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}"
-    if [ -z "$VELERO_ID" ] || [ -z "$VELERO_SECRET_VAL" ] || [ "$VELERO_ID" = "..." ] || [ "$VELERO_SECRET_VAL" = "..." ]; then
-      echo "  ⏭️  Velero: no valid S3 credentials (VELERO_AWS_ACCESS_KEY_ID / VELERO_AWS_SECRET_ACCESS_KEY) — skipping"
+    # SOPS owns the dedicated keys (./bootstrap/init-sops.sh runs first in this
+    # recipe). Imperative creation is fallback only — never overwrite an existing Secret.
+    if kubectl get secret cloud-credentials -n velero >/dev/null 2>&1; then
+      echo "  🛡️  Velero: Secret velero/cloud-credentials exists (SOPS-managed) — skipping"
     else
-      echo "  🛡️  Velero: creando/actualizando Secret velero/cloud-credentials..."
-      kubectl get namespace velero >/dev/null 2>&1 || kubectl create namespace velero >/dev/null 2>&1
-      CLOUD_CONTENT="[default]
-    aws_access_key_id=${VELERO_ID}
-    aws_secret_access_key=${VELERO_SECRET_VAL}"
-      kubectl create secret generic cloud-credentials \
-        --namespace velero \
-        --from-literal=cloud="$CLOUD_CONTENT" \
-        --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-      echo "  ✅ Velero: Secret velero/cloud-credentials listo"
+      VELERO_ID="${AWS_ACCESS_KEY_ID:-}"
+      VELERO_SECRET_VAL="${AWS_SECRET_ACCESS_KEY:-}"
+      if [ -z "$VELERO_ID" ] || [ -z "$VELERO_SECRET_VAL" ] || [ "$VELERO_ID" = "..." ] || [ "$VELERO_SECRET_VAL" = "..." ]; then
+        echo "  ⏭️  Velero: no valid S3 credentials (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY) — skipping"
+      else
+        echo "  🛡️  Velero: creando Secret velero/cloud-credentials (fallback, no SOPS)..."
+        kubectl get namespace velero >/dev/null 2>&1 || kubectl create namespace velero >/dev/null 2>&1
+        CLOUD_CONTENT="[default]
+      aws_access_key_id=${VELERO_ID}
+      aws_secret_access_key=${VELERO_SECRET_VAL}"
+        kubectl create secret generic cloud-credentials \
+          --namespace velero \
+          --from-literal=cloud="$CLOUD_CONTENT" \
+          --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+        echo "  ✅ Velero: Secret velero/cloud-credentials listo"
+      fi
+    fi
+
+    # ── Longhorn backup target (RustFS S3) ─────────
+    # Same SOPS-wins rule as Velero above: imperative creation is fallback only.
+    if kubectl get secret longhorn-backup-secret -n longhorn-system >/dev/null 2>&1; then
+      echo "  💾 Longhorn: Secret longhorn-system/longhorn-backup-secret exists (SOPS-managed) — skipping"
+    else
+      LONGHORN_ID="${LONGHORN_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}"
+      LONGHORN_SECRET_VAL="${LONGHORN_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}"
+      if [ -z "$LONGHORN_ID" ] || [ -z "$LONGHORN_SECRET_VAL" ] || [ "$LONGHORN_ID" = "..." ] || [ "$LONGHORN_SECRET_VAL" = "..." ]; then
+        echo "  ⏭️  Longhorn: no valid S3 credentials (LONGHORN_AWS_ACCESS_KEY_ID / LONGHORN_AWS_SECRET_ACCESS_KEY) — skipping"
+      else
+        # Endpoint single source: sharedS3.tailnetFqdn literal in gitops/values.yaml (same FQDN in values-dev.yaml).
+        LONGHORN_ENDPOINT="${LONGHORN_S3_ENDPOINTS:-}"
+        if [ -z "$LONGHORN_ENDPOINT" ]; then
+          LH_FQDN="$(awk -F'"' '/tailnetFqdn:/{print $2; exit}' gitops/values.yaml 2>/dev/null || true)"
+          LONGHORN_ENDPOINT="https://${LH_FQDN}"
+        fi
+        echo "  💾 Longhorn: creando Secret longhorn-system/longhorn-backup-secret (fallback, no SOPS)..."
+        kubectl get namespace longhorn-system >/dev/null 2>&1 || kubectl create namespace longhorn-system >/dev/null 2>&1
+        kubectl create secret generic longhorn-backup-secret \
+          --namespace longhorn-system \
+          --from-literal=AWS_ACCESS_KEY_ID="$LONGHORN_ID" \
+          --from-literal=AWS_SECRET_ACCESS_KEY="$LONGHORN_SECRET_VAL" \
+          --from-literal=AWS_ENDPOINTS="$LONGHORN_ENDPOINT" \
+          --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+        echo "  ✅ Longhorn: Secret longhorn-system/longhorn-backup-secret listo"
+      fi
     fi
 
     echo "✅ secrets-apply: done (check with: just secrets-status)"
@@ -269,15 +304,15 @@ validate-gitops:
     echo "==> helm dependency build (gitops)"
     helm dependency build gitops 2>&1 || echo "no dependencies for gitops chart"
     echo "==> helm lint (prod)"
-    helm lint gitops -f gitops/values.yaml --set veleroS3.tailnetFqdn=s3-validate.invalid
+    helm lint gitops -f gitops/values.yaml --set sharedS3.tailnetFqdn=s3-validate.invalid
     echo "==> helm lint (dev)"
-    helm lint gitops -f gitops/values-dev.yaml --set veleroS3.tailnetFqdn=s3-validate.invalid
+    helm lint gitops -f gitops/values-dev.yaml --set sharedS3.tailnetFqdn=s3-validate.invalid
     echo "==> helm template (prod) — empty check"
-    helm template gitops gitops -f gitops/values.yaml --set veleroS3.tailnetFqdn=s3-validate.invalid > /tmp/gitops-prod.yaml
+    helm template gitops gitops -f gitops/values.yaml --set sharedS3.tailnetFqdn=s3-validate.invalid > /tmp/gitops-prod.yaml
     test -s /tmp/gitops-prod.yaml || (echo "❌ helm template rendered empty (prod)" && exit 1)
     echo "   prod render: $(wc -l < /tmp/gitops-prod.yaml) lines, $(grep -c '^---' /tmp/gitops-prod.yaml || true) documents"
     echo "==> helm template (dev) — empty check"
-    helm template gitops gitops -f gitops/values-dev.yaml --set veleroS3.tailnetFqdn=s3-validate.invalid > /tmp/gitops-dev.yaml
+    helm template gitops gitops -f gitops/values-dev.yaml --set sharedS3.tailnetFqdn=s3-validate.invalid > /tmp/gitops-dev.yaml
     test -s /tmp/gitops-dev.yaml || (echo "❌ helm template rendered empty (dev)" && exit 1)
     echo "   dev render: $(wc -l < /tmp/gitops-dev.yaml) lines"
     echo "✅ validate-gitops: OK"
@@ -301,9 +336,9 @@ validate-platform:
         # Use update to handle out-of-sync Chart.lock (e.g. vault)
         helm dependency update "$dir" 2>&1 || helm dependency build "$dir" 2>&1 || echo "   no deps / already built for $dir"
         echo "==> helm lint $dir"
-        # Velero s3.tailnetFqdn is required (CI-supplied) — lint with a test value.
+        # Velero/Longhorn s3.tailnetFqdn is required (CI-supplied) — lint with a test value.
         extra=""
-        if [ "$dir" = "platform/velero/" ]; then
+        if [ "$dir" = "platform/velero/" ] || [ "$dir" = "platform/longhorn/" ]; then
           extra="--set s3.tailnetFqdn=s3-validate.invalid"
         fi
         if ! helm lint $extra "$dir"; then
@@ -430,9 +465,9 @@ scan:
       if [ ! -f "${dir}Chart.yaml" ]; then continue; fi
       name="$(basename "$dir")"
       helm dependency update "$dir" >/dev/null 2>&1 || helm dependency build "$dir" >/dev/null 2>&1 || true
-      # Velero s3.tailnetFqdn is required (CI-supplied) — render with a test value.
+      # Velero/Longhorn s3.tailnetFqdn is required (CI-supplied) — render with a test value.
       extra=""
-      if [ "$dir" = "platform/velero/" ]; then
+      if [ "$dir" = "platform/velero/" ] || [ "$dir" = "platform/longhorn/" ]; then
         extra="--set s3.tailnetFqdn=s3-validate.invalid"
       fi
       # shellcheck disable=SC2086
@@ -497,10 +532,10 @@ sync:
 # Show rendered Helm templates (dry-run)
 diff:
     helm diff upgrade --install gitops gitops/ -n argocd -f gitops/values.yaml \
-      --set veleroS3.tailnetFqdn=s3-validate.invalid \
+      --set sharedS3.tailnetFqdn=s3-validate.invalid \
       --allow-unreleased 2>/dev/null || \
     helm template gitops gitops/ -n argocd -f gitops/values.yaml \
-      --set veleroS3.tailnetFqdn=s3-validate.invalid
+      --set sharedS3.tailnetFqdn=s3-validate.invalid
 
 # ── Docs ──────────────────────────────────────
 

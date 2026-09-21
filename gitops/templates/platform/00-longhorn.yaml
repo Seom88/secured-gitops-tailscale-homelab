@@ -22,9 +22,26 @@ spec:
         {{- if .Values.developmentApp.enabled }}
         - values-dev.yaml
         {{- end }}
+      # S3 endpoint parameter — single source: gitops/values.yaml
+      # sharedS3.tailnetFqdn (literal in git, so repo-server renders without
+      # any --set side-channel). `required` fails the sync loudly instead of
+      # deploying a stale hardcoded URL. bucket-init Job + CiliumNetworkPolicy
+      # derive from s3.tailnetFqdn; backupTarget itself is a literal in
+      # platform/longhorn/values.yaml (values files are not templated).
+      parameters:
+        - name: s3.tailnetFqdn
+          value: {{ required "sharedS3.tailnetFqdn is required (set gitops/values.yaml)" .Values.sharedS3.tailnetFqdn | quote }}
   destination:
     server: https://kubernetes.default.svc
     namespace: longhorn-system
+  ignoreDifferences:
+  - group: batch
+    kind: Job
+    namespace: longhorn-system
+    jsonPointers:
+    - /spec/selector
+    - /spec/template/metadata/labels
+    - /spec/template/metadata/annotations
   syncPolicy:
     automated:
       prune: true
@@ -32,5 +49,6 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
+      - RespectIgnoreDifferences=true
       - Retry=true
 {{- end }}

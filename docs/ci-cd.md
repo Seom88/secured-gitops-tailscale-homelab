@@ -98,8 +98,6 @@ env:
 | `GH_PAT` | yes (private infra) | GitHub PAT with `repo` read to `Seom88/infra-talos-homelab` (`checkout infra` step); falls back to `GITHUB_TOKEN` if infra is public |
 | `AWS_ACCESS_KEY_ID` | yes | RustFS S3 access key (bucket `terraform-homelab`, path-style, `S3_ENDPOINT`) |
 | `AWS_SECRET_ACCESS_KEY` | yes | RustFS S3 secret key |
-| `VELERO_AWS_ACCESS_KEY_ID` | no | Optional override for Velero bucket `velero-homelab` — if unset, `AWS_*` fallback via `ensureVeleroCredentials()` |
-| `VELERO_AWS_SECRET_ACCESS_KEY` | no | Idem — see [Velero](./velero.md) |
 | `PROXMOX_API_TOKEN` | no | Not used in this repo (infra repo owns Proxmox); listed only if you fork both repos with shared secrets |
 
 To use from a fork, configure `tagOwners` / `acls` for `tag:terraform → tag:pve` in your Tailscale ACL and set `GH_PAT` so the workflow can clone the (private) infra repo. The `S3_ENDPOINT` / `S3_BUCKET` envs point at RustFS (`https://rustfs.lonk-mirfak.ts.net`).
@@ -232,7 +230,7 @@ Regex managers also cover hardcoded images (`platform/*/templates`, `apps/*/temp
 
 ## Velero bootstrap
 
-Velero lives outside Vault/ESO (chicken-egg: it backs up Vault). Credentials are injected as an ephemeral `Secret velero/cloud-credentials` by `bootstrap/init-gitops.sh:ensureVeleroCredentials()` (prefers `VELERO_AWS_*`, falls back to `AWS_*`; reuses the S3 creds already injected by `deploy.yaml`). The chart consumes it via `credentials.existingSecret: cloud-credentials` and a wave `-1` `Job velero-bucket-init` creates the `velero-homelab` bucket idempotently before wave `0`.
+Velero lives outside Vault/ESO (chicken-egg: it backs up Vault). Credentials come primarily from SOPS (`platform/velero/sops/cloud-credentials.enc.yaml`, dedicated keys — see [Velero](./velero.md) and [RustFS IAM](./rustfs-iam.md)), applied by `bootstrap/init-sops.sh`. `bootstrap/init-gitops.sh:ensureVeleroCredentials()` only creates an ephemeral `Secret velero/cloud-credentials` from `AWS_*` when the Secret is missing (reuses the S3 creds already injected by `deploy.yaml`). The chart consumes it via `credentials.existingSecret: cloud-credentials` and a wave `-1` `Job velero-bucket-init` creates the `velero-homelab` bucket idempotently before wave `0`.
 
 Details, bucket creation, verification, and troubleshooting: **[Velero →](./velero.md)**.
 

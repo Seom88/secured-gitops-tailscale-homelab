@@ -5,7 +5,7 @@ platformApps:
 
 # Same single source as prod: literal in git (see values.yaml).
 # No fallback anywhere — `required` fails loudly on drift.
-veleroS3:
+sharedS3:
   tailnetFqdn: "rustfs.lonk-mirfak.ts.net"
 
 developmentApp:

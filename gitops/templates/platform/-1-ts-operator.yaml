@@ -23,6 +23,14 @@ spec:
         {{- if .Values.developmentApp.enabled }}
         - values-dev.yaml
         {{- end }}
+      # Shared S3 egress endpoint — single source: gitops/values.yaml
+      # sharedS3.tailnetFqdn (literal in git, so repo-server renders without
+      # any --set side-channel). `required` fails the sync loudly instead of
+      # deploying a stale hardcoded URL. The chart derives the shared
+      # s3-egress Service in the tailscale namespace from s3.tailnetFqdn.
+      parameters:
+        - name: s3.tailnetFqdn
+          value: {{ required "sharedS3.tailnetFqdn is required (set gitops/values.yaml)" .Values.sharedS3.tailnetFqdn | quote }}
   destination:
     server: https://kubernetes.default.svc
     namespace: tailscale

@@ -1,10 +1,18 @@
-{{- if .Values.velero.enabled }}
 {{- $fqdn := required "s3.tailnetFqdn is required (set gitops/values.yaml sharedS3.tailnetFqdn)" .Values.s3.tailnetFqdn }}
+# Longhorn backup bucket init — idempotent create of the S3 bucket that
+# longhorn.defaultBackupStore.backupTarget points at
+# (s3://{{ .Values.s3.bucket }}@{{ .Values.s3.region }}/ on RustFS).
+# Mirrors platform/monitoring bucket-init (creds via env from Secret) +
+# platform/velero bucket-init (Tailscale FQDN endpoint, Argo Sync hook).
+# Credentials: bootstrap-created Secret longhorn-backup-secret
+# (bootstrap/init-gitops.sh:ensureLonghornBackupCredentials(), keys
+# AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY). optional:true so the Job object
+# can be created before the Secret exists; the script polls 60s.
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: velero-bucket-init
-  namespace: velero
+  name: longhorn-bucket-init
+  namespace: longhorn-system
   annotations:
     argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
@@ -19,7 +27,7 @@ spec:
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: velero-bucket-init
+        app.kubernetes.io/name: longhorn-bucket-init
         app.kubernetes.io/component: bucket-init
     spec:
       serviceAccountName: default
@@ -33,6 +41,18 @@ spec:
           image: amazon/aws-cli:2.36.49@sha256:f42bf088cb1456ba9e179ce71fdeb22cc46ff64ea1e3aeae8251ff81391f5bb1
           imagePullPolicy: IfNotPresent
           env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: longhorn-backup-secret
+                  key: AWS_ACCESS_KEY_ID
+                  optional: true
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: longhorn-backup-secret
+                  key: AWS_SECRET_ACCESS_KEY
+                  optional: true
             - name: AWS_EC2_METADATA_DISABLED
               value: "true"
             - name: AWS_S3_ADDRESSING_STYLE
@@ -41,23 +61,23 @@ spec:
           args:
             - |
               set -e
-              echo "[bucket-init] Starting S3 bucket init..."
-              CRED_FILE="/etc/velero/cloud"
+              echo "[bucket-init] Starting Longhorn backup bucket init (RustFS)..."
               WAIT_SECS=0
               WAIT_MAX=60
-              while [ ! -f "$CRED_FILE" ] && [ $WAIT_SECS -lt $WAIT_MAX ]; do
-                echo "[bucket-init] Waiting for credentials file $CRED_FILE ($WAIT_SECS/$WAIT_MAX s)..."
+              while [ $WAIT_SECS -lt $WAIT_MAX ]; do
+                if [ -n "$AWS_ACCESS_KEY_ID" ] && [ -n "$AWS_SECRET_ACCESS_KEY" ]; then
+                  echo "[bucket-init] Credentials available."
+                  break
+                fi
+                echo "[bucket-init] Waiting for credentials env AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY ($WAIT_SECS/$WAIT_MAX s)..."
                 sleep 5
                 WAIT_SECS=$((WAIT_SECS + 5))
               done
-              if [ ! -f "$CRED_FILE" ]; then
-                echo "[bucket-init] ERROR: credentials file not found at $CRED_FILE (Secret velero/cloud-credentials missing?)"
-                echo "[bucket-init] Hint: ensure the SOPS secret (platform/velero/sops/*.enc.yaml via init-sops.sh) or the init-gitops.sh AWS_* fallback created it."
+              if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+                echo "[bucket-init] ERROR: credentials not available after $WAIT_MAX s (Secret longhorn-backup-secret missing?)"
+                echo "[bucket-init] Hint: ensure bootstrap/init-gitops.sh ensureLonghornBackupCredentials() ran with LONGHORN_AWS_* or AWS_*."
                 exit 1
               fi
-              # Velero secret format: "[default]\naws_access_key_id=...\naws_secret_access_key=..."
-              export AWS_ACCESS_KEY_ID="$(grep -E 'aws_access_key_id' "$CRED_FILE" | cut -d'=' -f2 | tr -d '[:space:]')"
-              export AWS_SECRET_ACCESS_KEY="$(grep -E 'aws_secret_access_key' "$CRED_FILE" | cut -d'=' -f2 | tr -d '[:space:]')"
               export AWS_DEFAULT_REGION="{{ .Values.s3.region }}"
               export AWS_EC2_METADATA_DISABLED="true"
               export AWS_S3_ADDRESSING_STYLE="path"
@@ -66,13 +86,7 @@ spec:
               aws configure set default.s3.addressing_style path --profile default || true
               ENDPOINT="https://{{ $fqdn }}"
               BUCKET="{{ .Values.s3.bucket }}"
-              if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
-                echo "[bucket-init] ERROR: could not parse credentials from $CRED_FILE"
-                echo "[bucket-init] File content (sanitized):"
-                sed 's/=.*/=***/' "$CRED_FILE" || cat "$CRED_FILE" || true
-                exit 1
-              fi
-              # Wait for Tailscale Egress service DNS / proxy to be ready
+              # Wait for Tailscale FQDN DNS to be ready
               echo "[bucket-init] Waiting for {{ $fqdn }} (max 120s)..."
               DNS_WAIT=0
               DNS_MAX=120
@@ -91,8 +105,8 @@ spec:
 
               echo "[bucket-init] Creating bucket $BUCKET at $ENDPOINT (region $AWS_DEFAULT_REGION)..."
 
-              # RustFS serves a public Let's Encrypt cert (verified 2026-09-21), but
-              # --no-verify-ssl is retained for robustness across cert rotations.
+              # RustFS serves a public Let's Encrypt cert, but --no-verify-ssl is
+              # retained for robustness across cert rotations (same as velero).
               AWS_S3_EXTRA="--no-verify-ssl"
 
               set +e
@@ -116,16 +130,3 @@ spec:
               echo "[bucket-init] Verification OK — bucket $BUCKET is accessible."
               aws s3 ls "s3://$BUCKET/" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" $AWS_S3_EXTRA || true
               echo "[bucket-init] Done."
-          volumeMounts:
-            - name: cloud-credentials
-              mountPath: /etc/velero
-              readOnly: true
-      volumes:
-        - name: cloud-credentials
-          secret:
-            secretName: cloud-credentials
-            optional: true
-            items:
-              - key: cloud
-                path: cloud
-{{- end }}
