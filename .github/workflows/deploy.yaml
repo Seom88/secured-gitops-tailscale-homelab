@@ -26,7 +26,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  HELM_VERSION: v3.18.4
+  HELM_VERSION: v3.22.0
   # GitHub Vars (S3_ENDPOINT, S3_BUCKET) serve Terraform-state access only
   # (kubeconfig restore + state fallback). NO fallbacks for Velero here —
   # the Velero endpoint is a git literal (gitops/values.yaml veleroS3.tailnetFqdn).
