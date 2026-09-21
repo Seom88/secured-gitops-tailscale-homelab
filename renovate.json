@@ -11,15 +11,8 @@
     {
       "customType": "regex",
       "description": "Hardcoded k8s Job/CronJob images + app values image lines",
-      "managerFilePatterns": ["^platform/.*/templates/.*\\.yaml$", "^apps/.*/templates/.*\\.yaml$", "^apps/.*/values.*\\.yaml$", "^platform/coredns-patch/values\\.yaml$"],
+      "managerFilePatterns": ["^platform/.*/templates/.*\\.yaml$", "^apps/.*/templates/.*\\.yaml$", "^apps/.*/values.*\\.yaml$", "^platform/coredns-patch/values\\.yaml$", "^platform/ts-ingress/values\\.yaml$"],
       "matchStrings": ["image:\\s*['\"]?(?<depName>[^:'\"\\s]+):(?<currentValue>[^@'\"\\s]+)(?:@(?<currentDigest>sha256:[a-f0-9]+))?['\"]?"],
-      "datasourceTemplate": "docker"
-    },
-    {
-      "customType": "regex",
-      "description": "Split repository/tag/digest image blocks in platform and app values (generic, covers present and future images)",
-      "managerFilePatterns": ["^platform/.*/values.*\\.yaml$", "^apps/.*/values.*\\.yaml$"],
-      "matchStrings": ["repository:\\s*['\"]?(?<depName>[^\\s'\";]+)['\"]?\\s*\\n\\s*tag:\\s*['\"]?(?<currentValue>[^@'\"\\s]+)['\"]?(\\s*\\n\\s*digest:\\s*['\"]?(?<currentDigest>[^'\"\\s]+)['\"]?)?"],
       "datasourceTemplate": "docker"
     },
     {
