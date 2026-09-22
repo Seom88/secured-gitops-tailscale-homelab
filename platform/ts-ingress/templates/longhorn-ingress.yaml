@@ -1,9 +1,9 @@
-{{- if .Values.vault.enabled }}
+{{- if .Values.longhorn.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: vault
-  namespace: vault
+  name: longhorn
+  namespace: longhorn-system
 spec:
   ingressClassName: tailscale
   rules:
@@ -13,10 +13,10 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: vault
+                name: longhorn-frontend
                 port:
-                  name: https
+                  number: 80
   tls:
   - hosts:
-    - {{ if .Values.developmentApp.enabled }}vault-dev{{ else }}vault{{ end }}
+    - {{ if .Values.developmentApp.enabled }}longhorn-dev{{ else }}longhorn{{ end }}
 {{- end }}

@@ -141,12 +141,12 @@ kube-prometheus-stack:
       userKey: admin-user
       passwordKey: admin-password
 
-    # Single-host gateway subpath — ADR-012: Grafana served at /grafana via my-cluster.lonk-mirfak.ts.net
+    # Per-app Ingress root — each app on its own device at / (no subpath)
     grafana.ini:
       server:
-        domain: my-cluster.lonk-mirfak.ts.net
-        root_url: https://my-cluster.lonk-mirfak.ts.net/grafana/
-        serve_from_sub_path: true
+        domain: grafana.lonk-mirfak.ts.net
+        root_url: https://grafana.lonk-mirfak.ts.net/
+        serve_from_sub_path: false
       # Dashboard refresh floor 30s: global scrape stays 60s for energy,
       # per-target fast scrapes (e.g. ecoflow 15-30s) render smoothly here.
       dashboards:

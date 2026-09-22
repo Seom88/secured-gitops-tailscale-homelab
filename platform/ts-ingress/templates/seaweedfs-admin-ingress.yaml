@@ -1,9 +1,9 @@
-{{- if .Values.vault.enabled }}
+{{- if .Values.seaweedfs.admin.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: vault
-  namespace: vault
+  name: seaweedfs-admin
+  namespace: seaweedfs
 spec:
   ingressClassName: tailscale
   rules:
@@ -13,10 +13,10 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: vault
+                name: seaweedfs-admin
                 port:
-                  name: https
+                  number: 23646
   tls:
   - hosts:
-    - {{ if .Values.developmentApp.enabled }}vault-dev{{ else }}vault{{ end }}
+    - {{ if .Values.developmentApp.enabled }}seaweedfs-admin-dev{{ else }}seaweedfs-admin{{ end }}
 {{- end }}

@@ -1,9 +1,9 @@
-{{- if .Values.vault.enabled }}
+{{- if .Values.hubbleUi.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: vault
-  namespace: vault
+  name: hubble
+  namespace: kube-system
 spec:
   ingressClassName: tailscale
   rules:
@@ -13,10 +13,10 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: vault
+                name: hubble-ui
                 port:
-                  name: https
+                  number: 80
   tls:
   - hosts:
-    - {{ if .Values.developmentApp.enabled }}vault-dev{{ else }}vault{{ end }}
+    - {{ if .Values.developmentApp.enabled }}hubble-dev{{ else }}hubble{{ end }}
 {{- end }}

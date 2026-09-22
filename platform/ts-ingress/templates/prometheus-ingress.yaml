@@ -1,9 +1,9 @@
-{{- if .Values.vault.enabled }}
+{{- if .Values.prometheus.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: vault
-  namespace: vault
+  name: prometheus
+  namespace: monitoring
 spec:
   ingressClassName: tailscale
   rules:
@@ -13,10 +13,10 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: vault
+                name: monitoring-kube-prometheus-prometheus
                 port:
-                  name: https
+                  number: 9090
   tls:
   - hosts:
-    - {{ if .Values.developmentApp.enabled }}vault-dev{{ else }}vault{{ end }}
+    - {{ if .Values.developmentApp.enabled }}prometheus-dev{{ else }}prometheus{{ end }}
 {{- end }}

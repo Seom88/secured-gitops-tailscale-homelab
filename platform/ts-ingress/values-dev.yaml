@@ -1,18 +1,4 @@
 developmentApp:
   enabled: true
 
-# Dev hostname — single device for dev env. Keep distinct from prod to avoid MagicDNS collision.
-hostname: my-cluster-dev
-gateway:
-  enabled: true
-  replicas: 2
-  # Dev sizing: full floor for TLS termination and proxied dashboard
-  # traffic bursts; prod stays lean.
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 400m
-      memory: 256Mi
-
+# Dev hostnames — <app>-dev per Ingress template. Keep distinct from prod to avoid MagicDNS collision.

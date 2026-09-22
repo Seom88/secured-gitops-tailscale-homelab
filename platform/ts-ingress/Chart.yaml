@@ -1,6 +1,6 @@
 apiVersion: v2
 name: ts-ingress
-description: "Hybrid: 1 gateway device my-cluster for 5 services + dedicated vault-my-cluster device for Vault (2 devices total) — see ADR-012"
+description: "Per-app Tailscale Ingresses — one device per app at / root (see odd/tasks/per-app-ts-ingress.md)"
 type: application
 version: 1.0.0
 appVersion: "1.96.5"

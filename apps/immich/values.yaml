@@ -5,6 +5,10 @@ developmentApp:
   enabled: false
 
 immich:
+  immich:
+    persistence:
+      library:
+        existingClaim: immich-library
   server:
     controllers:
       main:
@@ -21,6 +25,3 @@ immich:
                 valueFrom: { secretKeyRef: { name: immich-database-app, key: dbname } }
   valkey:
     enabled: true
-  persistence:
-    library:
-      existingClaim: immich-library

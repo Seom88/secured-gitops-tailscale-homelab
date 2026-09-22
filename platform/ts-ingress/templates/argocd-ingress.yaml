@@ -1,17 +1,11 @@
-{{- if .Values.gateway.enabled }}
+{{- if .Values.argocd.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: my-cluster
-  namespace: tailscale
-  labels:
-    app.kubernetes.io/name: my-cluster
-    app.kubernetes.io/part-of: ts-ingress
+  name: argocd
+  namespace: argocd
 spec:
   ingressClassName: tailscale
-  tls:
-    - hosts:
-        - {{ .Values.hostname }}
   rules:
     - http:
         paths:
@@ -19,7 +13,10 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: cluster-gateway
+                name: argocd-server
                 port:
                   number: 80
+  tls:
+  - hosts:
+    - {{ if .Values.developmentApp.enabled }}argocd-dev{{ else }}argocd{{ end }}
 {{- end }}

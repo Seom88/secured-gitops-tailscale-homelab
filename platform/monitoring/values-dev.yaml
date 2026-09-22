@@ -41,8 +41,8 @@ kube-prometheus-stack:
   grafana:
     grafana.ini:
       server:
-        domain: dev-my-cluster.lonk-mirfak.ts.net
-        root_url: https://dev-my-cluster.lonk-mirfak.ts.net/grafana/
+        domain: grafana-dev.lonk-mirfak.ts.net
+        root_url: https://grafana-dev.lonk-mirfak.ts.net/
     # Dev sizing: full requests/limits so dashboard bursts and TSDB load
     # surface real metrics in dev before prod.
     resources:

@@ -4,28 +4,11 @@ ciliumNetworkPolicy:
 developmentApp:
   enabled: false
 
-# Hybrid gateway — 2 Tailscale devices: my-cluster (gateway for 5 services) + vault-my-cluster (Vault dedicated via vault-ingress.yaml).
-# See ADR-012 + Amendment 2026-09-02 (Vault moved off gateway due to no subpath support). Each gateway location gated by enabled toggle below.
-hostname: my-cluster
-gateway:
-  enabled: true  # set false to disable the my-cluster gateway device; vault device controlled by vault.enabled below
-  replicas: 1
-  # Digest-pinned (fail-closed Trivy gate); inline format so Renovate tracks
-  # tag+digest as one dep. Refresh with skopeo inspect docker://nginx:<tag> | jq -r .Digest
-  image: nginx:1.31-alpine@sha256:62ff2089abf5a9ed33bd232895bef5e22f7bb4b200675cec49a5ebc48e3d4ac8
-  imagePullPolicy: IfNotPresent
-  # Lean homelab sizing (prod): data-plane nginx is mostly idle; minimal
-  # request keeps it schedulable while the limit holds burst headroom.
-  resources:
-    requests:
-      cpu: 25m
-      memory: 128Mi
-    limits:
-      cpu: 300m
-      memory: 256Mi
+# Per-app Tailscale Ingresses — one device per app, each served at / root.
+# Hostnames: <app> prod, <app>-dev dev (via developmentApp.enabled).
+# See odd/tasks/per-app-ts-ingress.md. Each Ingress lives in its app namespace.
 
-# Per-service toggles — argocd/grafana/prometheus/longhorn/seaweedfs control gateway ConfigMap locations.
-# vault.enabled controls the dedicated vault-my-cluster Tailscale device (vault-ingress.yaml), not a gateway location.
+# Per-service toggles — each controls its own Ingress (no gateway).
 homepage:
   enabled: true
 
@@ -33,7 +16,7 @@ argocd:
   enabled: true
 
 vault:
-  enabled: true  # dedicated device vault-my-cluster.lonk-mirfak.ts.net (dev: dev-vault-my-cluster); gateway no longer serves /vault
+  enabled: true  # dedicated Ingress in namespace vault, host vault (dev: vault-dev)
 
 grafana:
   enabled: true
