@@ -80,14 +80,14 @@ Access the UI at [localhost:8080](http://localhost:8080) with user `admin`.
 If you have the Tailscale operator configured, your services will be reachable through your Tailnet.
 
 - Verify Tailscale nodes are created in your admin console.
-- Access services via single-host path routing on the `my-cluster` device (see [ADR-012](adrs/012-single-host-cluster-gateway.md) and [Networking](./networking.md)):
+- Access services via per-app devices on the tailnet — one `Ingress` + MagicDNS hostname per app, each served at `/` root (see [ADR-018](adrs/018-per-app-tailscale-ingress.md) and [Networking](./networking.md)):
   ```bash
-  open https://my-cluster.lonk-mirfak.ts.net/grafana/
-  open https://my-cluster.lonk-mirfak.ts.net/hubble/     # Hubble UI via ts-ingress 8081
-  open https://my-cluster.lonk-mirfak.ts.net/longhorn/
-  open https://vault-my-cluster.lonk-mirfak.ts.net/      # Vault is a dedicated device (no subpath)
+  open https://grafana.lonk-mirfak.ts.net/
+  open https://argocd.lonk-mirfak.ts.net/
+  open https://longhorn.lonk-mirfak.ts.net/
+  open https://vault.lonk-mirfak.ts.net/
   ```
-   Services use single-host path routing; per-service hostnames are not used. Vault is available at its dedicated device `https://vault-my-cluster.lonk-mirfak.ts.net`.
+   Per-app hostnames are used (`argocd`, `grafana`, `prometheus`, `longhorn`, `seaweedfs-s3`, `seaweedfs-admin`, `homepage`, `hubble`, `vault` on `*.lonk-mirfak.ts.net`; `-dev` suffix in dev). There is no shared gateway device.
 
 ## Pre-commit (fast local checks)
 

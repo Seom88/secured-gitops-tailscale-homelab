@@ -70,9 +70,9 @@ Each chart renders `platform/<app>/templates/cilium-networkpolicies.yaml` gated 
 |--------|-----------|-----------|
 | `<app>-allow-dns` | Egress | `toEndpoints: {k8s-app: kube-dns, k8s:io.kubernetes.pod.namespace: kube-system}` on UDP/TCP 53 + `toFQDNs: [{matchPattern: "*"}]` + `rules.dns` |
 | `<app>-allow-egress` | Egress | `kube-apiserver` (443/6443), `hubble-relay` (4244), intra-namespace (`k8s:io.kubernetes.pod.namespace: <ns>`), plus per-app specifics (Vault Raft, Longhorn, SeaweedFS) |
-| `<app>-allow-ingress` | Ingress | Intra-namespace, `tailscale/cluster-gateway` (post-DNAT `8080/3000/8081`), `toEntities: {host, remote-node, kube-apiserver}` + `health` probes |
+| `<app>-allow-ingress` | Ingress | Intra-namespace, `toEntities: {host, remote-node, kube-apiserver}` + `health` probes |
 
-Policy specifics (ADR-014): Vault ingress is allowed from the `vault` namespace (`fromEndpoints` same-ns), the Gateway uses post-DNAT ports `8080/3000/8081`, policies match both `app.kubernetes.io/name` and `app` labels, storage namespaces are unrestricted intra-namespace (see below), and Hubble `4244/4245` is whitelisted.
+Policy specifics (ADR-014): Vault ingress is allowed from the `vault` namespace (`fromEndpoints` same-ns), policies match both `app.kubernetes.io/name` and `app` labels, storage namespaces are unrestricted intra-namespace (see below), and Hubble `4244/4245` is whitelisted.
 
 ### Toggling policies
 
@@ -87,8 +87,7 @@ When `false`, the `CiliumNetworkPolicy` resources are not rendered; legacy `netw
 ## Tailscale integration
 
 - **Control plane / DERP / STUN:** Tailscale clients and `tailscale-operator` need egress to DERP and STUN. Policies allow UDP `1-65535` + TCP `80/443` for Tailscale control plane where required; MagicDNS (`*.ts.net`) is covered by the `allow-dns` FQDN rule (not a broad egress hole).
-- **Cluster-gateway ingress:** `tailscale` namespace gateway (`cluster-gateway` NGINX) is the only ingress path to platform UIs. Policies in each app namespace allow ingress from `k8s:io.kubernetes.pod.namespace: tailscale` + `k8s:app.kubernetes.io/name: cluster-gateway` on post-DNAT ports `8080` (HTTP), `3000` (Grafana), `8081` (Hubble UI).
-- **Dedicated Vault device:** Vault is exposed via `vault-my-cluster.lonk-mirfak.ts.net` (`vault` namespace `Ingress`), not via the gateway path — see [ADR-012](adrs/012-single-host-cluster-gateway.md).
+- **Per-app Tailscale ingress:** `platform/ts-ingress` renders one `Ingress` per app in the `tailscale` namespace (`ingressClassName: tailscale`), each creating its own MagicDNS device (`argocd`, `grafana`, `prometheus`, `longhorn`, `seaweedfs-s3`, `seaweedfs-admin`, `homepage`, `hubble`, `vault` on `*.lonk-mirfak.ts.net`; `-dev` suffix in dev). Every app is served at `/` root — no subpath routing — see [ADR-018](adrs/018-per-app-tailscale-ingress.md).
 
 ## Hubble
 
@@ -96,7 +95,7 @@ When `false`, the `CiliumNetworkPolicy` resources are not rendered; legacy `netw
 |------|------|-------|
 | Relay gRPC | `4244` | Whitelisted in every `allow-egress` |
 | Relay health / UI | `4245` | Probe + UI path |
-| UI via gateway | `8081` post-DNAT | `https://my-cluster.lonk-mirfak.ts.net/hubble/` |
+| UI via per-app Ingress | `443` (Tailscale serve) | `https://hubble.lonk-mirfak.ts.net/` |
 
 ```bash
 # Live flows (allow-listed vs dropped)
@@ -109,7 +108,7 @@ hubble status
 cilium connectivity test  # full mesh test (run after infra changes)
 ```
 
-All dashboards remain behind Tailscale single-host gateway; Hubble UI is path-routed like Grafana.
+All dashboards remain behind Tailscale; each app has its own per-app Ingress device.
 
 ## Storage exceptions (ADR-014 invariant)
 
@@ -137,10 +136,9 @@ cilium connectivity test --test-namespace cilium-test
 helm template platform/vault --set ciliumNetworkPolicy.enabled=true | grep -A2 "kind: CiliumNetworkPolicy"
 helm template platform/vault --set ciliumNetworkPolicy.enabled=false | grep -c "CiliumNetworkPolicy"  # → 0
 
-# Tailscale + gateway
-kubectl -n tailscale get ingress my-cluster -o wide
-kubectl -n tailscale get svc cluster-gateway
-curl -k https://my-cluster.lonk-mirfak.ts.net/grafana/login  # 200 via tailnet
+# Tailscale per-app Ingresses
+kubectl -n tailscale get ingress -o wide  # argocd, grafana, prometheus, longhorn, seaweedfs-*, homepage, hubble, vault
+curl -k https://grafana.lonk-mirfak.ts.net/login  # 200 via tailnet
 ```
 
 ## Troubleshooting — silent drops
@@ -148,8 +146,8 @@ curl -k https://my-cluster.lonk-mirfak.ts.net/grafana/login  # 200 via tailnet
 Cilium denies are **silent** (no RST, just `DROP` verdict). Use Hubble before packet captures:
 
 1. `hubble observe --verdict DROPPED --since 2m` — shows dropped flow, source/dest identity, port, DNS name, and denying policy.
-2. Check the caller's `allow-egress` / callee's `allow-ingress` for missing `toFQDNs`, `toEntities`, or post-DNAT port.
-3. Common fixes: add `toFQDNs.matchPattern` for new external FQDN, add `toEntities: {kube-apiserver}` for API access, allow `4244/4245` for Hubble, add gateway ingress for new UI route.
+2. Check the caller's `allow-egress` / callee's `allow-ingress` for missing `toFQDNs`, `toEntities`, or service ports.
+3. Common fixes: add `toFQDNs.matchPattern` for new external FQDN, add `toEntities: {kube-apiserver}` for API access, allow `4244/4245` for Hubble, add a per-app `Ingress` in `platform/ts-ingress` for a new UI route.
 4. Temporarily set `ciliumNetworkPolicy.enabled=false` for the chart to confirm policy vs app bug, then re-enable with fix.
 
 ## Renovate & upgrades
@@ -159,6 +157,6 @@ Cilium denies are **silent** (no RST, just `DROP` verdict). Use Hubble before pa
 ## References
 
 - ADR-014: [Cilium CNI and Identity-Aware NetworkPolicies](adrs/014-cilium-cni-and-identity-networkpolicies.md)
-- ADR-012: [Single-Host Cluster Gateway](adrs/012-single-host-cluster-gateway.md)
+- ADR-018: [Per-App Tailscale Ingresses](adrs/018-per-app-tailscale-ingress.md) (supersedes ADR-012)
 - Infra values: `infra-talos-homelab` `modules/platform/values/cilium/values.yaml`
 - Features deep dive: [eBPF Networking & Security](features-deep-dive.md#-ebpf-networking--security-with-cilium)

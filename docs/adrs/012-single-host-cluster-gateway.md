@@ -1,6 +1,8 @@
 # ADR-012: Single-Host Cluster Gateway via Path-Based Ingress
 
-**Status:** Accepted · **Date:** 2026-09-02 · **Deciders:** Seom88 · **Supersedes:** part of [ADR-001](001-tailscale-ingress-placement.md) · **Related:** [ADR-010](010-tailscale-oauth-ci-generated.md), [ADR-011](011-tailscale-dns-np.md)
+**Status:** Superseded by [ADR-018](018-per-app-tailscale-ingress.md) (2026-09-22) · **Date:** 2026-09-02 · **Deciders:** Seom88 · **Supersedes:** part of [ADR-001](001-tailscale-ingress-placement.md) · **Related:** [ADR-010](010-tailscale-oauth-ci-generated.md), [ADR-011](011-tailscale-dns-np.md)
+
+> **Superseded 2026-09-22 ([ADR-018](018-per-app-tailscale-ingress.md)):** the gateway is removed. Each app gets its own Tailscale `Ingress` + device at `/` root. This document is preserved as archive.
 
 > **Amendment 2026-09-02 (ADR-014):** The current CNI is **Cilium 1.20.1** with enforced `CiliumNetworkPolicy` (ADR-014).
 
@@ -113,3 +115,11 @@ Vault's UI and API assume root (`/ui/`, `/v1/`). Serving it under a gateway pref
 - `helm template tailscale platform/tailscale --values platform/tailscale/values.yaml` renders **2** Ingresses (`my-cluster` in `tailscale` + `vault` in `vault`) and gateway `nginx.conf` contains no `/vault/` location.
 - `helm template tailscale platform/tailscale --values platform/tailscale/values-dev.yaml` renders hosts `dev-my-cluster` + `dev-vault-my-cluster`.
 - `helm lint platform/tailscale` + `just validate` pass.
+
+---
+
+## Superseded 2026-09-22 by ADR-018: Per-App Ingresses, Gateway Removed
+
+**Status:** Superseded · **Reason:** per-app prefix fragility outweighed the device saving.
+
+The Vault amendment above was the first concession; the same subpath problem applied to every remaining gateway app (Grafana `root_url`, ArgoCD `baseHRef`, Prometheus `route-prefix`, NGINX `sub_filter`/`rewrite` for Longhorn/SeaweedFS). Decision: one Tailscale `Ingress` + device per app at `/` root (`argocd`, `grafana`, `prometheus`, `longhorn`, `seaweedfs-s3`, `seaweedfs-admin`, `homepage`, `hubble`, `vault`; `-dev` suffix in dev), gateway `Deployment`/`Service`/`ConfigMap`/`PDB` deleted. See [ADR-018](018-per-app-tailscale-ingress.md) for the full decision, alternatives, and verification.

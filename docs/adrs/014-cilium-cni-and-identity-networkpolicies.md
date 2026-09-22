@@ -56,3 +56,9 @@ The companion infrastructure repo (`infra-talos-homelab`) introduced Cilium v1.2
 ### Negative / Operational Notes
 - Any new inter-service communication (e.g., a new backup target or scraping endpoint) must be explicitly registered in the calling chart's `cilium-networkpolicies.yaml`.
 - Health check probes (`host` and `remote-node` entities) must be explicitly allowed on pods with custom probe ports.
+
+---
+
+## Amendment 2026-09-22: Gateway Ingress Consequence Removed ([ADR-018](018-per-app-tailscale-ingress.md))
+
+The `cluster-gateway` ingress allowances above (§Tailscale & Gateway API Alignment, `allow-ingress` callers) no longer apply: the NGINX gateway is deleted and `platform/ts-ingress` policies are DNS + default-egress only. The decision (central per-namespace Cilium policies) is unchanged; only the gateway consequence is void.

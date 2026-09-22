@@ -49,9 +49,9 @@ Vault is the industry standard for secrets management. Implementing it from scra
 
 ### What's Implemented
 
-**Tailscale Operator** for mesh VPN ingress — single-host gateway:
-- One MagicDNS device/hostname `my-cluster.lonk-mirfak.ts.net` (prod) / `dev-my-cluster...` (dev) with path routing (`/argocd`, `/grafana`, `/prometheus`, `/vault`, `/longhorn`, `/seaweedfs-*`) via in-namespace NGINX `cluster-gateway` — see [ADR-012](./adrs/012-single-host-cluster-gateway.md)
-- No public port exposure — ingress only via Tailscale mesh (1 cert, not 7)
+**Tailscale Operator** for mesh VPN ingress — one Ingress + device per app:
+- One MagicDNS device/hostname per app (`argocd`, `grafana`, `prometheus`, `longhorn`, `seaweedfs-s3`, `seaweedfs-admin`, `homepage`, `hubble`, `vault` on `*.lonk-mirfak.ts.net`; `-dev` suffix in dev), each served at `/` root — no subpath routing — see [ADR-018](./adrs/018-per-app-tailscale-ingress.md)
+- No public port exposure — ingress only via Tailscale mesh
 - Per-user access control — OAuth scopes integrated with Tailscale
 - Subnet routing — cluster pods accessible directly from Tailscale network
 - MeshVPN — encrypted point-to-point tunnels between admin device and cluster
@@ -75,20 +75,19 @@ Zero-trust networking is the modern security boundary model. This replaces:
 
 ```bash
 # No firewall rules, no public IP exposure
-# Device must be part of Tailscale network — single-host path routing
-open https://my-cluster.lonk-mirfak.ts.net/grafana/
-open https://my-cluster.lonk-mirfak.ts.net/argocd/
-open https://my-cluster.lonk-mirfak.ts.net/prometheus/
+# Device must be part of Tailscale network — one device per app, each at root
+open https://grafana.lonk-mirfak.ts.net/
+open https://argocd.lonk-mirfak.ts.net/
+open https://prometheus.lonk-mirfak.ts.net/
 ```
 
 ### Key Files
 
 - Operator deployment: [`platform/ts-operator/Chart.yaml`](../platform/ts-operator/Chart.yaml) (wave `-1`)
-- Gateway + single Ingress: [`platform/ts-ingress/templates/`](../platform/ts-ingress/templates/)
-  - Gateway: `gateway-configmap.yaml` / `gateway-deployment.yaml` / `gateway-service.yaml`
-  - Single Ingress: `ingress.yaml` (`my-cluster` → `cluster-gateway`)
-- Configuration: [`platform/ts-ingress/values.yaml`](../platform/ts-ingress/values.yaml) (`hostname: my-cluster` / `dev-my-cluster`)
-- ADRs: [ADR-001: Tailscale Ingress Placement](./adrs/001-tailscale-ingress-placement.md), [ADR-012: Single-Host Cluster Gateway](./adrs/012-single-host-cluster-gateway.md), [ADR-014: Cilium CNI and Identity-Aware NetworkPolicies](./adrs/014-cilium-cni-and-identity-networkpolicies.md)
+- Per-app Ingresses: [`platform/ts-ingress/templates/`](../platform/ts-ingress/templates/)
+  - One `<app>-ingress.yaml` per service (`argocd`, `grafana`, `prometheus`, `longhorn`, `seaweedfs-s3`, `seaweedfs-admin`, `homepage`, `hubble`, `vault`), each `path: /` at its own hostname
+- Configuration: [`platform/ts-ingress/values.yaml`](../platform/ts-ingress/values.yaml) (per-app `enabled` toggles + hostname values)
+- ADRs: [ADR-001: Tailscale Ingress Placement](./adrs/001-tailscale-ingress-placement.md), [ADR-018: Per-App Tailscale Ingresses](./adrs/018-per-app-tailscale-ingress.md) (supersedes ADR-012), [ADR-014: Cilium CNI and Identity-Aware NetworkPolicies](./adrs/014-cilium-cni-and-identity-networkpolicies.md)
 
 ---
 
@@ -109,10 +108,10 @@ open https://my-cluster.lonk-mirfak.ts.net/prometheus/
 2. **Policy Lifecycle — 3-Rule Template per Namespace** — Each chart renders `platform/*/templates/cilium-networkpolicies.yaml` (gated by `ciliumNetworkPolicy.enabled`):
    - `allow-dns` — `endpointSelector: {}` + `toEndpoints: {k8s-app: kube-dns, k8s:io.kubernetes.pod.namespace: kube-system}` on port 53 (UDP/TCP) with `toFQDNs: [{matchPattern: "*"}]` and `rules.dns`.
    - `allow-egress` — kube-apiserver (443/6443), `hubble-relay` (4244), intra-namespace (`k8s:io.kubernetes.pod.namespace: <ns>`), plus per-app specifics (e.g., Vault Raft, Longhorn/SeaweedFS storage ports).
-   - `allow-ingress` — intra-namespace, `tailscale/cluster-gateway` ingress, and `toEntities: {host, remote-node, kube-apiserver}` + `health` probes.
+   - `allow-ingress` — intra-namespace and `toEntities: {host, remote-node, kube-apiserver}` + `health` probes.
 3. **Identity & DNS Details** — Cilium assigns cryptographic endpoint identities (not volatile Pod IPs). Egress uses `toFQDNs` + `rules.dns` for FQDN-aware filtering and `toEntities` (`host`, `remote-node`, `kube-apiserver`) for node-level probes. `kube-apiserver` entity covers the API server regardless of IP.
-4. **Hubble Observability** — Hubble parses eBPF flow events. Relay listens on `4244` (gRPC) and `4245` (Hubble UI/health); policies whitelist these ports. Verify flows with `hubble observe -n <ns> --follow` or `hubble observe --verdict DROPPED` to debug silent drops. UI exposed via `ts-ingress` gateway at `https://my-cluster.lonk-mirfak.ts.net/hubble` (port 8081 post-DNAT, see ADR-014).
-5. **Operational Notes** — New inter-service traffic must be added explicitly to the caller's `cilium-networkpolicies.yaml`. Storage data planes (Longhorn 9500/8000/8500-8503, SeaweedFS 8333/9333) stay unrestricted intra-namespace to avoid attachment deadlocks on ephemeral ports (ADR-014 storage invariant). Gateway post-DNAT ports are `8080/3000/8081` (not 80). Renovate automerges Cilium/Gateway API patch updates; Cilium major bumps require manual review.
+4. **Hubble Observability** — Hubble parses eBPF flow events. Relay listens on `4244` (gRPC) and `4245` (Hubble UI/health); policies whitelist these ports. Verify flows with `hubble observe -n <ns> --follow` or `hubble observe --verdict DROPPED` to debug silent drops. UI exposed via its own `ts-ingress` Ingress at `https://hubble.lonk-mirfak.ts.net` (see ADR-014).
+5. **Operational Notes** — New inter-service traffic must be added explicitly to the caller's `cilium-networkpolicies.yaml`. Storage data planes (Longhorn 9500/8000/8500-8503, SeaweedFS 8333/9333) stay unrestricted intra-namespace to avoid attachment deadlocks on ephemeral ports (ADR-014 storage invariant). Renovate automerges Cilium/Gateway API patch updates; Cilium major bumps require manual review.
 
 ### Key Files
 
@@ -173,7 +172,7 @@ Wave 3 (Sync-only):
   └── 03-monitoring       ← Prometheus + Grafana + Loki (SeaweedFS S3) + Alloy DaemonSet (stateless, RBAC auto); depends on wave 2
 
 Wave 4 (Sync-only):
-  └── 04-ts-ingress        ← Single-host gateway (my-cluster Ingress + cluster-gateway NGINX), always last — ADR-012
+  └── 04-ts-ingress        ← Per-app Ingresses (one device per app, each at root), always last — ADR-018
 ```
 
 ### Key Files
@@ -223,7 +222,7 @@ Observability is non-negotiable in production:
 
 ### Example Dashboard
 
-Grafana dashboard accessible at: `https://my-cluster.lonk-mirfak.ts.net/grafana/` (via Tailscale single-host gateway)
+Grafana dashboard accessible at: `https://grafana.lonk-mirfak.ts.net/` (via Tailscale per-app Ingress)
 
 Includes:
 - Vault: Sealed state, rekey progress, auth method usage

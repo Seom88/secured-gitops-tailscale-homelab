@@ -80,40 +80,38 @@ Items planned after v1.0.0. Expected to be additive; no CNI or storage re-archit
 
 Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping the current MagicDNS workflow intact. App routing moves to standard Kubernetes Gateway API (`GatewayClass` / `Gateway` / `HTTPRoute`) so swapping the underlying mesh (Tailscale → Netbird or other) later requires no app changes.
 
-**Device inventory — 4 → 3 (vault device eliminated):**
+**Device inventory — 9 app devices → 1 (plus 2 infra devices unchanged):**
 
-| Tailnet device | Purpose | Today (v1 — 4 devices) | After BYOD (v2 — 3 devices) |
+| Tailnet device | Purpose | Today (per-app Ingresses — ADR-018) | After BYOD (v2 — 3 devices) |
 |---|---|---|---|
 | `k8s-nameserver` | `DNSConfig` device for MagicDNS `ts.net` → CoreDNS sibling `ts.net:53` (`platform/coredns-patch`, ADR-011) | ✅ present | ✅ stays |
 | `rustfs-egress` | `ExternalName` `rustfs.lonk-mirfak.ts.net` for Velero/S3 via Tailscale | ✅ present | ✅ stays (future optional: consolidate via `TCPRoute`; out of scope for v2) |
-| `my-cluster` | Single `Ingress` + NGINX gateway (`platform/ts-ingress`) for `argocd`/`grafana`/`prometheus`/`longhorn`/`seaweedfs` (ADR-012) | ✅ present | 🔀 replaced — merged into `gateway-envoy` |
-| `vault-my-cluster` | Dedicated `Ingress` for Vault — Amendment 2026-09-02 (Vault UI has no subpath support, `hashicorp/vault#9221`) | ✅ present | ❌ eliminated — becomes second listener/hostname on `gateway-envoy` |
-| `gateway-envoy` | Envoy Gateway `LoadBalancer` with `loadBalancerClass: tailscale` (BYOD) | — | ✅ **single device** serving both `my-cluster.lonk-mirfak.ts.net` + `vault-my-cluster.lonk-mirfak.ts.net` |
+| per-app Ingresses | One `Ingress` + device per app (`platform/ts-ingress`): `argocd`/`grafana`/`prometheus`/`longhorn`/`seaweedfs-s3`/`seaweedfs-admin`/`homepage`/`hubble`/`vault`, each at `/` root (ADR-018) | ✅ present (9 devices) | 🔀 consolidated — merged into `gateway-envoy` |
+| `gateway-envoy` | Envoy Gateway `LoadBalancer` with `loadBalancerClass: tailscale` (BYOD) | — | ✅ **single device** serving all 9 app hostnames |
 
 > Operator itself is control-plane only and not counted. `k8s-nameserver` + `rustfs-egress` are unchanged in v2.
 
 **BYOD architecture (brief):**
 
-- Envoy Gateway chart provides `GatewayClass: tailscale` and a `LoadBalancer` (`loadBalancerClass: tailscale`) — single Tailscale device `gateway-envoy` replaces the two L7 devices above. See [Tailscale BYOD Gateway API](https://tailscale.com/docs/solutions/kubernetes-operator-byod-gateway-api).
-- One `Gateway` with multiple `listeners` / `hostnames` (`my-cluster.lonk-mirfak.ts.net`, `vault-my-cluster.lonk-mirfak.ts.net`), each terminating its own TLS cert. One `HTTPRoute` per service (replaces NGINX `ConfigMap` path-proxy).
-- Removes `platform/ts-ingress` NGINX gateway (`Deployment`/`Service`/`ConfigMap`) and `sub_filter`/`rewrite` hacks for `/longhorn`, `/seaweedfs-*`, etc. Vault no longer needs a separate device — it is a standard hostname-routed `HTTPRoute`.
+- Envoy Gateway chart provides `GatewayClass: tailscale` and a `LoadBalancer` (`loadBalancerClass: tailscale`) — single Tailscale device `gateway-envoy` replaces the nine per-app L7 devices above. See [Tailscale BYOD Gateway API](https://tailscale.com/docs/solutions/kubernetes-operator-byod-gateway-api).
+- One `Gateway` with multiple `listeners` / `hostnames` (one per app: `argocd`, `grafana`, `prometheus`, `longhorn`, `seaweedfs-s3`, `seaweedfs-admin`, `homepage`, `hubble`, `vault` on `*.lonk-mirfak.ts.net`), each terminating its own TLS cert. One `HTTPRoute` per service (replaces the per-app `Ingress`es).
+- The NGINX gateway is already gone (ADR-018 removed `Deployment`/`Service`/`ConfigMap` + `sub_filter`/`rewrite` hacks); v2 only swaps the L7 frontend from per-app `Ingress`es to `HTTPRoute`s on `gateway-envoy`. Vault stays a standard hostname-routed route throughout.
 - Substrate ready: Cilium Gateway API CRDs `v1.2.3` are already installed via `infra-talos-homelab` (ADR-014); no CNI/storage change needed.
 
 **Scope:**
 
 | | In scope for v2 (immediate) | Future / optional (not v2) |
 |---|---|---|
-| Ingress | Consolidate `my-cluster` + `vault-my-cluster` onto one `gateway-envoy` device; keep MagicDNS (`*.lonk-mirfak.ts.net`) | Own domain via Pi-hole/CoreDNS authoritative + `ExternalDNS` + `cert-manager` + Tailscale split DNS (BYOD guide Steps 1–6); reduces MagicDNS dependency but not required for vendor-agnostic routing |
+| Ingress | Consolidate the 9 per-app `Ingress`es onto one `gateway-envoy` device; keep MagicDNS (`*.lonk-mirfak.ts.net`) | Own domain via Pi-hole/CoreDNS authoritative + `ExternalDNS` + `cert-manager` + Tailscale split DNS (BYOD guide Steps 1–6); reduces MagicDNS dependency but not required for vendor-agnostic routing |
 | Mesh | App `HTTPRoutes` stay vendor-agnostic; swapping `GatewayClass` from `tailscale` to `netbird`/other requires no app changes | Evaluation of alternative meshes (e.g. Netbird) as drop-in `GatewayClass` replacement |
 | DNS / S3 | `k8s-nameserver` and `rustfs-egress` untouched | Own DNS/domain, `TCPRoute` for RustFS |
 
 **Checklist — v2:**
 
 - [ ] Install Envoy Gateway chart (Gateway API provider) and define `GatewayClass: tailscale`
-- [ ] Define single `Gateway: gateway-envoy` (`LoadBalancer`, `loadBalancerClass: tailscale`) with two TLS listeners/hostnames and per-service `HTTPRoute`s (argocd, grafana, prometheus, longhorn, seaweedfs, vault)
-- [ ] Migrate Vault route from dedicated `Ingress` (`vault-my-cluster`) to `HTTPRoute` on `gateway-envoy`; verify Vault UI/API at root without subpath hacks
-- [ ] Deprecate and remove `platform/ts-ingress` NGINX gateway (`Deployment`/`Service`/`ConfigMap` + Cilium policies for `cluster-gateway`); update `CiliumNetworkPolicies` for `gateway-envoy`
-- [ ] Update docs/runbooks (URLs, `helm template` verification, `kubectl get gateway/httproute` checks, rollback to dual-Ingress)
+- [ ] Define single `Gateway: gateway-envoy` (`LoadBalancer`, `loadBalancerClass: tailscale`) with per-app TLS listeners/hostnames and per-service `HTTPRoute`s (argocd, grafana, prometheus, longhorn, seaweedfs-s3, seaweedfs-admin, homepage, hubble, vault)
+- [x] Remove L7 gateway hacks — done early via ADR-018 (NGINX `Deployment`/`Service`/`ConfigMap` deleted; per-app `Ingress`es at `/` root, no `sub_filter`/`rewrite`)
+- [ ] Update docs/runbooks (URLs, `helm template` verification, `kubectl get gateway/httproute` checks, rollback to per-app `Ingress`es)
 
 **Non-goals for v2:**
 
@@ -184,7 +182,7 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 - [x] Real application example (Homepage v2.3.0 digest-pinned, wave 3 `apps/homepage`)
 
 **Planned for v2.0:**
-- [ ] Decoupling & vendor-agnostic ingress — Gateway API BYOD (Envoy Gateway, `GatewayClass: tailscale`; 4→3 devices — `vault-my-cluster` merged into `gateway-envoy`; MagicDNS kept, own-domain split DNS deferred)
+- [ ] Decoupling & vendor-agnostic ingress — Gateway API BYOD (Envoy Gateway, `GatewayClass: tailscale`; 11→3 devices — 9 per-app `Ingress`es merged into `gateway-envoy`; MagicDNS kept, own-domain split DNS deferred)
 - [ ] Compliance & policy (PSA restricted rollout, NetworkPolicy hardening, threat-model doc, Kyverno, CIS Benchmark, RBAC audit, compliance dashboard)
 - [ ] Documentation & onboarding (customization guide refresh + e2e)
 - [ ] Observability & audit (centralized audit logging)
