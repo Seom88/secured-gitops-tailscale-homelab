@@ -84,9 +84,10 @@ open https://prometheus.lonk-mirfak.ts.net/
 ### Key Files
 
 - Operator deployment: [`platform/ts-operator/Chart.yaml`](../platform/ts-operator/Chart.yaml) (wave `-1`)
-- Per-app Ingresses: [`platform/ts-ingress/templates/`](../platform/ts-ingress/templates/)
-  - One `<app>-ingress.yaml` per service (`argocd`, `grafana`, `prometheus`, `longhorn`, `seaweedfs-s3`, `seaweedfs-admin`, `homepage`, `hubble`, `vault`), each `path: /` at its own hostname
-- Configuration: [`platform/ts-ingress/values.yaml`](../platform/ts-ingress/values.yaml) (per-app `enabled` toggles + hostname values)
+- Per-app Ingresses: each chart renders its own `tailscale-ingress.yaml` (one Ingress + device per app)
+  - `homepage`, `monitoring` (`grafana` + `prometheus`), `longhorn`, `seaweedfs` (`s3` + `admin`), `vault` — hostnames via `tailscaleIngress` values (`-dev` in dev)
+  - Orphans owned by the infra repo (`argocd`, `hubble`) ship from [`platform/ts-operator/templates/infra/`](../platform/ts-operator/templates/infra/)
+- Proxy→backend Cilium egress lives in `ts-operator` as `ts-operator-proxy-egress` (managed-proxy selector); no `ts-ingress` chart remains
 - ADRs: [ADR-001: Tailscale Ingress Placement](./adrs/001-tailscale-ingress-placement.md), [ADR-018: Per-App Tailscale Ingresses](./adrs/018-per-app-tailscale-ingress.md) (supersedes ADR-012), [ADR-014: Cilium CNI and Identity-Aware NetworkPolicies](./adrs/014-cilium-cni-and-identity-networkpolicies.md)
 
 ---
@@ -110,7 +111,7 @@ open https://prometheus.lonk-mirfak.ts.net/
    - `allow-egress` — kube-apiserver (443/6443), `hubble-relay` (4244), intra-namespace (`k8s:io.kubernetes.pod.namespace: <ns>`), plus per-app specifics (e.g., Vault Raft, Longhorn/SeaweedFS storage ports).
    - `allow-ingress` — intra-namespace and `toEntities: {host, remote-node, kube-apiserver}` + `health` probes.
 3. **Identity & DNS Details** — Cilium assigns cryptographic endpoint identities (not volatile Pod IPs). Egress uses `toFQDNs` + `rules.dns` for FQDN-aware filtering and `toEntities` (`host`, `remote-node`, `kube-apiserver`) for node-level probes. `kube-apiserver` entity covers the API server regardless of IP.
-4. **Hubble Observability** — Hubble parses eBPF flow events. Relay listens on `4244` (gRPC) and `4245` (Hubble UI/health); policies whitelist these ports. Verify flows with `hubble observe -n <ns> --follow` or `hubble observe --verdict DROPPED` to debug silent drops. UI exposed via its own `ts-ingress` Ingress at `https://hubble.lonk-mirfak.ts.net` (see ADR-014).
+4. **Hubble Observability** — Hubble parses eBPF flow events. Relay listens on `4244` (gRPC) and `4245` (Hubble UI/health); policies whitelist these ports. Verify flows with `hubble observe -n <ns> --follow` or `hubble observe --verdict DROPPED` to debug silent drops. UI exposed via its own per-chart Ingress at `https://hubble.lonk-mirfak.ts.net` (see ADR-014).
 5. **Operational Notes** — New inter-service traffic must be added explicitly to the caller's `cilium-networkpolicies.yaml`. Storage data planes (Longhorn 9500/8000/8500-8503, SeaweedFS 8333/9333) stay unrestricted intra-namespace to avoid attachment deadlocks on ephemeral ports (ADR-014 storage invariant). Renovate automerges Cilium/Gateway API patch updates; Cilium major bumps require manual review.
 
 ### Key Files
@@ -169,10 +170,9 @@ Wave 2 (Healthy required):
   └── 02-seaweedfs        ← Depends on wave 1
 
 Wave 3 (Sync-only):
-  └── 03-monitoring       ← Prometheus + Grafana + Loki (SeaweedFS S3) + Alloy DaemonSet (stateless, RBAC auto); depends on wave 2
+  └── 03-monitoring       ← Prometheus + Grafana + Loki (SeaweedFS S3) + Alloy DaemonSet (stateless, RBAC auto); owns grafana/prometheus Ingresses; depends on wave 2
 
-Wave 4 (Sync-only):
-  └── 04-ts-ingress        ← Per-app Ingresses (one device per app, each at root), always last — ADR-018
+No wave 4 — the `ts-ingress` chart is deleted; each chart owns its Ingress, and `ts-operator` (wave `-1`) owns the orphan `argocd`/`hubble` Ingresses — ADR-018 amendment.
 ```
 
 ### Key Files
@@ -180,7 +180,7 @@ Wave 4 (Sync-only):
 - Root app: [`gitops/templates/root-prod-app.yaml`](../gitops/templates/root-prod-app.yaml)
 - Platform apps: [`gitops/templates/apps/`](../gitops/templates/apps/)
   - `00-cert-manager.yaml`, `00-external-secrets.yaml`, `00-longhorn.yaml`
-  - `01-vault.yaml`, `02-seaweedfs.yaml`, `03-monitoring.yaml`, `04-ts-ingress.yaml`
+  - `01-vault.yaml`, `02-seaweedfs.yaml`, `03-monitoring.yaml` (no wave 4; `-1-ts-operator.yaml` owns the orphan Ingresses)
 - Helm chart: [`gitops/Chart.yaml`](../gitops/Chart.yaml)
 - Configuration: [`gitops/values.yaml`](../gitops/values.yaml) (prod) and [`gitops/values-dev.yaml`](../gitops/values-dev.yaml) (dev)
 - ADR: [ADR-006: App Health and Vault Ordering](./adrs/006-app-health-and-vault-ordering.md)

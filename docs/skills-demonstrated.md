@@ -40,7 +40,7 @@ You understand how to build systems that scale. This isn't just installing tools
 - **Kubernetes Auth** — Vault auth configured per namespace. Bootstrap script handles initial setup at [`bootstrap/init-gitops.sh`](../bootstrap/init-gitops.sh) (lines for auth method config)
 - **Auto-Unseal** — CronJob that unseals Vault on node restart (raft recovery). See [`platform/vault/templates/autounseal-cronjob.yaml`](../platform/vault/templates/autounseal-cronjob.yaml)
 - **Cert-Manager Integration** — TLS certificates issued and renewed automatically for Vault and services. See [`platform/vault/templates/`](../platform/vault/templates/)
-- **Tailscale Zero-Trust** — Mesh VPN for secure ingress without exposing ports. See [`platform/ts-ingress/templates/`](../platform/ts-ingress/templates/) and ADR-001
+- **Tailscale Zero-Trust** — Mesh VPN for secure ingress without exposing ports. See [`platform/ts-operator/`](../platform/ts-operator/) and ADR-001
 
 **What Recruiters See:**
 You can design and operate production secrets management systems. Vault is enterprise-grade; implementing it from scratch (not just installing) shows deep understanding of security patterns.
@@ -85,8 +85,8 @@ You understand GitOps as a paradigm, not just a tool. Sync-wave ordering and hea
 - Custom observability exporting
 
 **Evidence:**
-- **Tailscale Integration** — Mesh VPN operator (wave `-1`) + per-app Ingresses (one MagicDNS device per app, each at `/` root). See [`platform/ts-ingress/`](../platform/ts-ingress/) and ADRs 001/018
-- **Platform Ingress Templates** — Per-app Ingress pattern (one `<app>-ingress.yaml` per service → own device). See [`platform/ts-ingress/templates/argocd-ingress.yaml`](../platform/ts-ingress/templates/argocd-ingress.yaml)
+- **Tailscale Integration** — Mesh VPN operator (wave `-1`) + per-app Ingresses owned by each chart via `tailscaleIngress` values (one MagicDNS device per app, each at `/` root). See [`platform/ts-operator/`](../platform/ts-operator/) and ADRs 001/018
+- **Platform Ingress Templates** — Per-chart Ingress pattern (each chart renders its own `tailscale-ingress.yaml` → own device; orphan `argocd`/`hubble` live in `ts-operator/templates/infra/`). See [`platform/vault/templates/tailscale-ingress.yaml`](../platform/vault/templates/tailscale-ingress.yaml)
 - **Network Policies** — Identity-aware `CiliumNetworkPolicy` (`cilium.io/v2`) across 9 charts with allow-dns / allow-egress / allow-ingress (eBPF, kubeProxyReplacement strict, Hubble 4244/4245). See [`platform/*/templates/cilium-networkpolicies.yaml`](../platform/vault/templates/cilium-networkpolicies.yaml) (9 charts, gated by `ciliumNetworkPolicy.enabled=true`) + infra `modules/platform/values/cilium/values.yaml` (Cilium 1.20.1, Gateway API 1.2.3). Legacy `networking.k8s.io/v1` `networkpolicy.yaml` retained for non-Cilium clusters
 - **Monitoring Stack** — Prometheus (metrics), Grafana (dashboards), Loki (SingleBinary + S3/SeaweedFS + gateway) + Alloy (stateless DaemonSet log collector via `discovery.kubernetes` → `loki.source.kubernetes` → `loki.write` to `http://monitoring-loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push` with `X-Scope-OrgID: fake`; no PVC, RBAC auto-created; replaces Promtail — deprecated). See [`platform/monitoring/`](../platform/monitoring/) and [`platform/monitoring/values.yaml`](../platform/monitoring/values.yaml) (`loki` + `alloy` blocks, chart `alloy:1.12.1`)
 - **Vault Metrics Export** — Prometheus endpoints for Vault health, sealed state, replication status

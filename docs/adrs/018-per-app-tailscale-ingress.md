@@ -51,3 +51,22 @@ In practice the gateway accumulated the same class of problem for every remainin
 - ADR-012 amendment 2026-09-02 — Vault dedicated device, the first crack in the gateway model
 - hashicorp/vault#9221 — Vault UI has no subpath support
 - Roadmap v2 (Gateway API BYOD): `../roadmap.md` — long-term reconsolidation via `gateway-envoy`
+
+---
+
+## Amendment 2026-09-22: Ingresses Move to Owning Charts, `ts-ingress` Chart Deleted
+
+**Status:** Accepted · **Amends:** Decision section `platform/ts-ingress` layout + proxy-egress policy home · **Reason:** the chart was pure overhead once the gateway was gone.
+
+With no gateway left, `platform/ts-ingress` held only 8 `Ingress` manifests plus Cilium policies for the `tailscale` namespace — while every rule in those policies exists to serve backends owned by other charts. Decision:
+
+- Delete the `platform/ts-ingress` chart and the wave-`4` ArgoCD app (`04-ts-ingress.yaml`). There is no wave 4 anymore; `ts-operator` (wave `-1`) is the only Tailscale app.
+- Each chart owns its `Ingress` via a `tailscaleIngress` values block (explicit `hostname`, `-dev` in dev): `homepage`, `monitoring` (`grafana` + `prometheus`), `longhorn`, `seaweedfs` (`s3` + `admin`), `vault`. Orphan apps owned by the infra repo (`argocd`, `hubble-ui`) ship from `platform/ts-operator/templates/infra/`.
+- Proxy→backend Cilium egress moves to `platform/ts-operator` as `ts-operator-proxy-egress` (`selector: tailscale.com/managed=true`); the `ts-ingress` DNS/default-egress rules were already covered by the operator chart's own policies and are dropped, not duplicated.
+- Prometheus `externalUrl`/`routePrefix` fixed to root (`https://prometheus[-dev].lonk-mirfak.ts.net/`, no `routePrefix`) — the last `my-cluster` subpath remnant.
+
+**Updated Verification (amended):**
+
+- `helm template` per chart renders its Ingresses: `homepage` 1/1, `monitoring` 2/2, `longhorn` 1/1, `seaweedfs` 2/2, `vault` 1/1, `ts-operator` 2/2 (prod/dev) with `-dev` hosts in dev
+- `ts-operator` renders 4 `CiliumNetworkPolicy` docs including `ts-operator-proxy-egress`
+- `helm lint` (all 6 charts, 0 failed) + `just validate` pass

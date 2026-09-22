@@ -20,7 +20,7 @@
 | Cilium CNI | `1.20.1` | `infra-talos-homelab` `modules/platform/values/cilium/values.yaml` |
 | Gateway API CRDs | `1.2.3` | `infra-talos-homelab` DAG `gateway_api` before Cilium |
 | KubePrism | `localhost:7445` | Talos `k8sServiceHost: localhost`, `k8sServicePort: 7445` |
-| Hubble relay | `4244` (gRPC) / `4245` (UI/health) | Cilium + `ts-ingress` gateway |
+| Hubble relay | `4244` (gRPC) / `4245` (UI/health) | Cilium + per-chart Tailscale Ingress |
 | Policy API | `cilium.io/v2` (`CiliumNetworkPolicy`) | `platform/*/templates/cilium-networkpolicies.yaml` (9 charts) |
 
 ## Substrate (Sidero / Talos)
@@ -87,7 +87,7 @@ When `false`, the `CiliumNetworkPolicy` resources are not rendered; legacy `netw
 ## Tailscale integration
 
 - **Control plane / DERP / STUN:** Tailscale clients and `tailscale-operator` need egress to DERP and STUN. Policies allow UDP `1-65535` + TCP `80/443` for Tailscale control plane where required; MagicDNS (`*.ts.net`) is covered by the `allow-dns` FQDN rule (not a broad egress hole).
-- **Per-app Tailscale ingress:** `platform/ts-ingress` renders one `Ingress` per app in the `tailscale` namespace (`ingressClassName: tailscale`), each creating its own MagicDNS device (`argocd`, `grafana`, `prometheus`, `longhorn`, `seaweedfs-s3`, `seaweedfs-admin`, `homepage`, `hubble`, `vault` on `*.lonk-mirfak.ts.net`; `-dev` suffix in dev). Every app is served at `/` root — no subpath routing — see [ADR-018](adrs/018-per-app-tailscale-ingress.md).
+- **Per-app Tailscale ingress:** each chart renders its own `Ingress` via `tailscaleIngress` values (`ingressClassName: tailscale`), each creating its own MagicDNS device (`argocd`, `grafana`, `prometheus`, `longhorn`, `seaweedfs-s3`, `seaweedfs-admin`, `homepage`, `hubble`, `vault` on `*.lonk-mirfak.ts.net`; `-dev` hostnames in dev). Orphan apps owned by the infra repo (`argocd`, `hubble-ui`) ship from `platform/ts-operator/templates/infra/`. Every app is served at `/` root — no subpath routing — see [ADR-018](adrs/018-per-app-tailscale-ingress.md). Proxy→backend Cilium egress lives in `ts-operator` as `ts-operator-proxy-egress`.
 
 ## Hubble
 
@@ -147,7 +147,7 @@ Cilium denies are **silent** (no RST, just `DROP` verdict). Use Hubble before pa
 
 1. `hubble observe --verdict DROPPED --since 2m` — shows dropped flow, source/dest identity, port, DNS name, and denying policy.
 2. Check the caller's `allow-egress` / callee's `allow-ingress` for missing `toFQDNs`, `toEntities`, or service ports.
-3. Common fixes: add `toFQDNs.matchPattern` for new external FQDN, add `toEntities: {kube-apiserver}` for API access, allow `4244/4245` for Hubble, add a per-app `Ingress` in `platform/ts-ingress` for a new UI route.
+3. Common fixes: add `toFQDNs.matchPattern` for new external FQDN, add `toEntities: {kube-apiserver}` for API access, allow `4244/4245` for Hubble, add a `tailscale-ingress.yaml` in the owning chart (or `ts-operator/templates/infra/` for infra-owned apps) for a new UI route.
 4. Temporarily set `ciliumNetworkPolicy.enabled=false` for the chart to confirm policy vs app bug, then re-enable with fix.
 
 ## Renovate & upgrades

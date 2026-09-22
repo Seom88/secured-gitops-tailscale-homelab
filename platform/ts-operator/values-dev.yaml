@@ -1,7 +1,7 @@
 developmentApp:
   enabled: true
 
-# dev overrides — mirrors platform/ts-ingress/values-dev.yaml tail before split
+# dev overrides — hostnames for the orphan-app Ingresses in templates/infra/
 tailscale-operator:
   operatorConfig:
     hostname: "tailscale-operator-dev"

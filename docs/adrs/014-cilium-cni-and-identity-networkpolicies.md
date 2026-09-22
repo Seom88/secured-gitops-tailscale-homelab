@@ -62,3 +62,5 @@ The companion infrastructure repo (`infra-talos-homelab`) introduced Cilium v1.2
 ## Amendment 2026-09-22: Gateway Ingress Consequence Removed ([ADR-018](018-per-app-tailscale-ingress.md))
 
 The `cluster-gateway` ingress allowances above (§Tailscale & Gateway API Alignment, `allow-ingress` callers) no longer apply: the NGINX gateway is deleted and `platform/ts-ingress` policies are DNS + default-egress only. The decision (central per-namespace Cilium policies) is unchanged; only the gateway consequence is void.
+
+> **Follow-up 2026-09-22 ([ADR-018 amendment](018-per-app-tailscale-ingress.md)):** the `platform/ts-ingress` chart itself is deleted. The proxy→backend egress rules now live in `platform/ts-operator` as `ts-operator-proxy-egress`; each chart owns its `Ingress` via `tailscaleIngress` values.

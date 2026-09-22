@@ -51,7 +51,7 @@ This is **not just another Kubernetes homelab** — it's a reference implementat
 |------|------------------|----------|
 | **Secrets Management** | Vault HA (3-node Raft), auto-unseal, per-service auth | [`platform/vault/`](./platform/vault/), [Docs](./docs/skills-demonstrated.md#-secrets-management--security) |
 | **GitOps & Orchestration** | ArgoCD App-of-Apps, sync-wave ordering, custom health checks | [`gitops/templates/apps/`](./gitops/templates/apps/), [ADR-006](./docs/adrs/006-app-health-and-vault-ordering.md) |
-| **Zero-Trust Networking** | Tailscale operator, per-app Ingresses (one MagicDNS device per app, every app at `/` root) | [`platform/ts-ingress/`](./platform/ts-ingress/), [ADR-001](./docs/adrs/001-tailscale-ingress-placement.md), [ADR-018](./docs/adrs/018-per-app-tailscale-ingress.md) |
+| **Zero-Trust Networking** | Tailscale operator, per-app Ingresses (one MagicDNS device per app, every app at `/` root) | [`platform/ts-operator/`](./platform/ts-operator/), [ADR-001](./docs/adrs/001-tailscale-ingress-placement.md), [ADR-018](./docs/adrs/018-per-app-tailscale-ingress.md) |
 | **High-Availability** | Vault Raft quorum, multi-node Kubernetes, Longhorn distributed storage | [`platform/vault/templates/`](./platform/vault/templates/), [Features](./docs/features-deep-dive.md#-storage-longhorn--seaweedfs) |
 | **Observability** | Prometheus + Grafana + Loki + Alloy (DaemonSet log collector) with Vault metrics | [`platform/monitoring/`](./platform/monitoring/) |
 | **Storage & Data** | Longhorn CSI, SeaweedFS S3, persistent volume management | [`platform/seaweedfs/`](./platform/seaweedfs/), [ADR-005](./docs/adrs/005-longhorn-back-to-gitops.md) |
@@ -101,15 +101,15 @@ graph TD
         W0C[00 longhorn<br/>wave 0 healthy<br/>CSI-gated]
         W1[01 vault<br/>wave 1 healthy<br/>3-node Raft]
         W2[02 seaweedfs<br/>wave 2 healthy]
-        W3[03 monitoring<br/>wave 3 sync-only<br/>Prometheus + Grafana + Loki + Alloy DaemonSet]
-        W4[04 ts-ingress<br/>wave 4 sync-only<br/>per-app Ingresses<br/>one device per app]
+        W3[03 monitoring<br/>wave 3 sync-only<br/>Prometheus + Grafana + Loki + Alloy DaemonSet<br/>owns grafana/prometheus Ingresses]
+        WOP[-1 ts-operator<br/>wave -1<br/>operator + proxy-egress policies<br/>owns argocd/hubble Ingresses]
 
         CILIUM -.->|CNI + NetworkPolicy| ROOT
         ROOT --> W0A & W0B & W0C
         W0A & W0B & W0C --> W1
         W1 --> W2
         W2 --> W3
-        W3 --> W4
+        ROOT -.->|wave -1| WOP
     end
 
     User((Admin)) -->|tailscale| TS
@@ -216,7 +216,7 @@ secured-gitops-tailscale-homelab/
 - `bootstrap/init-gitops.sh` — Idempotent bootstrap script
 - `gitops/Chart.yaml` — Root App-of-Apps meta-chart
 - `gitops/templates/apps/` — Platform apps ordered by sync-wave
-- `platform/vault/` → `platform/ts-ingress/` → ... — Individual platform charts
+- `platform/vault/` → `platform/ts-operator/` → ... — Individual platform charts
 
 **Full directory walkthrough:** See [`docs/getting-started.md`](./docs/getting-started.md)
 

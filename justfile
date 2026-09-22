@@ -317,7 +317,7 @@ validate-gitops:
     echo "   dev render: $(wc -l < /tmp/gitops-dev.yaml) lines"
     echo "✅ validate-gitops: OK"
 
-# Lint all platform charts (vault, monitoring, seaweedfs, ts-ingress/ts-operator, longhorn)
+# Lint all platform charts (vault, monitoring, seaweedfs, ts-operator, longhorn)
 validate-platform:
     #!/usr/bin/env bash
     set -e
