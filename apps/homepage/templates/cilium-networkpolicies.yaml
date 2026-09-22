@@ -38,6 +38,13 @@ spec:
               protocol: TCP
             - port: "6443"
               protocol: TCP
+    # World HTTPS: update checks (api.github.com) + external widgets
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy

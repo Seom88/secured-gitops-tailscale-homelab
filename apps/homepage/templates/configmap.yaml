@@ -26,35 +26,35 @@ data:
     - GitOps & Security:
         - Argo CD:
             icon: argo-cd
-            href: https://my-cluster.lonk-mirfak.ts.net/argocd
+            href: https://argocd{{ .Values.myDomain }}/
             description: GitOps deployments, sync status and app history
         {{- if .Values.vault.enabled }}
         - Vault:
             icon: vault
-            href: https://vault-my-cluster.lonk-mirfak.ts.net
+            href: https://vault{{ .Values.myDomain }}
             description: Secrets, tokens and encryption key management
         {{- end }}
     - Observability:
         - Grafana:
             icon: grafana
-            href: https://my-cluster.lonk-mirfak.ts.net/grafana
+            href: https://grafana{{ .Values.myDomain }}/
             description: Dashboards for metrics, logs and cluster health
         - Prometheus:
             icon: prometheus
-            href: https://my-cluster.lonk-mirfak.ts.net/prometheus
+            href: https://prometheus{{ .Values.myDomain }}/
             description: Metrics collection, queries and alert rules
         - Hubble:
             icon: cilium
-            href: https://my-cluster.lonk-mirfak.ts.net/hubble
+            href: https://hubble{{ .Values.myDomain }}/
             description: Network flows, service map and policy visibility
     - Storage:
         - Longhorn:
             icon: longhorn
-            href: https://my-cluster.lonk-mirfak.ts.net/longhorn
+            href: https://longhorn{{ .Values.myDomain }}/
             description: Block storage, volumes, snapshots and backups
         - SeaweedFS Admin:
             icon: sh-seaweedfs
-            href: https://my-cluster.lonk-mirfak.ts.net/seaweedfs-admin
+            href: https://seaweedfs-admin{{ .Values.myDomain }}/
             description: S3 object storage, buckets, volumes and filer
   widgets.yaml: |
     - kubernetes:

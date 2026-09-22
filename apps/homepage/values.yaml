@@ -9,6 +9,9 @@ ciliumNetworkPolicy:
 developmentApp:
   enabled: false
 
+# Tailnet domain suffix for homepage dashboard links (dev adds -dev via values-dev.yaml)
+myDomain: .lonk-mirfak.ts.net
+
 vault:
   enabled: false
 

@@ -51,7 +51,7 @@ spec:
                 fieldRef:
                   fieldPath: status.podIP
             - name: HOMEPAGE_ALLOWED_HOSTS
-              value: "$(MY_POD_IP):3000,my-cluster.lonk-mirfak.ts.net" # See gethomepage.dev/installation/#homepage_allowed_hosts . Value before the comma is required for the k8s probe
+              value: "$(MY_POD_IP):3000,{{ .Values.tailscaleIngress.homepage.hostname }}.lonk-mirfak.ts.net" # See gethomepage.dev/installation/#homepage_allowed_hosts . Value before the comma is required for the k8s probe; hostname after it must match the per-app Tailscale Ingress (ADR-018)
           ports:
             - name: http
               containerPort: 3000

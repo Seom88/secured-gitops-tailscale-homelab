@@ -1,8 +1,10 @@
 ciliumNetworkPolicy:
-  enabled: false
+  enabled: true
 
 developmentApp:
   enabled: true
+
+myDomain: -dev.lonk-mirfak.ts.net
 
 vault:
   enabled: false
