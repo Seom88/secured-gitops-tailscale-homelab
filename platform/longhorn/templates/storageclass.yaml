@@ -24,10 +24,12 @@ kind: StorageClass
 apiVersion: storage.k8s.io/v1
 metadata:
   name: longhorn-encrypted
+  annotations:
+    argocd.argoproj.io/sync-options: Replace=true # parameters are immutable; allow replace on replica/size changes
 provisioner: driver.longhorn.io
 allowVolumeExpansion: true
 parameters:
-  numberOfReplicas: "3"
+  numberOfReplicas: "2" # was 3: 100Gi x3 never schedules on 161GB homelab disks; 2 x 30Gi fits
   encrypted: "true"
   csi.storage.k8s.io/provisioner-secret-name: "longhorn-crypto"
   csi.storage.k8s.io/provisioner-secret-namespace: "longhorn-system"
