@@ -10,3 +10,7 @@ longhorn:
     guaranteedInstanceManagerCPU: '{"v1":"12","v2":"12"}'
   persistence:
     defaultClassReplicaCount: 1
+
+tailscaleIngress:
+  longhorn:
+    hostname: longhorn-dev

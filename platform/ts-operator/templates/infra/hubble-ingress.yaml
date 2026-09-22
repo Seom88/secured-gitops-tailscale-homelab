@@ -1,9 +1,9 @@
-{{- if .Values.seaweedfs.s3.enabled }}
+{{- if .Values.tailscaleIngress.hubbleUi.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: seaweedfs-s3
-  namespace: seaweedfs
+  name: hubble
+  namespace: kube-system
 spec:
   ingressClassName: tailscale
   rules:
@@ -13,10 +13,10 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: seaweedfs-s3
+                name: hubble-ui
                 port:
-                  number: 8333
+                  number: 80
   tls:
   - hosts:
-    - {{ if .Values.developmentApp.enabled }}seaweedfs-s3-dev{{ else }}seaweedfs-s3{{ end }}
+    - {{ .Values.tailscaleIngress.hubbleUi.hostname }}
 {{- end }}

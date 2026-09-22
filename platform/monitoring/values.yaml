@@ -210,9 +210,8 @@ kube-prometheus-stack:
       evaluationInterval: "60s"
       retention: 5d
       retentionSize: 10GB
-      # Single-host gateway subpath — ADR-012
-      externalUrl: https://my-cluster.lonk-mirfak.ts.net/prometheus
-      routePrefix: /prometheus
+      # Root-served per-app Ingress (moved from platform/ts-ingress, ADR-018)
+      externalUrl: https://prometheus.lonk-mirfak.ts.net/
       # Lean homelab sizing (prod): 60s scrapes keep TSDB steady state small;
       # measured with zero throttling (memory, retention untouched).
       resources:
@@ -418,3 +417,12 @@ alloy:
 # See ADR 017
 vault:
   enabled: false
+
+# Per-app Tailscale Ingresses (moved from platform/ts-ingress, ADR-018)
+tailscaleIngress:
+  grafana:
+    enabled: true
+    hostname: grafana
+  prometheus:
+    enabled: true
+    hostname: prometheus

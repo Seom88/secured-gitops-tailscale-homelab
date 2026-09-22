@@ -1,4 +1,0 @@
-developmentApp:
-  enabled: true
-
-# Dev hostnames — <app>-dev per Ingress template. Keep distinct from prod to avoid MagicDNS collision.

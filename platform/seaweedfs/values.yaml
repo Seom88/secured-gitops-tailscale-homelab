@@ -109,3 +109,12 @@ developmentApp:
 # See ADR 017
 vault:
   enabled: false
+
+# Per-app Tailscale Ingresses (moved from platform/ts-ingress, ADR-018)
+tailscaleIngress:
+  s3:
+    enabled: true
+    hostname: seaweedfs-s3
+  admin:
+    enabled: true
+    hostname: seaweedfs-admin

@@ -1,9 +1,9 @@
-{{- if .Values.prometheus.enabled }}
+{{- if .Values.tailscaleIngress.argocd.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: prometheus
-  namespace: monitoring
+  name: argocd
+  namespace: argocd
 spec:
   ingressClassName: tailscale
   rules:
@@ -13,10 +13,10 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: monitoring-kube-prometheus-prometheus
+                name: argocd-server
                 port:
-                  number: 9090
+                  number: 80
   tls:
   - hosts:
-    - {{ if .Values.developmentApp.enabled }}prometheus-dev{{ else }}prometheus{{ end }}
+    - {{ .Values.tailscaleIngress.argocd.hostname }}
 {{- end }}

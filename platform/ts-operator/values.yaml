@@ -36,3 +36,13 @@ tailscale-operator:
         memory: 256Mi
   proxyConfig:
     defaultTags: "tag:k8s"
+
+# Orphan-app Tailscale Ingresses (moved from platform/ts-ingress, ADR-018):
+# argocd + hubble-ui live in the infra repo, so their Ingresses ship here
+tailscaleIngress:
+  argocd:
+    enabled: true
+    hostname: argocd
+  hubbleUi:
+    enabled: true
+    hostname: hubble

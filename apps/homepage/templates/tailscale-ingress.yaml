@@ -1,9 +1,9 @@
-{{- if .Values.argocd.enabled }}
+{{- if .Values.tailscaleIngress.homepage.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: argocd
-  namespace: argocd
+  name: homepage
+  namespace: homepage
 spec:
   ingressClassName: tailscale
   rules:
@@ -13,10 +13,10 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: argocd-server
+                name: homepage
                 port:
-                  number: 80
+                  number: 3000
   tls:
   - hosts:
-    - {{ if .Values.developmentApp.enabled }}argocd-dev{{ else }}argocd{{ end }}
+    - {{ .Values.tailscaleIngress.homepage.hostname }}
 {{- end }}

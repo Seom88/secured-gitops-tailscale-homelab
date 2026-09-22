@@ -6,3 +6,7 @@ developmentApp:
 
 vault:
   enabled: false
+
+tailscaleIngress:
+  homepage:
+    hostname: homepage-dev

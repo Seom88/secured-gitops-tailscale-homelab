@@ -102,3 +102,9 @@ longhorn:
   metrics:
     serviceMonitor:
       enabled: false
+
+# Per-app Tailscale Ingress (moved from platform/ts-ingress, ADR-018)
+tailscaleIngress:
+  longhorn:
+    enabled: true
+    hostname: longhorn

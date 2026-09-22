@@ -9,3 +9,9 @@ tailscale-operator:
       - "tag:k8s-operator"
   proxyConfig:
     defaultTags: "tag:k8s"
+
+tailscaleIngress:
+  argocd:
+    hostname: argocd-dev
+  hubbleUi:
+    hostname: hubble-dev

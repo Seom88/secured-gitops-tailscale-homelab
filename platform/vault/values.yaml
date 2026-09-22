@@ -230,3 +230,9 @@ vault:
       enabled: false
     prometheusRules:
       enabled: false
+
+# Per-app Tailscale Ingress (moved from platform/ts-ingress, ADR-018)
+tailscaleIngress:
+  vault:
+    enabled: true
+    hostname: vault

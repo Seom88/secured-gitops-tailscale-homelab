@@ -11,3 +11,9 @@ developmentApp:
 
 vault:
   enabled: false
+
+# Per-app Tailscale Ingress (moved from platform/ts-ingress, ADR-018)
+tailscaleIngress:
+  homepage:
+    enabled: true
+    hostname: homepage

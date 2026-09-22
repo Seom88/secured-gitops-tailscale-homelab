@@ -34,3 +34,9 @@ developmentApp:
 # See ADR 017
 vault:
   enabled: false
+
+tailscaleIngress:
+  s3:
+    hostname: seaweedfs-s3-dev
+  admin:
+    hostname: seaweedfs-admin-dev

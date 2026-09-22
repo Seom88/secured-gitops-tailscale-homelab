@@ -157,3 +157,77 @@ spec:
             - port: "1053"
               protocol: TCP
 {{- end }}
+---
+# Tailscale ingress proxies -> backend pods (moved from platform/ts-ingress, ADR-018):
+# the operator spawns one proxy StatefulSet per Ingress in the tailscale namespace
+# (label tailscale.com/managed=true). Proxies only get kube-apiserver/world from
+# allow-egress above; without this rule proxy->backend cross-namespace traffic
+# (pod IPs, not Service ClusterIPs) is DROPPED. Ports are backend POD ports
+# (Cilium matches post-DNAT pod ports, not Service ports).
+{{- if .Values.ciliumNetworkPolicy.enabled }}
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: ts-operator-proxy-egress
+  namespace: tailscale
+spec:
+  endpointSelector:
+    matchLabels:
+      k8s:tailscale.com/managed: "true"
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: homepage
+      toPorts:
+        - ports:
+            - port: "3000"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - port: "3000"
+              protocol: TCP
+            - port: "9090"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: argocd
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: longhorn-system
+      toPorts:
+        - ports:
+            - port: "8000"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: seaweedfs
+      toPorts:
+        - ports:
+            - port: "8333"
+              protocol: TCP
+            - port: "23646"
+              protocol: TCP
+            - port: "33646"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: vault
+      toPorts:
+        - ports:
+            - port: "8200"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+      toPorts:
+        - ports:
+            - port: "8081"
+              protocol: TCP
+{{- end }}
