@@ -96,10 +96,13 @@ spec:
         - ports:
             - port: "8200"
               protocol: TCP
-    # Vault dedicated Tailscale Ingress proxy — SAME namespace as Ingress (vault), namespace-only match
+    # Vault per-app Tailscale Ingress proxy (ADR-018): proxy pods run in tailscale
+    # ns with label tailscale.com/managed=true (NOT same-ns — the operator
+    # places proxies in tailscale ns even though the Ingress lives in vault ns)
     - fromEndpoints:
         - matchLabels:
-            k8s:io.kubernetes.pod.namespace: vault
+            k8s:io.kubernetes.pod.namespace: tailscale
+            k8s:tailscale.com/managed: "true"
       toPorts:
         - ports:
             - port: "8200"

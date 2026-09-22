@@ -120,7 +120,7 @@ spec:
     - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: tailscale
-            k8s:app.kubernetes.io/name: cluster-gateway
+            k8s:tailscale.com/managed: "true"
       toPorts:
         - ports:
             - port: "8000"

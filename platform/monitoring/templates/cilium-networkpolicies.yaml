@@ -175,11 +175,11 @@ spec:
               protocol: TCP
             - port: "7946"
               protocol: TCP
-    # Grafana 3000 + Prometheus 9090 via Tailscale gateway — Pod ports only (80 never matches post-DNAT)
+    # Grafana 3000 + Prometheus 9090 via per-app Tailscale proxies (ADR-018) — Pod ports only
     - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: tailscale
-            k8s:app.kubernetes.io/name: cluster-gateway
+            k8s:tailscale.com/managed: "true"
       toPorts:
         - ports:
             - port: "3000"

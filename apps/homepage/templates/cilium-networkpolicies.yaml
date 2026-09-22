@@ -47,10 +47,12 @@ metadata:
 spec:
   endpointSelector: {}
   ingress:
+    # Per-app Tailscale Ingress proxy (ADR-018): proxy pods run in tailscale ns
+    # with label tailscale.com/managed=true (not the deleted cluster-gateway)
     - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: tailscale
-            k8s:app.kubernetes.io/name: cluster-gateway
+            k8s:tailscale.com/managed: "true"
       toPorts:
         - ports:
             - port: "3000"
