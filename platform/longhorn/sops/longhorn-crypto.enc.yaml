@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Secret
+metadata:
+    name: longhorn-crypto
+    namespace: longhorn-system
+stringData:
+    CRYPTO_KEY_VALUE: ENC[AES256_GCM,data:K+4B5oHNpRzw05u56dXDubjbl0Z5ZxxxwcMV1u7++kvzEbSh4hluFsgAn5U=,iv:KE8uOge6fi46BcfiqdMaWGJlpwMId55JCTE/EiSoLhI=,tag:1I7EL10Se7Px5eQK6PdQIQ==,type:str]
+    CRYPTO_KEY_PROVIDER: ENC[AES256_GCM,data:GZUJbmPL,iv:qM979OUPPghn+9QpQIHMXISQuHGbRj9trdFbYum2js0=,tag:9cb3SctU1ukYG+10nFjZvg==,type:str]
+    CRYPTO_KEY_CIPHER: ENC[AES256_GCM,data:zQktpvfCszWAZQkeqA1z,iv:bkvFl75nArFijWV1sGkLtxRHgM1wxCkjz1HrlRZugII=,tag:lE2z1ZizT3NtcHT2fgkU6Q==,type:str]
+    CRYPTO_KEY_HASH: ENC[AES256_GCM,data:ckphsi/j,iv:JWR9kcc6ZkdVsn/hSjuJ8xb5ZEN+klfGGwJyDTvkvcI=,tag:xyAlPU+r1dvgqo0cZcw8pA==,type:str]
+    CRYPTO_KEY_SIZE: ENC[AES256_GCM,data:dLO4,iv:t52P8+R6FKICnFwWRe1jVoJTeeGXdEINHoWdu+CjxUo=,tag:NOZyuZRR9gYAF/MAtu5nxg==,type:str]
+    CRYPTO_PBKDF: ENC[AES256_GCM,data:HCcu4B4eAg==,iv:W/rfRaDa5ZNutdTdftixWfylD+hEV3oaJ4yuJJoPNrA=,tag:TdVFdu3rKsaT3PujZEpuqg==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBGY0xxdUR0dm5CTE1LREtS
+            c1ZzTURXN2tEOVN3eTNjU3J3aEJJVHlYNlZFClNITlJGdWZ6dVplNzhOMXVyQmQz
+            dXBpYkNoVmZjNmhURWZJMmVBbGw3ODAKLS0tIEJPb1VtTllzUyswOVlicjhWcWNN
+            OWVsQXdlM3F3c2RnWEtFcE85QmtMZmMKycHzYCdzh2caTTCH8IgHi24LvYsKtmA+
+            oA/7gnBlmmAl9D5Ut7sdJIfvjIng2HKHiM/ReF+sAMbVeojDE+h6Gw==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1l8urdgwakvjweqwxuzma2k3lnz0rym2juyjn9uls330keufsqc7s65c5j5
+    encrypted_regex: ^(data|stringData)$
+    lastmodified: "2026-09-22T21:15:41Z"
+    mac: ENC[AES256_GCM,data:DALMXOK1ZafhWi5lfPPuSK4fqZwhy3Ca/rbUX8ZBcfIgP+OAUSnR/6/CzBJHY4E40GhOFYihht3mccsYHf7bvBrxwTYImBv5Lfx7yn42IgZlYVp47ML27U/IloL0wHW5o3Rd0VydREW62PuSJprVzJjb1F8I7zttjq03CjjyviQ=,iv:MZYJcAz5cqDh4QNNPgbCd4pIeHeaI4bBq0On+G91QDM=,tag:i+WakyMhszViuJy8yB/yjQ==,type:str]
+    version: 3.13.3

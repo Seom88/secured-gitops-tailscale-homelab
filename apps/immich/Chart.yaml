@@ -1,0 +1,13 @@
+apiVersion: v2
+name: immich
+description: "Immich photo management wired to the immich-database CNPG cluster"
+type: application
+version: 1.0.0
+maintainers:
+  - name: Seom88
+    url: https://github.com/Seom88
+dependencies:
+  - name: immich
+    version: 0.13.2
+    repository: oci://ghcr.io/immich-app/immich-charts
+
