@@ -6,9 +6,7 @@ spec:
   monitoring:
     enablePodMonitor: true
   instances: 3
-  images:
-    - major: 18
-      image: ghcr.io/cloudnative-pg/postgresql:18.6-system-trixie
+  imageName: ghcr.io/cloudnative-pg/postgresql:18.6-system-trixie
 
   postgresql:
     shared_preload_libraries:
