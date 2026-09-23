@@ -1,11 +1,13 @@
 ciliumNetworkPolicy:
-  enabled: false  # fase Hubble: observar primero, endurecer después
+  enabled: false
 
 developmentApp:
   enabled: false
 
 immich:
   immich:
+    metrics:
+      enabled: true
     persistence:
       library:
         existingClaim: immich-library
@@ -25,3 +27,8 @@ immich:
                 valueFrom: { secretKeyRef: { name: immich-database-app, key: dbname } }
   valkey:
     enabled: true
+
+tailscaleIngress:
+  immich:
+    enabled: true
+    hostname: immich

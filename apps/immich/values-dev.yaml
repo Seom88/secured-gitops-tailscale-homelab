@@ -1,0 +1,9 @@
+ciliumNetworkPolicy:
+  enabled: false
+
+developmentApp:
+  enabled: true
+
+tailscaleIngress:
+  immich:
+    hostname: immich-dev

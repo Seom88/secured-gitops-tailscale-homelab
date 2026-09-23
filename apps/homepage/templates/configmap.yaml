@@ -22,6 +22,10 @@ data:
               href: https://github.com/Seom88
               icon: github
               description: My repositories, stars and code
+        - Mend:
+            - abbr: MD
+              href: https://developer.mend.io/
+              description: Renovate updates for charts and images
   services.yaml: |
     - GitOps & Security:
         - Argo CD:
@@ -56,6 +60,33 @@ data:
             icon: sh-seaweedfs
             href: https://seaweedfs-admin{{ .Values.myDomain }}/
             description: S3 object storage, buckets, volumes and filer
+        - RustFS Console:
+            icon: rustfs
+            href: https://rustfs.lonk-mirfak.ts.net:8443/
+            description: S3-compatible storage, buckets, access keys and console
+    - Media:
+        - Immich:
+            icon: immich
+            href: https://immich{{ .Values.myDomain }}/
+            description: Photo backup, albums, sharing and mobile sync
+        # Nextcloud (coming soon, uncomment when deployed):
+        # - Nextcloud:
+        #     icon: nextcloud
+        #     href: https://nextcloud{{ .Values.myDomain }}/
+        #     description: Files, calendar, contacts and office sync
+    - Infrastructure:
+        - Proxmox:
+            icon: proxmox
+            href: https://pve01.lonk-mirfak.ts.net/
+            description: Hypervisor, VMs, LXC containers and cluster management
+        - TrueNAS:
+            icon: truenas-scale
+            href: https://truenas-scale.lonk-mirfak.ts.net/
+            description: NAS pools, datasets, shares, snapshots and backups
+        - Portainer:
+            icon: portainer
+            href: https://truenas-scale.lonk-mirfak.ts.net:9443/
+            description: Containers, stacks, images and endpoint management
   widgets.yaml: |
     - kubernetes:
         cluster:
