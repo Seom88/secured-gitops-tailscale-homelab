@@ -1,12 +1,15 @@
 {{- if .Values.velero.enabled }}
-{{- $fqdn := required "s3.tailnetFqdn is required (set gitops/values.yaml sharedS3.tailnetFqdn)" .Values.s3.tailnetFqdn }}
 # BackupStorageLocation owned by this wrapper chart (NOT the upstream subchart):
 # upstream reads s3Url literally from values (no templating), and neither
 # `helm --set` nor ArgoCD parameters can patch one array entry by index
 # (lists are replaced wholesale — a [0] patch drops provider/bucket and fails
 # upstream schema validation). Upstream BSL is disabled via
 # `velero.configuration.backupStorageLocation: []` in values.yaml.
-# URL single source: gitops/values.yaml sharedS3.tailnetFqdn -> s3.tailnetFqdn (required above).
+# URL note (delegated-direct): s3Url points at the in-cluster tailscale
+# s3-egress Service via kube-dns — never the MagicDNS FQDN (its public-IP
+# fallback dies in TLS EOF). insecureSkipTLSVerify stays true: the internal
+# Service name never matches the RustFS LE cert. s3.tailnetFqdn plumbing is
+# still required by the ts-operator s3-egress Service + Cilium policies.
 # Bucket/prefix/region are chart-owned in s3.* (S3_BUCKET in CI is the
 # Terraform-state bucket — never the Velero bucket).
 apiVersion: velero.io/v1
@@ -25,6 +28,6 @@ spec:
   config:
     region: {{ .Values.s3.region | quote }}
     s3ForcePathStyle: "true"
-    s3Url: {{ printf "https://%s" $fqdn | quote }}
+    s3Url: "https://s3-egress.tailscale.svc.cluster.local"
     insecureSkipTLSVerify: "true"
 {{- end }}

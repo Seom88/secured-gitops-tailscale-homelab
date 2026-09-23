@@ -1,5 +1,10 @@
 {{- if .Values.velero.enabled }}
-{{- $fqdn := required "s3.tailnetFqdn is required (set gitops/values.yaml sharedS3.tailnetFqdn)" .Values.s3.tailnetFqdn }}
+# NOTE (delegated-direct): this Job dials the in-cluster Service
+# s3-egress.tailscale.svc.cluster.local via kube-dns — it no longer consumes
+# s3.tailnetFqdn (the MagicDNS FQDN intermittently resolves to public IPs that
+# die in TLS EOF). The fqdn plumbing stays for the ts-operator s3-egress
+# Service + Cilium policies; --no-verify-ssl is kept (the internal Service
+# name never matches the RustFS LE cert).
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -64,7 +69,13 @@ spec:
               # Ensure aws-cli uses path-style addressing (S3 backend requires it)
               aws configure set default.s3.addressing_style path || true
               aws configure set default.s3.addressing_style path --profile default || true
-              ENDPOINT="https://{{ $fqdn }}"
+              # Delegated-direct S3 path: dial the in-cluster tailscale
+              # s3-egress Service via kube-dns — never the MagicDNS FQDN
+              # (the FQDN intermittently resolves to public IPs that die in
+              # TLS EOF; the Service name always stays in-cluster).
+              ENDPOINT_HOST="s3-egress.tailscale.svc.cluster.local"
+              ENDPOINT="https://$ENDPOINT_HOST"
+              S3_PORT="443"
               BUCKET="{{ .Values.s3.bucket }}"
               if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
                 echo "[bucket-init] ERROR: could not parse credentials from $CRED_FILE"
@@ -72,13 +83,13 @@ spec:
                 sed 's/=.*/=***/' "$CRED_FILE" || cat "$CRED_FILE" || true
                 exit 1
               fi
-              # Wait for Tailscale Egress service DNS / proxy to be ready
-              echo "[bucket-init] Waiting for {{ $fqdn }} (max 120s)..."
+              # Wait for the in-cluster S3 egress Service DNS to be ready
+              echo "[bucket-init] Waiting for $ENDPOINT_HOST (max 120s)..."
               DNS_WAIT=0
               DNS_MAX=120
               while [ $DNS_WAIT -lt $DNS_MAX ]; do
-                if nslookup {{ $fqdn }} >/dev/null 2>&1 || getent hosts {{ $fqdn }} >/dev/null 2>&1; then
-                  echo "[bucket-init] DNS resolved for {{ $fqdn }}"
+                if nslookup "$ENDPOINT_HOST" >/dev/null 2>&1 || getent hosts "$ENDPOINT_HOST" >/dev/null 2>&1; then
+                  echo "[bucket-init] DNS resolved for $ENDPOINT_HOST"
                   break
                 fi
                 echo "[bucket-init] DNS not yet resolved ($DNS_WAIT/$DNS_MAX s)..."
@@ -86,13 +97,58 @@ spec:
                 DNS_WAIT=$((DNS_WAIT + 5))
               done
               if [ $DNS_WAIT -ge $DNS_MAX ]; then
-                echo "[bucket-init] WARNING: DNS still not resolved after $DNS_MAX s — proceeding anyway (may fail, Argo will retry)"
+                echo "[bucket-init] WARNING: DNS still not resolved after $DNS_MAX s — one final resolution attempt below before failing fast"
               fi
+              # Pre-s3api endpoint validation: log every resolved IP:port
+              # BEFORE any aws call, and fail fast if any resolved IP is
+              # public. Private = 10/8 (pod/service nets), 100.64/10
+              # (Tailscale CGNAT), 192.168/16, fd00::/8 (ULA) — the s3-egress
+              # proxy only ever serves those; a public IP means MagicDNS
+              # public fallback leaked in and TLS would die in EOF.
+              is_private_ip() {
+                _pip="$1"
+                case "$_pip" in
+                  10.*|192.168.*) return 0 ;;
+                  100.*)
+                    _prest="${_pip#*.}"
+                    _psecond="${_prest%%.*}"
+                    case "$_psecond" in ''|*[!0-9]*) return 1 ;; esac
+                    if [ "$_psecond" -ge 64 ] && [ "$_psecond" -le 127 ]; then return 0; fi
+                    return 1 ;;
+                  fd*|FD*) return 0 ;;
+                  *) return 1 ;;
+                esac
+              }
+              RESOLVED_IPS="$( (getent hosts "$ENDPOINT_HOST" 2>/dev/null | awk '{print $1}'; nslookup "$ENDPOINT_HOST" 2>/dev/null | awk '/^Address: /{if ($2 !~ /#/) print $2} /^Address [0-9]+:/{print $3}') | sort -u | tr '\n' ' ' || true )"
+              if [ -z "$(echo "$RESOLVED_IPS" | tr -d '[:space:]')" ]; then
+                echo "[bucket-init] ERROR: no IP resolved for $ENDPOINT_HOST — refusing aws s3api call (check kube-dns and the s3-egress Service in namespace tailscale)"
+                exit 1
+              fi
+              for RIP in $RESOLVED_IPS; do
+                echo "[bucket-init] S3 endpoint $ENDPOINT_HOST -> $RIP:$S3_PORT"
+                if is_private_ip "$RIP"; then
+                  echo "[bucket-init] $RIP is private (10/8, 100.64/10, 192.168/16, fd00::/8) — OK"
+                else
+                  echo "[bucket-init] ERROR: refusing S3 dial — $RIP is PUBLIC (outside 10/8, 100.64/10, 192.168/16, fd00::/8); expected the tailscale s3-egress ClusterIP/proxy, not MagicDNS public fallback"
+                  if command -v openssl >/dev/null 2>&1; then
+                    echo "[bucket-init] TLS diagnostic (best-effort): openssl s_client -connect $RIP:$S3_PORT -servername $ENDPOINT_HOST"
+                    if command -v timeout >/dev/null 2>&1; then
+                      timeout 10 openssl s_client -connect "$RIP:$S3_PORT" -servername "$ENDPOINT_HOST" </dev/null 2>&1 | head -20 || true
+                    else
+                      openssl s_client -connect "$RIP:$S3_PORT" -servername "$ENDPOINT_HOST" </dev/null 2>&1 | head -20 || true
+                    fi
+                  else
+                    echo "[bucket-init] openssl not available — skipping TLS diagnostic"
+                  fi
+                  exit 1
+                fi
+              done
 
               echo "[bucket-init] Creating bucket $BUCKET at $ENDPOINT (region $AWS_DEFAULT_REGION)..."
 
               # RustFS serves a public Let's Encrypt cert (verified 2026-09-21), but
-              # --no-verify-ssl is retained for robustness across cert rotations.
+              # --no-verify-ssl is retained: the internal Service name never
+              # matches the LE cert, and this keeps robustness across rotations.
               AWS_S3_EXTRA="--no-verify-ssl"
 
               set +e

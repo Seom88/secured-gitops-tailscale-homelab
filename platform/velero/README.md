@@ -5,7 +5,7 @@
 ![Chart](https://img.shields.io/badge/Chart-vmware--tanzu%2Fvelero_12.1.0-orange?style=flat-square)
 ![App](https://img.shields.io/badge/App-1.18.1-yellow?style=flat-square)
 
-Velero backs up cluster manifests and workload data (everything except Vault — see Vault policy below) to an external RustFS S3 bucket (`velero-homelab` at `https://rustfs.lonk-mirfak.ts.net`) with GitOps automation and no manual bucket setup.
+Velero backs up cluster manifests and workload data (everything except Vault — see Vault policy below) to an external RustFS S3 bucket (`velero-homelab` at `https://s3-egress.tailscale.svc.cluster.local`) with GitOps automation and no manual bucket setup.
 
 ## Why this design
 
@@ -31,7 +31,7 @@ flowchart LR
     CHART -.->|excluded| VAULT["Vault ns<br/>re-bootstrap, never restore"]
 ```
 
-Wave `-1` `tailscale-operator` → wave `0` `coredns-patch` (ts.net MagicDNS) + `velero` + `longhorn` → wave `1` `vault`. Guarantees DNS and storage are ready before Vault creates PVCs.
+Wave `-1` `tailscale-operator` (s3-egress Service) → wave `0` `velero` + `longhorn` → wave `1` `vault`. S3 dials the in-cluster Service name via kube-dns (no ts.net stub needed); the `coredns-patch` chart was removed. Guarantees DNS and storage are ready before Vault creates PVCs.
 
 ## Schedules
 
@@ -42,7 +42,7 @@ Wave `-1` `tailscale-operator` → wave `0` `coredns-patch` (ts.net MagicDNS) + 
 
 - `defaultVolumesToFsBackup: true` + `deployNodeAgent: true` + `nodeAgent.enabled: true` → Longhorn PVCs backed up via filesystem copy (no CSI snapshots). The node-agent gate and the FsBackup default must stay on together.
 - Resource guard: `resources.limits.memory: 512Mi` (chart default `128Mi` OOMKills during FsBackup on this homelab) — do not lower it.
-- Storage: `s3ForcePathStyle: true`, `s3Url: https://rustfs.lonk-mirfak.ts.net`, `region: us-east-1`, `prefix: velero/`, single BSL `default`.
+- Storage: `s3ForcePathStyle: true`, `s3Url: https://s3-egress.tailscale.svc.cluster.local`, `region: us-east-1`, `prefix: velero/`, single BSL `default`.
 
 ## Vault policy — excluded, re-bootstrap + rotation
 
@@ -76,7 +76,7 @@ velero backup get
 | `secret cloud-credentials not found` | Check SOPS secret applied (`init-sops.sh`), or re-run bootstrap with `AWS_*` env vars (fallback) |
 | `NoSuchBucket` | Check `kubectl -n velero logs job/velero-bucket-init`; re-sync ArgoCD |
 | `BSL not Ready` | Verify `s3Url`/`s3ForcePathStyle` and `cloud` key format is `[default]` ini |
-| `nslookup rustfs.lonk-mirfak.ts.net` fails | Verify `kubectl -n kube-system get cm coredns -o yaml | grep ts.net` |
+| `nslookup s3-egress.tailscale.svc.cluster.local` fails | Verify the `s3-egress` Service exists in namespace `tailscale` and kube-dns is healthy |
 
 ## Files
 
