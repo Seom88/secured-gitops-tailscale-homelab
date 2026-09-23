@@ -1,0 +1,23 @@
+# CloudNativePG Cluster Grafana dashboard (official, Apache-2.0)
+# Source: https://github.com/cloudnative-pg/grafana-dashboards
+# (charts/cluster/grafana-dashboard.json, uid cloudnative-pg), stored pristine
+# except the ${DS_PROMETHEUS} -> prometheus and ${DS_EXPRESSION} -> __expr__
+# substitutions (file provisioning never runs the import-time datasource
+# picker). Diff against upstream to refresh. Picked up by the Grafana sidecar
+# (label grafana_dashboard=1, searchNamespace ALL) and placed in the "CNPG"
+# folder via kube-prometheus-stack.grafana.sidecar.dashboards.folderAnnotation.
+# Requires cnpg_* series: PodMonitor mirror cnpg-podmonitor.yaml + Cilium
+# monitoring -> 8000 ingress in the immich chart.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cnpg-cluster-dashboard
+  namespace: {{ .Release.Namespace }}
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: "CNPG"
+data:
+  cnpg-cluster.json: |-
+{{ .Files.Get "dashboards/cnpg-cluster.json" | nindent 4 }}

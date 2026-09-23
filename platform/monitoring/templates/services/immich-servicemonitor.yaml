@@ -1,15 +1,19 @@
 {{- if not (eq (index .Values "kube-prometheus-stack" "enabled") false) }}
-# Immich ServiceMonitor managed by monitoring chart.
+# Immich ServiceMonitor mirror managed by monitoring chart.
 # Upstream immich chart creates its own ServiceMonitor in the immich namespace
 # (immich-server, endpoints metrics-api 8081 + metrics-ms 8082) but without the
 # `release: monitoring` label that kube-prometheus-stack uses for selection,
 # so Prometheus never scrapes it. This mirror carries the same selector with
 # the release label, following the seaweedfs/cilium-servicemonitors pattern.
+# NOTE: deliberately named *-mirror — same name+namespace as upstream would
+# collide with the object owned by the ArgoCD `immich` app (upstream wins and
+# the mirror never applies). Prometheus merges by selector, upstream is
+# unselected, so there is no double scrape.
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: immich-server
+  name: immich-server-mirror
   namespace: immich
   labels:
     release: monitoring
