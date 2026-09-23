@@ -1,6 +1,6 @@
 # Getting Started
 
-This guide provides the steps to initialize the Homelab GitOps environment, including the setup of HashiCorp Vault for secret management. **ArgoCD is installed by the companion [infra repo](https://github.com/Seom88/infra-talos-homelab)** (`platform/` layer) — it is **NOT** installed here. **Longhorn** is deployed by this repo itself as a wave-0 platform app with a CSI readiness gate, so no storage needs to be pre-installed.
+This guide provides the steps to initialize the Homelab GitOps environment, including the setup of HashiCorp Vault for secret management. **ArgoCD is installed by the companion [infra repo](https://github.com/Seom88/infra-talos-homelab)** (`platform/` layer) — it is **NOT** installed here. **Longhorn** is deployed by this repo itself as a wave -1 platform app with a CSI readiness gate, so no storage needs to be pre-installed.
 
 ## Prerequisites
 
@@ -26,7 +26,7 @@ just init-dev
 > The raw scripts are also available at `./bootstrap/01-init-gitops.sh [prod|dev]` if you prefer running them directly.
 
 > [!IMPORTANT]
-> The cluster must have **ArgoCD** installed **before** running the bootstrap. The companion infra repo's `platform/` layer installs it (order: nodes ready → ArgoCD). Longhorn is deployed by this repo as a wave-0 App-of-Apps app with a CSI readiness gate — the bootstrap script does not install ArgoCD or any storage component.
+> The cluster must have **ArgoCD** installed **before** running the bootstrap. The companion infra repo's `platform/` layer installs it (order: nodes ready → ArgoCD). Longhorn is deployed by this repo as a wave -1 App-of-Apps app with a CSI readiness gate — the bootstrap script does not install ArgoCD or any storage component.
 
 > [!NOTE]
 > **Wave ordering and idempotency:** Platform apps are plain `Application` resources in `gitops/templates/apps/` ordered by `argocd.argoproj.io/sync-wave`: `00` cert-manager/external-secrets/longhorn (wave 0) → `01` vault (wave 1) → `02` seaweedfs (wave 2) → `03` monitoring (wave 3, `sync-only`) → `04` tailscale (wave 4, `sync-only`, always last). The default `wave-policy: healthy` makes each wave wait for `Synced + Healthy` (custom Application health Lua in the infra repo's `modules/platform/values/argocd/values.yaml`), matching Flux `dependsOn` semantics; `sync-only` leaves need only `Synced`. Bootstrap is idempotent — if the root `Application` already exists the script skips reapply and acts as a status verifier. Because `monitoring` and `tailscale` are `sync-only` leaves, Tailscale still exposes other apps even if monitoring is degraded.
@@ -93,7 +93,8 @@ If you have the Tailscale operator configured, your services will be reachable t
 
 This repo ships a `.pre-commit-config.yaml` with fast local checks. Enable it once with `pre-commit install` (after `pip install pre-commit`):
 
-- `detect-secrets` (gated by `.secrets.baseline`) — blocks commits introducing new potential secrets; CI re-checks every push via the `Secret scan` step in `validate.yaml`. If the hook flags a false positive, mark it inline with `# pragma: allowlist secret`, or — for a genuinely safe pattern — run `detect-secrets audit .secrets.baseline` to record the verdict; never hand-edit or auto-regenerate the baseline to make CI pass.
+- `detect-secrets` (gated by `.secrets.baseline`) — blocks commits introducing new potential secrets; CI re-checks every push via the `Secret scan` step in the `ci.yaml` validate job. If the hook flags a false positive, mark it inline with `# pragma: allowlist secret`, or — for a genuinely safe pattern — run `detect-secrets audit .secrets.baseline` to record the verdict; never hand-edit or auto-regenerate the baseline to make CI pass.
+- `inline-image-convention` (local hook) — fails fast on split `repository:` + `tag:` blocks in staged `values*.yaml`; use inline `image: "repo:tag@sha256:…"` so Renovate Manager 1 keeps tracking the ref. Same check runs in CI as `just validate-images`.
 - `check-yaml` / `check-json` (`pre-commit-hooks`) — syntax check staged YAML/JSON files, replacing the old custom sanity loops.
 - `yamllint` (`-c .yamllint.yaml`) — style lint for staged YAML.
 - `shellcheck` (binary download, no system dependency) — lint staged shell scripts.

@@ -15,7 +15,7 @@ This document outlines the technical and operational skills demonstrated by the 
 **Evidence:**
 - **App-of-Apps pattern** — See [`gitops/Chart.yaml`](../gitops/Chart.yaml) and [`gitops/templates/apps/`](../gitops/templates/apps/) for wave-ordered deployments
 - **Wave ordering** — Custom Application health probes (ADR-006) ensure `cert-manager` and `external-secrets` are healthy before `vault` starts
-- **CSI readiness gates** — Longhorn deployed as wave-0 (ADR-005) to ensure storage is available before stateful workloads
+- **CSI readiness gates** — Longhorn deployed as wave -1 (ADR-005) to ensure storage is available before stateful workloads
 - **Architecture Decision Records** — See [`docs/adrs/`](./adrs/) documenting key choices and tradeoffs
 - **Multi-environment support** — `values.yaml` (prod) and `values-dev.yaml` (dev branch) for declarative environment differences
 
@@ -108,7 +108,7 @@ Zero-trust isn't just a buzzword for you — you've implemented it. Metrics coll
 - HA database design (Raft consensus)
 
 **Evidence:**
-- **Longhorn Deployment** — Wave-0 app with CSI readiness gates. See [`gitops/templates/apps/00-longhorn.yaml`](../gitops/templates/apps/00-longhorn.yaml) and ADR-005
+- **Longhorn Deployment** — Wave -1 app with CSI readiness gates. See [`gitops/templates/platform/-1-longhorn.yaml`](../gitops/templates/platform/-1-longhorn.yaml) and ADR-005
 - **Longhorn Node Prep** — Companion repo provisions iscsi-tools extensions and kubelet extraMounts. See companion `infra-talos-homelab` repo
 - **SeaweedFS S3** — Object storage with Vault-injected credentials. See [`platform/seaweedfs/`](../platform/seaweedfs/)
 - **Vault Raft HA** — 3-node consensus for high-availability secrets. See [`platform/vault/templates/statefulset.yaml`](../platform/vault/templates/statefulset.yaml)

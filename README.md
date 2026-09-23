@@ -7,7 +7,7 @@
 [![Infra](https://img.shields.io/badge/Infra-Terraform-%23844FBA?style=for-the-badge&logo=terraform)](https://github.com/Seom88/infra-talos-homelab)
 
 [![GitHub Release](https://img.shields.io/badge/Release-v1.0--beta-blue?style=flat-square)](https://github.com/Seom88/secured-gitops-tailscale-homelab/releases)
-[![CI Status](https://img.shields.io/github/actions/workflow/status/Seom88/secured-gitops-tailscale-homelab/validate.yml?style=flat-square&label=CI)](https://github.com/Seom88/secured-gitops-tailscale-homelab/actions)
+[![CI Status](https://img.shields.io/github/actions/workflow/status/Seom88/secured-gitops-tailscale-homelab/ci.yaml?style=flat-square&label=CI)](https://github.com/Seom88/secured-gitops-tailscale-homelab/actions)
 [![Last Commit](https://img.shields.io/github/last-commit/Seom88/secured-gitops-tailscale-homelab?style=flat-square)](https://github.com/Seom88/secured-gitops-tailscale-homelab/commits)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/Status-Active%20Development-brightgreen?style=flat-square)](#-roadmap)
@@ -15,7 +15,7 @@
 > **Companion project:** Cluster provisioning + ArgoCD (GitOps engine) + Longhorn node prerequisites at
 > [`github.com/Seom88/infra-talos-homelab`](https://github.com/Seom88/infra-talos-homelab)
 
-Production-grade **GitOps reference implementation** that demonstrates enterprise DevSecOps patterns on any CNCF-compliant Kubernetes cluster. Combines infrastructure-as-code (companion repo), zero-trust networking (Tailscale), secrets management at scale (Vault HA), and declarative deployments (ArgoCD).
+Production-grade **GitOps reference implementation** that demonstrates enterprise DevSecOps patterns on any CNCF-compliant Kubernetes cluster. Combines infrastructure-as-code (companion repo), zero-trust networking (Tailscale), secrets management (SOPS + age by default, Vault HA paused), and declarative deployments (ArgoCD).
 
 ## � Quick Navigation
 
@@ -96,12 +96,13 @@ graph TD
         direction TB
         CILIUM[Cilium 1.20.1<br/>eBPF kube-system<br/>kubeProxyReplacement strict<br/>Gateway API 1.2.3]
         ROOT[ArgoCD root<br/>App-of-Apps]
-        W0A[00 cert-manager<br/>wave 0 healthy]
+        W0A[-1 cert-manager<br/>wave -1 healthy]
         W0B[00 external-secrets<br/>wave 0 healthy]
-        W0C[00 longhorn<br/>wave 0 healthy<br/>CSI-gated]
-        W1[01 vault<br/>wave 1 healthy<br/>3-node Raft]
+        W0C[-1 longhorn<br/>wave -1 healthy<br/>CSI-gated]
+        W1[01 vault<br/>wave 1 healthy<br/>3-node Raft, paused by default]
         W2[02 seaweedfs<br/>wave 2 healthy]
-        W3[03 monitoring<br/>wave 3 sync-only<br/>Prometheus + Grafana + Loki + Alloy DaemonSet<br/>owns grafana/prometheus Ingresses]
+        W3[03 monitoring + trivy-operator<br/>wave 3 sync-only<br/>Prometheus + Grafana + Loki + Alloy DaemonSet<br/>owns grafana/prometheus Ingresses]
+        W4[04 cloudnative-pg → 05 immich<br/>waves 4-5<br/>PostgreSQL operator + photo app]
         WOP[-1 ts-operator<br/>wave -1<br/>operator + proxy-egress policies<br/>owns argocd/hubble Ingresses]
 
         CILIUM -.->|CNI + NetworkPolicy| ROOT
@@ -142,13 +143,16 @@ graph TD
 |-------|-----------|--------|-------|
 | **Orchestration** | Kubernetes (any distro) | ✅ Ready | Talos Linux in companion repo |
 | **GitOps Engine** | ArgoCD v2.8+ | ✅ Ready | Installed by companion infra layer |
-| **Secrets** | Vault v1.15+ (HA Raft) | ✅ Deployed | 3-node cluster with auto-unseal |
-| **Secrets Sync** | External Secrets Operator | ✅ Deployed | Per-service ClusterSecretStores |
+| **Secrets** | SOPS + age (default) · Vault v1.15+ HA paused | ✅ Deployed | Encrypted-in-git via `just secrets-apply`; Vault 3-node frozen (ADR-017) |
+| **Secrets Sync** | External Secrets Operator | ✅ Deployed | Per-service ClusterSecretStores (Vault path, paused by default) |
 | **Certificates** | cert-manager v1.13+ | ✅ Deployed | Automated TLS for services |
 | **Networking (CNI)** | Cilium v1.20.1 (eBPF) | ✅ Deployed | Kube-proxy replacement, Gateway API & CiliumNetworkPolicy |
 | **Networking (Ingress)** | Tailscale Operator v1.9+ | ✅ Deployed | Zero-trust ingress (`.tailnet` domains) |
-| **Storage (Block)** | Longhorn v1.6+ | ✅ Deployed | Distributed, wave-0 with CSI gates |
+| **Storage (Block)** | Longhorn v1.6+ | ✅ Deployed | Distributed, wave -1 with CSI gates; disk reserve 15% |
 | **Storage (Object)** | SeaweedFS v3.6+ | ✅ Deployed | S3-compatible, Loki backend |
+| **Database** | CloudNativePG operator | ✅ Deployed | Wave 4, backs Immich |
+| **Apps** | Homepage dashboard + Immich | ✅ Deployed | Waves 3/5, per-app Tailscale Ingresses |
+| **In-cluster Security** | Trivy Operator | ✅ Deployed | Wave 3, scan every 6h (CRDs + Prometheus) |
 | **Monitoring** | Prometheus v2.45+, Grafana v10+, Loki v2.9+ + Alloy chart 1.12.1 | ✅ Deployed | Full observability stack (Prometheus + Grafana + Loki + Alloy DaemonSet) |
 | **Backups** | Velero v1.18.1 (chart 12.1.0) | ✅ Deployed | Wave 0, RustFS S3 (`velero-homelab`), daily + hourly schedules |
 | **Python Automation** | Typer CLI, pytest, Trivy | 🚧 Phase 5 | Post-v1.0 release (v2.0 roadmap) |
@@ -231,7 +235,7 @@ secured-gitops-tailscale-homelab/
 | **Phase 1** — Foundation | ✅ Complete | Bootstrap, ArgoCD, Vault HA, cert-manager, Tailscale, ADRs |
 | **Phase 2** — Automation & Observability | ✅ Complete | Prometheus + Grafana + Loki + Alloy (DaemonSet), Renovate, CI/CD gates |
 | **Phase 3** — Storage & Scale | ✅ Complete | Longhorn ✅, SeaweedFS ✅ (Loki), Velero ✅ (RustFS, Wave 0) |
-| **Phase 4** — Hardening & DX | 🟡 Partial | Bootstrap guard ✅, status verifier ✅, real app example (pending) |
+| **Phase 4** — Hardening & DX | 🟡 Partial | Bootstrap guard ✅, status verifier ✅, real apps ✅ (Homepage + Immich/CNPG), SOPS-default ✅ |
 | **Phase 5** — Python Automation | 🚧 Planned | Post-v1.0: ops CLI, tests, metrics, image scanning |
 
 **Full roadmap with Phase 5 vision:** See [`docs/roadmap.md`](./docs/roadmap.md)
@@ -268,20 +272,23 @@ If you're evaluating DevOps/Platform Engineering talent:
 | Repo | Role |
 |------|------|
 | [`infra-talos-homelab`](https://github.com/Seom88/infra-talos-homelab) | Cluster provisioning + ArgoCD engine — Terraform + Talos (Longhorn node prerequisites stay here) |
-| `secured-gitops-tailscale-homelab` _(this repo)_ | GitOps layer — Vault, Tailscale, storage apps (deploys Longhorn as a wave-0 app) |
+| `secured-gitops-tailscale-homelab` _(this repo)_ | GitOps layer — SOPS/Vault secrets, Tailscale, storage + apps (deploys Longhorn as a wave -1 app) |
 
 ---
 
 ## 📚 Documentation
 
 - **[Getting Started](./docs/getting-started.md)** — End-to-end bootstrap walkthrough
+- **[CI / CD](./docs/ci-cd.md)** — Unified `ci.yaml`, deploy gate, Justfile mirrors, Renovate
 - **[Customization Guide](./docs/customization-guide.md)** — Forking and adapting the project
-- **[Architecture](./docs/architecture.md)** — System design and component interactions
-- **[Features Deep Dive](./docs/features-deep-dive.md)** — Detailed explanations of each feature
+- **[Features Deep Dive](./docs/features-deep-dive.md)** — System design and detailed explanations of each feature
+- **[Networking](./docs/networking.md)** — Cilium eBPF, Gateway API & policies
+- **[SOPS + age](./docs/sops.md)** — Default secrets workflow (Vault paused)
+- **[Velero + RustFS](./docs/velero.md)** — Backup & restore ([RustFS IAM](./docs/rustfs-iam.md), [Vault restore runbook](./docs/runbook-vault-restore.md))
 - **[Skills Demonstrated](./docs/skills-demonstrated.md)** — What this proves you can build
 - **[Roadmap](./docs/roadmap.md)** — Phases, status, and v2.0 vision
 - **[Architecture Decision Records](./docs/adrs/)** — Why key decisions were made
-- **[Secrets Structure](./docs/secrets-structure.md)** — Vault secret organization
+- **[Secrets Structure](./docs/secrets-structure.md)** — Vault secret organization (Vault path, paused by default)
 
 ---
 

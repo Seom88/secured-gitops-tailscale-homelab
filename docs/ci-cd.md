@@ -6,17 +6,16 @@
 
 ## Workflows
 
-Both workflows live in `.github/workflows/` and are distro-agnostic — no Terraform, no cluster required for validation. `deploy.yaml` is the only workflow that touches the cluster (via Tailscale + kubeconfig from infra state) and delegates all logic to `bootstrap/init-gitops.sh`.
+Both workflows (`ci.yaml`, `deploy.yaml`) live in `.github/workflows/` and are distro-agnostic — no Terraform, no cluster required for validation. `deploy.yaml` is the only workflow that touches the cluster (via Tailscale + kubeconfig from infra state) and delegates all logic to `bootstrap/init-gitops.sh`.
 
 | Workflow | Trigger | Needs cluster | What it does |
 |----------|---------|---------------|--------------|
-| `validate.yaml` | `push` + `pull_request` (all branches) | No | Helm lint/template, platform lint, shellcheck, YAML/JSON sanity |
-| `security.yaml` | `push` + `pull_request` + weekly cron (`0 4 * * 1`) + manual | No | Trivy image + config scans (SARIF; fail-closed for pinned images) |
-| `deploy.yaml` | `workflow_run` (Validate + Security on `main`) + `workflow_dispatch` (manual) | Yes | Gate on Validate + Security green → restore kubeconfig from infra state → `bootstrap/init-gitops.sh` |
+| `ci.yaml` | `push` + `pull_request` + weekly cron (`0 4 * * 1`) + manual | No | Validate job (Helm lint/template, platform lint, shellcheck, YAML/JSON sanity) + security jobs (Trivy images + config, SARIF; fail-closed for pinned images) — one run, one gate signal |
+| `deploy.yaml` | `workflow_run` (CI on `main`) + `workflow_dispatch` (manual) | Yes | Gate on CI green → restore kubeconfig from infra state → `bootstrap/init-gitops.sh` |
 
 ### `deploy.yaml` — Deploy GitOps (gated auto + manual)
 
-Triggers: `workflow_run` (auto on `Validate` + `Security` completion on `main`, gated by the `gate` job) + `workflow_dispatch` (manual from GitHub UI / `gh`). Concurrency `deploy-main` (`cancel-in-progress: false`), `environment: ${{ inputs.environment || 'prod' }}` (manual) — auto-deploy targets `prod`.
+Triggers: `workflow_run` (auto on `CI` completion on `main`, gated by the `gate` job) + `workflow_dispatch` (manual from GitHub UI / `gh`). Concurrency `deploy-main` (`cancel-in-progress: false`), `environment: ${{ inputs.environment || 'prod' }}` (manual) — auto-deploy targets `prod`.
 
 ```yaml
 # .github/workflows/deploy.yaml — triggers
@@ -48,7 +47,7 @@ env:
 
 | Job | Runs | What it does |
 |-----|------|--------------|
-| `gate` | auto (`workflow_run`) + manual | For `push` events: require latest `Validate` + `Security` runs on the head SHA to be `success` (via `gh api`, `actions: read`); skipped for cron events (never deploy on schedule) and manual dispatch (explicit operator action) |
+| `gate` | auto (`workflow_run`) + manual | For `push` events: require the latest `CI` run on the head SHA to be `success` (via `gh api`, `actions: read`); skipped for cron events (never deploy on schedule) and manual dispatch (explicit operator action) |
 | `deploy` | manual (`workflow_dispatch`) + auto when `gate` passes | Restore kubeconfig from infra S3 state + Tailscale, run `bootstrap/init-gitops.sh` |
 
 **Deploy job** (`runs-on: ubuntu-latest`, `timeout-minutes: 15`, `environment: ${{ inputs.environment || 'prod' }}`):
@@ -102,22 +101,21 @@ env:
 
 To use from a fork, configure `tagOwners` / `acls` for `tag:terraform → tag:pve` in your Tailscale ACL and set `GH_PAT` so the workflow can clone the (private) infra repo. The `S3_ENDPOINT` / `S3_BUCKET` envs point at RustFS (`https://rustfs.lonk-mirfak.ts.net`).
 
-### `validate.yaml` — Validate (fast feedback, no cluster)
+### `ci.yaml` — Validate + Security (fast feedback, no cluster)
 
-Triggers: `push` + `pull_request` (all branches). Concurrency `validate-${{ github.ref_name }}` (`cancel-in-progress: true`). No cluster, no creds.
+Triggers: `push` + `pull_request` (all branches) + weekly cron (`0 4 * * 1`, Mondays 04:00 UTC — images accumulate CVEs without repo changes) + `workflow_dispatch`. Concurrency per workflow ref (`cancel-in-progress: true`). No cluster, no creds. Formerly two workflows (`validate.yaml` + `security.yaml`); merged into one run so each push fires a single CI signal and the deploy gate reads one workflow.
 
 ```yaml
-# .github/workflows/validate.yaml — triggers
+# .github/workflows/ci.yaml — triggers
 on:
   push:
   pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 4 * * 1'
 
 permissions:
   contents: read
-
-concurrency:
-  group: validate-${{ github.ref_name }}
-  cancel-in-progress: true
 
 env:
   HELM_VERSION: v3.18.4
@@ -147,9 +145,9 @@ jobs:
 
 Local equivalent: `just validate` (same checks, no creds). Sub-recipes: `just validate-gitops`, `just validate-platform`, `just validate-scripts`, `just validate-yaml`, `just validate-json`.
 
-### `security.yaml` — Security (Trivy scans, no cluster)
+### Security jobs (in `ci.yaml` — Trivy scans, no cluster)
 
-Triggers: `push` + `pull_request` + weekly cron (`0 4 * * 1`, Mondays 04:00 UTC — images accumulate CVEs without repo changes) + `workflow_dispatch`. Top-level `permissions: contents: read`. No cluster, no creds. The deploy gate requires both Validate and Security green on the head SHA (see `deploy.yaml` `gate` job): the gate re-runs on every completion of either workflow, so the first finisher waits and the second finisher opens the gate.
+Same triggers as above (including the weekly cron). Top-level `permissions: contents: read`. No cluster, no creds. The deploy gate requires the single CI run green on the head SHA — one lookup, no fan-in race where the first finisher fails the gate.
 
 | Job | What it does |
 |-----|--------------|
@@ -163,7 +161,7 @@ First-party images are digest-pinned (`tag@sha256:…`, tag kept for Renovate); 
 
 Local equivalent: `just scan` (same discovery loop + `HIGH,CRITICAL` table summary; soft-fails if `trivy` is not installed — heavy network pulls, deliberately not part of `just validate`).
 
-### Secret scan (`Secret scan` step in `validate` job)
+### Secret scan (`Secret scan` step in the `validate` job of `ci.yaml`)
 
 `detect-secrets-hook --baseline .secrets.baseline` fails the run on any new potential secret; the baseline is never auto-updated (audit locally with `detect-secrets audit .secrets.baseline`). Same hook runs locally via `pre-commit install` — see [Getting Started](./getting-started.md#pre-commit-fast-local-checks).
 
@@ -171,15 +169,17 @@ Local equivalent: `just scan` (same discovery loop + `HIGH,CRITICAL` table summa
 
 | Gate | How | Where |
 |------|-----|-------|
-| Helm lint | `helm lint gitops -f gitops/values{,-dev}.yaml` + `helm lint platform/*/` | `validate.yaml`, `just validate-gitops`, `just validate-platform` |
-| Helm template | `helm template gitops gitops -f gitops/values{,-dev}.yaml` + empty/manifest count check | `validate.yaml`, `just validate-gitops` |
-| Helm dependencies | `helm dependency build/update gitops` + `platform/*/` (with `helm repo add` for 6 repos) | `validate.yaml`, `just validate-platform`, `just helm-deps` |
-| Shell lint | `shellcheck bootstrap/init-gitops.sh` + `platform/vault/scripts/bootstrap-vault.sh` | `validate.yaml`, `just validate-scripts` |
-| YAML syntax | `PyYAML safe_load_all` (Helm templates skipped) + `.yamllint.yaml` | `validate.yaml`, `just validate-yaml` |
-| JSON syntax | `python3 -m json.tool` over `**/*.json` | `validate.yaml`, `just validate-json` |
-| Secret scan | `detect-secrets-hook --baseline .secrets.baseline` (fail on new) | `validate.yaml`, `.pre-commit-config.yaml` |
-| Image scan | `trivy-action@v0.36.0`, `HIGH,CRITICAL` + SARIF (fail-closed for pinned images, advisory for upstream) | `security.yaml` (`trivy-images` + `trivy-config`), `just scan`, `.trivyignore` |
-| Full local CI | `just validate` (gitops + platform + scripts + yaml + json) | `justfile` |
+| Helm lint | `helm lint gitops -f gitops/values{,-dev}.yaml` + `helm lint platform/*/` | `ci.yaml`, `just validate-gitops`, `just validate-platform` |
+| Helm template | `helm template gitops gitops -f gitops/values{,-dev}.yaml` + empty/manifest count check | `ci.yaml`, `just validate-gitops` |
+| Helm dependencies | `helm dependency build/update gitops` + `platform/*/` (with `helm repo add` for 6 repos) | `ci.yaml`, `just validate-platform`, `just helm-deps` |
+| Shell lint | `shellcheck bootstrap/init-gitops.sh` + `platform/vault/scripts/bootstrap-vault.sh` | `ci.yaml`, `just validate-scripts` |
+| YAML syntax | `PyYAML safe_load_all` (Helm templates skipped) + `.yamllint.yaml` | `ci.yaml`, `just validate-yaml` |
+| JSON syntax | `python3 -m json.tool` over `**/*.json` | `ci.yaml`, `just validate-json` |
+| Inline image convention | No split `repository:` blocks in `values*.yaml` (Renovate-manager-1 invisible) | `ci.yaml` (`validate-images`), `just validate-images`, pre-commit hook |
+| Secret scan | `detect-secrets-hook --baseline .secrets.baseline` (fail on new) | `ci.yaml`, `.pre-commit-config.yaml` |
+| Image scan | `trivy-action@v0.36.0`, `HIGH,CRITICAL` + SARIF (fail-closed for pinned images, advisory for upstream) | `ci.yaml` (security jobs), `just scan`, `.trivyignore` |
+| Config scan | `scan-type: config`, misconfig SARIF | `ci.yaml` (security jobs), `just scan-config` |
+| Full local CI | `just validate` (gitops + platform + scripts + yaml + json) + `just validate-images` | `justfile` |
 | Hardened inputs | `helm lint` strict, `null` guards in bootstrap, CSI wait gate before Vault | [Getting Started](./getting-started.md), `bootstrap/init-gitops.sh` |
 
 ## Justfile
@@ -200,13 +200,15 @@ Local equivalent: `just scan` (same discovery loop + `HIGH,CRITICAL` table summa
 | `argocd-password` | `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' \| base64 -d` |
 | `vault-token` | Derive `vault-unseal-keys` secret name from pod label `app.kubernetes.io/instance` + `kubectl get secret ... -o jsonpath='{.data.root-token}' \| base64 -d` |
 | `status` | `kubectl get nodes -o wide` + `kubectl get pods -n argocd/vault/monitoring` |
-| `validate` | Runs all local validations (`validate-gitops` + `validate-platform` + `validate-scripts` + `validate-yaml` + `validate-json`) — mirrors `validate.yaml` |
+| `validate` | Runs all local validations (`validate-gitops` + `validate-platform` + `validate-scripts` + `validate-images` + `validate-yaml` + `validate-json`) — mirrors `ci.yaml` validate job |
 | `validate-gitops` | `helm dependency build` + `helm lint` prod/dev + `helm template` prod/dev empty check |
 | `validate-platform` | `helm repo add` (6 repos) + `helm dependency update/build` + `helm lint` per `platform/*/` |
 | `validate-scripts` | `shellcheck bootstrap/init-gitops.sh` + `platform/vault/scripts/bootstrap-vault.sh` (soft-fail if missing) |
+| `validate-images` | Fail on split `repository:` + `tag:` blocks in `values*.yaml` (invisible to Renovate Manager 1 — use inline `image:`) — mirrors CI, same pre-commit hook |
 | `validate-yaml` | `PyYAML` sanity + `yamllint -c .yamllint.yaml gitops/ platform/ bootstrap/` |
 | `validate-json` | `python3 -m json.tool` over `**/*.json` |
 | `scan` | Discover images from charts + `trivy image --severity HIGH,CRITICAL` per image (soft-fail if missing; not part of `validate`) |
+| `scan-config` | `trivy config` misconfig scan of the repo (soft-fail if missing; not part of `validate`) |
 | `sync` | `kubectl apply -n argocd -f gitops/` — force ArgoCD sync (App-of-Apps) |
 | `diff` | `helm diff upgrade --install gitops gitops/ -n argocd -f gitops/values.yaml` or `helm template` fallback |
 | `docs` | `ls -1 docs/*.md docs/**/*.md` |

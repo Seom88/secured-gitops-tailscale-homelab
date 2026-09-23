@@ -4,11 +4,19 @@ Detailed technical explanations of the key features implemented in this project.
 
 ---
 
-## 🔐 Secrets Management & Vault HA
+## 🔐 Secrets Management — SOPS default, Vault paused
+
+> **Current default: SOPS + age** (Vault paused, not deleted — [ADR-017](./adrs/017-vault-paused-sops-default.md)). New secrets ship encrypted in git (`<chart>/sops/*.enc.yaml`), applied out-of-band by `bootstrap/init-sops.sh` (`just secrets-apply`). Full workflow: [SOPS guide](./sops.md).
 
 ### What's Implemented
 
-**Vault 3-Node High-Availability Cluster** with Raft storage backend:
+**SOPS + age (live path):**
+- Encrypted-in-git secrets — only `data`/`stringData` encrypted, metadata stays readable
+- No Helm templating inside `.enc.yaml` (pure YAML) — conditionals live in wrapper templates
+- Age key restored from RustFS (`s3://secrets-homelab/sops/keys.txt`), shredded after apply
+- CI applies via `deploy.yaml` (installs `sops v3.10.2` first)
+
+**Vault 3-Node High-Availability Cluster** (paused — chart frozen in place):
 - HA quorum for fault tolerance — cluster survives 1 node failure
 - TLS encryption for client-server and node-to-node communication
 - Auto-unseal via CronJob — automatically unseals on pod restart
@@ -154,33 +162,43 @@ GitOps ensures:
 
 ```
 Wave -1 (Healthy required):
-  └── ts-operator  ← Must be healthy; gates 0..4; publishes DNSConfig status
+  ├── ts-operator    ← Must be healthy; gates 0..5; publishes DNSConfig status; owns orphan argocd/hubble Ingresses
+  ├── cert-manager   ← Must be ready
+  └── longhorn       ← Must be healthy + CSI-gated
 
 Wave 0 (Healthy required):
-  ├── 00-cert-manager     ← Must be ready
-  ├── 00-external-secrets ← Must be ready
-  ├── 00-longhorn         ← Must be healthy + CSI-gated
-  ├── 00-coredns-patch     ← Patches kube-system/coredns with ts.net:53 stub from DNSConfig (ADR-011)
-  └── 05-velero            ← Backup; bucket-init hook waits for ts.net DNS; NPs scope egress to velero only
+  ├── external-secrets ← Must be ready
+  ├── coredns-patch    ← Patches kube-system/coredns with ts.net:53 stub from DNSConfig (ADR-011)
+  └── velero           ← Backup; bucket-init hook waits for ts.net DNS; NPs scope egress to velero only
 
 Wave 1 (Healthy required):
-  └── 01-vault            ← Depends on wave 0
+  └── vault          ← Depends on wave 0 (paused by default — ADR-017; SOPS is the live secrets path)
 
 Wave 2 (Healthy required):
-  └── 02-seaweedfs        ← Depends on wave 1
+  └── seaweedfs      ← Depends on wave 1
 
 Wave 3 (Sync-only):
-  └── 03-monitoring       ← Prometheus + Grafana + Loki (SeaweedFS S3) + Alloy DaemonSet (stateless, RBAC auto); owns grafana/prometheus Ingresses; depends on wave 2
+  ├── monitoring     ← Prometheus + Grafana + Loki (SeaweedFS S3) + Alloy DaemonSet (stateless, RBAC auto); owns grafana/prometheus Ingresses; depends on wave 2
+  ├── trivy-operator ← In-cluster scan every 6h (CRDs + Prometheus metrics); complements CI-time Trivy
+  └── homepage       ← User app (dashboard); `myDomain` suffix for links only
 
-No wave 4 — the `ts-ingress` chart is deleted; each chart owns its Ingress, and `ts-operator` (wave `-1`) owns the orphan `argocd`/`hubble` Ingresses — ADR-018 amendment.
+Wave 4 (Healthy required):
+  └── cloudnative-pg ← PostgreSQL operator for apps
+
+Wave 5 (Sync-only):
+  └── immich         ← User app on CloudNativePG (library 30Gi×2, DB 2Gi×3)
+
+No `ts-ingress` chart — deleted; each chart owns its per-app Tailscale Ingress (ADR-018 + consolidation amendment).
 ```
 
 ### Key Files
 
 - Root app: [`gitops/templates/root-prod-app.yaml`](../gitops/templates/root-prod-app.yaml)
-- Platform apps: [`gitops/templates/apps/`](../gitops/templates/apps/)
-  - `00-cert-manager.yaml`, `00-external-secrets.yaml`, `00-longhorn.yaml`
-  - `01-vault.yaml`, `02-seaweedfs.yaml`, `03-monitoring.yaml` (no wave 4; `-1-ts-operator.yaml` owns the orphan Ingresses)
+- Platform apps: [`gitops/templates/platform/`](../gitops/templates/platform/)
+  - `-1-ts-operator.yaml`, `-1-cert-manager.yaml`, `-1-longhorn.yaml`
+  - `00-external-secrets.yaml`, `00-coredns-patch.yaml`, `00-velero.yaml`
+  - `01-vault.yaml`, `02-seaweedfs.yaml`, `03-monitoring.yaml`, `03-trivy-operator.yaml`, `04-cloudnative-pg.yaml`
+- User apps: [`gitops/templates/apps/`](../gitops/templates/apps/) — `03-homepage.yaml`, `05-immich.yaml`
 - Helm chart: [`gitops/Chart.yaml`](../gitops/Chart.yaml)
 - Configuration: [`gitops/values.yaml`](../gitops/values.yaml) (prod) and [`gitops/values-dev.yaml`](../gitops/values-dev.yaml) (dev)
 - ADR: [ADR-006: App Health and Vault Ordering](./adrs/006-app-health-and-vault-ordering.md)
@@ -308,7 +326,7 @@ loki:
 
 ### Key Files
 
-- Longhorn deployment: [`gitops/templates/apps/00-longhorn.yaml`](../gitops/templates/apps/00-longhorn.yaml)
+- Longhorn deployment: [`gitops/templates/platform/-1-longhorn.yaml`](../gitops/templates/platform/-1-longhorn.yaml) (wave -1, CSI-gated)
 - SeaweedFS chart: [`platform/seaweedfs/`](../platform/seaweedfs/)
   - Configuration: [`platform/seaweedfs/values.yaml`](../platform/seaweedfs/values.yaml)
   - S3 credentials management: Vault integration via External Secrets

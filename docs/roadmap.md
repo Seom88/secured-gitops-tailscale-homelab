@@ -8,12 +8,12 @@ This document tracks what is currently deployed in the cluster, what is required
 
 ## Where the project stands today
 
-The cluster runs on end-to-end GitOps: ArgoCD as the App-of-Apps, Vault HA for secrets, Tailscale as the single ingress point, and distributed storage via Longhorn + SeaweedFS. On top of that there's a CI layer that validates every push (`validate.yaml`), scans images and misconfigs weekly (`security.yaml`), and a controlled workflow for deploys (`deploy.yaml`).
+The cluster runs on end-to-end GitOps: ArgoCD as the App-of-Apps, SOPS + age as the default secrets path (Vault paused, not deleted — ADR-017), Tailscale per-app ingress (one device per app), and distributed storage via Longhorn + SeaweedFS. On top of that there's a CI layer that validates every push (`ci.yaml`: lint + Trivy in one run), and a controlled workflow for deploys (`deploy.yaml`).
 
 **What's already running in CI/CD**, verified directly against `.github/workflows/`:
-- `validate.yaml`: Helm dependency builds, `helm lint` and `helm template` (both prod and dev values), secret scan (`detect-secrets` baseline-gated), ShellCheck on the bootstrap scripts, YAML/JSON sanity checks, and `yamllint` as a non-blocking extra check.
-- `security.yaml`: Trivy image scans over the dynamically discovered chart images (matrix from rendered manifests) + repo misconfig scan, SARIF upload to code scanning, weekly cron — fail-closed for digest-pinned first-party images (upstream subchart images advisory).
-- `deploy.yaml`: auto-deploy on `Validate` success (main) plus manual `workflow_dispatch` with environment selection (prod/dev), a Tailscale connection step, kubeconfig retrieval from Terraform state, and a `force_reapply` flag for safe retries.
+- `ci.yaml` validate job: Helm dependency builds, `helm lint` and `helm template` (both prod and dev values), inline-image convention (`validate-images`), secret scan (`detect-secrets` baseline-gated), ShellCheck on the bootstrap scripts, YAML/JSON sanity checks, and `yamllint` as a non-blocking extra check.
+- `ci.yaml` security jobs: Trivy image scans over the dynamically discovered chart images (matrix from rendered manifests) + repo misconfig scan (`scan-config`), SARIF upload to code scanning, weekly cron — fail-closed for digest-pinned first-party images (upstream subchart images advisory).
+- `deploy.yaml`: auto-deploy on `CI` success (main) plus manual `workflow_dispatch` with environment selection (prod/dev), a Tailscale connection step, kubeconfig retrieval from Terraform state, and a `force_reapply` flag for safe retries.
 - Pre-commit (local mirror of the fast gates): `detect-secrets`, `check-yaml`/`check-json`, `yamllint`, `shellcheck`; `just validate` + `just scan` as local mirrors. <!-- pragma: allowlist secret -->
 - `renovate.json`: weekly updates (Mondays before 5am), with differentiated rules — critical cluster components (Vault, Longhorn, cert-manager) require explicit manual review via labels, while non-critical charts and GitHub Actions are grouped and auto-merged; regex managers also cover hardcoded images and `HELM_VERSION`.
 
@@ -42,7 +42,7 @@ The scope for v1.0 is defined as Phases 1 through 4. Items previously labeled "P
 
 - [x] Monitoring stack deployed (Prometheus + Grafana + Loki + Alloy — Alloy `chart 1.12.1` DaemonSet via `discovery.kubernetes` → `loki.source.kubernetes` → `loki.write` to Loki gateway; stateless, RBAC auto-created; replaces Promtail — deprecated)
 - [x] Dashboards reachable via Tailscale ingress (Grafana at `/grafana`, Prometheus at `/prometheus`; Loki datasource with `X-Scope-OrgID: fake`, Explore + LogQL)
-- [x] CI pipeline — `validate.yaml` (lint, render, secret scan, ShellCheck, sanity checks) + `security.yaml` (Trivy images + misconfig, SARIF, weekly cron, non-blocking) + `deploy.yaml` (auto on Validate success + guided manual deploy)
+- [x] CI pipeline — `ci.yaml` (validate job: lint, render, image-convention, secret scan, ShellCheck, sanity checks + security jobs: Trivy images + misconfig, SARIF, weekly cron) + `deploy.yaml` (auto on CI success + guided manual deploy)
 - [x] Renovate — weekly updates with mandatory manual review for critical components (Vault, Longhorn, cert-manager) and grouped automerge for the rest
 
 ### Phase 3 — Storage & Scale ✅ Complete
@@ -68,7 +68,7 @@ Remaining scope for v1.0.0. The Cilium CNI (breaking change at the infrastructur
 - [x] Status verifier (rerun bootstrap to check cluster health)
 - [x] `just validate` + `just scan` as local mirrors of CI validation (incl. Trivy summary table)
 - [x] Pre-commit fast gates (secrets, yaml/json, yamllint, shellcheck)
-- [x] Real application example deployed (Homepage v2.3.0 pinned via `.Values.image`, wave 3 `apps/homepage`)
+- [x] Real application examples deployed (Homepage digest-pinned dashboard, wave 3 `apps/homepage` + Immich on CloudNativePG, wave 5 `apps/immich` over wave-4 operator)
 
 ---
 
