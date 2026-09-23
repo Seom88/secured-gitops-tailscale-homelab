@@ -203,7 +203,8 @@ kube-prometheus-stack:
   # Prometheus persistent storage & native Ingress:
   # Right-sized for 3x4cpu/6GB workers (prod): 5d/10GB retention keeps the
   # TSDB working set small while leaving headroom for immich, nextcloud
-  # and cloud pg. PVC 15Gi comfortably holds retentionSize + WAL headroom.
+  # and cloud pg. PVC 12Gi holds retentionSize 10GB + WAL headroom
+  # (measured steady state ~1Gi, 2026-09-22).
   prometheus:
     prometheusSpec:
       scrapeInterval: "60s"
@@ -233,7 +234,7 @@ kube-prometheus-stack:
             accessModes: ["ReadWriteOnce"]
             resources:
               requests:
-                storage: 15Gi
+                storage: 12Gi
 
     # Native Ingress configuration for Prometheus
     ingress:
