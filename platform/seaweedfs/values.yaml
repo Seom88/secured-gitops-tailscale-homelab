@@ -33,7 +33,7 @@ seaweedfs:
     dataDirs:
       - name: data1
         type: "persistentVolumeClaim"
-        size: "26Gi"
+        size: "10Gi" # Loki chunks backend; measured ~121Mi (2026-09-22). Old chunks beyond capacity are expendable (logs).
         storageClass: ""
         maxVolumes: 0
     logs:
@@ -53,7 +53,7 @@ seaweedfs:
         memory: 256Mi
     data:
       type: "persistentVolumeClaim"
-      size: "5Gi"
+      size: "2Gi" # filer metadata; measured ~0 (2026-09-22)
       storageClass: ""
     logs:
       type: "emptyDir"
