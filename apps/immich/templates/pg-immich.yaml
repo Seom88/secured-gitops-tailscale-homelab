@@ -33,4 +33,4 @@ spec:
   #       name: immich-secret
 
   storage:
-    size: 5Gi
+    size: 2Gi # fresh DB measured ~130Mi (2026-09-22); photos live in library PVC, not here
