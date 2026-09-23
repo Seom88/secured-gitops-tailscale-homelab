@@ -374,6 +374,47 @@ alloy:
             target_label  = "app"
           }
 
+          // Node the pod runs on — lets you isolate noisy/failing nodes.
+          rule {
+            source_labels = ["__meta_kubernetes_pod_node_name"]
+            target_label  = "node"
+          }
+
+          // Workload owner (Deployment/StatefulSet/DaemonSet/Job/CronJob...).
+          // Low cardinality, broad filter: {workload="immich-server"}.
+          rule {
+            source_labels = ["__meta_kubernetes_pod_controller_kind"]
+            target_label  = "workload_type"
+          }
+
+          rule {
+            source_labels = ["__meta_kubernetes_pod_controller_name"]
+            target_label  = "workload"
+          }
+
+          // ReplicaSets carry the Deployment hash (immich-server-7d9f8b).
+          // Strip it so workload matches the Deployment name; no match leaves
+          // StatefulSet/DaemonSet/Job names untouched.
+          rule {
+            source_labels = ["workload_type", "workload"]
+            regex         = "ReplicaSet;(.*)-[a-z0-9]+"
+            replacement   = "$1"
+            target_label  = "workload"
+          }
+
+          // Helm release name (app.kubernetes.io/instance): groups every
+          // object of a release — {instance="immich"} spans all its workloads.
+          rule {
+            source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_instance"]
+            target_label  = "instance"
+          }
+
+          // Component within the release (server, machine-learning, ...).
+          rule {
+            source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_component"]
+            target_label  = "component"
+          }
+
           rule {
             source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
             target_label  = "service_name"

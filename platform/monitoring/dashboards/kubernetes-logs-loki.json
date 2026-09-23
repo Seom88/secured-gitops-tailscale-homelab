@@ -1,0 +1,242 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_LOKI",
+      "label": "Loki",
+      "description": "Loki datasource",
+      "type": "datasource",
+      "pluginId": "loki",
+      "pluginName": "Loki"
+    }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Kubernetes pod logs from Loki with namespace/workload/pod/container/node filters. Requires Alloy local_pods labels: namespace, workload, workload_type, pod, container, node, instance, component.",
+  "editable": true,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 24, "x": 0, "y": 0 },
+      "id": 2,
+      "options": {
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({namespace=~\"$namespace\", workload=~\"$workload\", pod=~\"$pod\", container=~\"$container\", node=~\"$node\"} |~ \"$search\"[$__interval])) by (pod)",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Log volume by pod",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+      "gridPos": { "h": 16, "w": 24, "x": 0, "y": 5 },
+      "id": 3,
+      "options": {
+        "dedupStrategy": "exact",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": true,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+          "editorMode": "code",
+          "expr": "{namespace=~\"$namespace\", workload=~\"$workload\", pod=~\"$pod\", container=~\"$container\", node=~\"$node\"} |~ \"(?i)$search\"",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Logs",
+      "type": "logs"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["loki", "logs", "kubernetes"],
+  "templating": {
+    "list": [
+      {
+        "name": "DS_LOKI",
+        "label": "Loki",
+        "type": "datasource",
+        "query": "loki",
+        "current": { "selected": true, "text": "Loki", "value": "Loki" },
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false
+      },
+      {
+        "allValue": ".+",
+        "current": {},
+        "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+        "definition": "",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Namespace",
+        "multi": false,
+        "name": "namespace",
+        "options": [],
+        "query": { "label": "namespace", "refId": "LokiVariableQueryEditor-VariableQuery", "stream": "", "type": 1 },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "allValue": ".+",
+        "current": {},
+        "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+        "definition": "",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Workload",
+        "multi": false,
+        "name": "workload",
+        "options": [],
+        "query": { "label": "workload", "refId": "LokiVariableQueryEditor-VariableQuery", "stream": "{namespace=~\"$namespace\"}", "type": 1 },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "allValue": ".+",
+        "current": {},
+        "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+        "definition": "",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Pod",
+        "multi": false,
+        "name": "pod",
+        "options": [],
+        "query": { "label": "pod", "refId": "LokiVariableQueryEditor-VariableQuery", "stream": "{namespace=~\"$namespace\", workload=~\"$workload\"}", "type": 1 },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "allValue": ".+",
+        "current": {},
+        "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+        "definition": "",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Container",
+        "multi": false,
+        "name": "container",
+        "options": [],
+        "query": { "label": "container", "refId": "LokiVariableQueryEditor-VariableQuery", "stream": "{namespace=~\"$namespace\", workload=~\"$workload\", pod=~\"$pod\"}", "type": 1 },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "allValue": ".+",
+        "current": {},
+        "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+        "definition": "",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Node",
+        "multi": false,
+        "name": "node",
+        "options": [],
+        "query": { "label": "node", "refId": "LokiVariableQueryEditor-VariableQuery", "stream": "", "type": 1 },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": { "selected": true, "text": ".+", "value": ".+" },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Search",
+        "multi": false,
+        "name": "search",
+        "options": [
+          { "selected": true, "text": ".+", "value": ".+" },
+          { "selected": false, "text": "error|fatal", "value": "error|fatal" },
+          { "selected": false, "text": "warn|error|fatal", "value": "warn|error|fatal" },
+          { "selected": false, "text": "fatal", "value": "fatal" },
+          { "selected": false, "text": "error", "value": "error" },
+          { "selected": false, "text": "warn", "value": "warn" }
+        ],
+        "query": ".+,error|fatal,warn|error|fatal,fatal,error,warn",
+        "skipUrlSync": false,
+        "type": "custom"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Kubernetes Logs (Loki)",
+  "uid": "k8s-logs-loki",
+  "version": 1,
+  "weekStart": ""
+}

@@ -1,0 +1,21 @@
+# Kubernetes Logs (Loki) Grafana dashboard
+# Adapted from https://grafana.com/grafana/dashboards/18494-kubernetes-logs-from-loki/
+# (community dashboard by ss3rg3): datasource reworked to a "loki" type
+# variable defaulting to our "Loki" additionalDataSource, queries extended
+# with the Alloy local_pods labels (workload, container, node), default
+# search widened to .+ (all logs). Picked up by the Grafana sidecar
+# (label grafana_dashboard=1, searchNamespace ALL) and placed in the "Logs"
+# folder via kube-prometheus-stack.grafana.sidecar.dashboards.folderAnnotation.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kubernetes-logs-loki-dashboard
+  namespace: {{ .Release.Namespace }}
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: "Logs"
+data:
+  kubernetes-logs-loki.json: |-
+{{ .Files.Get "dashboards/kubernetes-logs-loki.json" | nindent 4 }}
