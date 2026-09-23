@@ -4,13 +4,6 @@
 # (s3://{{ .Values.s3.bucket }}@{{ .Values.s3.region }}/ on RustFS).
 # NOTE (T-corr, live SNI evidence 2026-09-23): this Job dials
 # https://<FQDN>:443 — RustFS aborts TLS unless SNI equals its LE-cert FQDN
-# (same proxy pod IP: SNI=svc name => TLSV1_ALERT_INTERNAL_ERROR, SNI=FQDN =>
-# HANDSHAKE_OK; --no-verify-ssl can never fix a wrong SNI, the handshake dies
-# before verification). Routing still stays in-cluster: SVC_HOST below is
-# resolved via kube-dns with the private-IP gate, then each resolved private
-# IP is pinned as "<svc-ip> <FQDN>" in /etc/hosts AT RUNTIME (never a static
-# literal — the s3-egress Service is headless so the proxy pod IP changes on
-# restart). ENDPOINT=https://<FQDN> (443 default, path-style).
 # Credentials: bootstrap-created Secret longhorn-backup-secret
 # (bootstrap/init-gitops.sh:ensureLonghornBackupCredentials(), keys
 # AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY). optional:true so the Job object
@@ -91,9 +84,6 @@ spec:
               # Ensure aws-cli uses path-style addressing (S3 backend requires it)
               aws configure set default.s3.addressing_style path || true
               aws configure set default.s3.addressing_style path --profile default || true
-              # T-corr S3 path: ENDPOINT is https://<FQDN> (RustFS requires
-              # SNI == its LE-cert FQDN; the svc name alone can never
-              # handshake). Routing stays in-cluster via the tailscale
               # s3-egress Service: resolve SVC_HOST, gate on the resolved
               # IPs, pin FQDN->svc-IP in /etc/hosts at runtime (below).
               S3_FQDN="{{ $fqdn }}"
@@ -120,9 +110,6 @@ spec:
               # Pre-s3api endpoint validation: log every SVC-resolved IP:port
               # BEFORE any aws call, and fail fast if any resolved IP is
               # public. Private = 10/8 (pod/service nets), 100.64/10
-              # (Tailscale CGNAT), 192.168/16, fd00::/8 (ULA) — the s3-egress
-              # proxy only ever serves those; a public IP means MagicDNS
-              # public fallback leaked in and TLS would die in EOF.
               is_private_ip() {
                 _pip="$1"
                 case "$_pip" in
@@ -163,8 +150,6 @@ spec:
               done
               # SNI fix: pin the LE-cert FQDN to the in-cluster svc IPs
               # resolved above — runtime /etc/hosts entries, never static
-              # literals (the headless proxy pod IP changes on restart).
-              # TLS now offers SNI=$S3_FQDN while packets stay in-cluster.
               for RIP in $RESOLVED_IPS; do
                 echo "[bucket-init] hosts-pin: $RIP $S3_FQDN"
                 echo "$RIP $S3_FQDN" >> /etc/hosts
@@ -176,9 +161,6 @@ spec:
 
               # RustFS serves a public Let's Encrypt cert for $S3_FQDN, but
               # --no-verify-ssl is retained (robustness across rotations).
-              # It is a TOP-LEVEL aws-cli option: global position
-              # (`aws --no-verify-ssl s3api ...`) — trailing position after
-              # the subcommand args is unreliable.
 
               set +e
               OUTPUT="$(aws --no-verify-ssl s3api create-bucket --bucket "$BUCKET" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" 2>&1)"
