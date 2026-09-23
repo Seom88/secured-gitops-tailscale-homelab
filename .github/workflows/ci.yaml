@@ -34,7 +34,7 @@ jobs:
           persist-credentials: false
 
       - name: Secret scan (detect-secrets, baseline-gated)
-        run: |
+        run: |  # pragma: allowlist secret -- `detect-secrets==` pin below trips KeywordDetector; not a secret
           python3 -m pip install --quiet detect-secrets==1.5.0
           # Fails on NEW secrets vs .secrets.baseline; never auto-updates it.
           # To accept a finding: `detect-secrets audit .secrets.baseline` locally.

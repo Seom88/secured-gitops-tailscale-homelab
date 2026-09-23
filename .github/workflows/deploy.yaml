@@ -238,7 +238,7 @@ jobs:
           SOPS_AGE_KEY_FILE: /tmp/age-keys.txt
         run: |
           chmod +x bootstrap/init-sops.sh
-          ./bootstrap/init-sops.sh 
+          ./bootstrap/init-sops.sh
 
       - name: Bootstrap (delegates to init-gitops.sh — single source of truth)
         env:
