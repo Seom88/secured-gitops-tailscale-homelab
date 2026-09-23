@@ -21,7 +21,7 @@ longhorn:
   # above (values files are not templated).
   defaultBackupStore:
     backupTarget: "s3://longhorn-homelab@us-east-1/"
-    backupTargetCredentialSecret: longhorn-backup-secret
+    backupTargetCredentialSecret: longhorn-backup-secret  # pragma: allowlist secret
   defaultSettings:
     defaultReplicaCount: 2
     replicaSoftAntiAffinity: false
