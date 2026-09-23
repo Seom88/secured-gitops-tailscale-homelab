@@ -1,15 +1,27 @@
 {{- if .Values.velero.enabled }}
+{{- $fqdn := required "s3.tailnetFqdn is required (set gitops/values.yaml sharedS3.tailnetFqdn)" .Values.s3.tailnetFqdn }}
 # BackupStorageLocation owned by this wrapper chart (NOT the upstream subchart):
 # upstream reads s3Url literally from values (no templating), and neither
 # `helm --set` nor ArgoCD parameters can patch one array entry by index
 # (lists are replaced wholesale — a [0] patch drops provider/bucket and fails
 # upstream schema validation). Upstream BSL is disabled via
 # `velero.configuration.backupStorageLocation: []` in values.yaml.
-# URL note (delegated-direct): s3Url points at the in-cluster tailscale
-# s3-egress Service via kube-dns — never the MagicDNS FQDN (its public-IP
-# fallback dies in TLS EOF). insecureSkipTLSVerify stays true: the internal
-# Service name never matches the RustFS LE cert. s3.tailnetFqdn plumbing is
-# still required by the ts-operator s3-egress Service + Cilium policies.
+# URL note (T-corr, live SNI evidence 2026-09-23): s3Url is https://<FQDN> —
+# RustFS aborts TLS unless SNI equals its LE-cert FQDN, so the svc name can
+# never handshake here (TLSV1_ALERT_INTERNAL_ERROR) and --no-verify-ssl /
+# insecureSkipTLSVerify can never compensate (handshake dies first).
+# insecureSkipTLSVerify stays true (robustness across LE rotations).
+# SERVER-RESOLUTION GAP (follow-up, NOT solved here): the velero server pod
+# resolves this FQDN via cluster DNS with no in-job hosts-pin available —
+# the ts.net stub stays deleted and no static IP may be pinned (headless svc).
+# vmware-tanzu/velero 12.2.0 (Chart.lock) natively supports hostAliases,
+# dnsPolicy/dnsConfig and extraObjects, but NONE solves this without a
+# literal IP (hostAliases/dnsConfig nameserver need one; there is NO
+# extraContainers/sidecar knob for a socat FQDN:8443->svc:443 forward), so
+# values.yaml is intentionally left without DNS overrides. If the FQDN falls
+# back to MagicDNS public IPs in the server pod, backups fail until the
+# follow-up lands (options: ts-nameserver stub via operator-supported DNS,
+# or a wrapper-owned sidecar — both need design, not a hack here).
 # Bucket/prefix/region are chart-owned in s3.* (S3_BUCKET in CI is the
 # Terraform-state bucket — never the Velero bucket).
 apiVersion: velero.io/v1
@@ -28,6 +40,6 @@ spec:
   config:
     region: {{ .Values.s3.region | quote }}
     s3ForcePathStyle: "true"
-    s3Url: "https://s3-egress.tailscale.svc.cluster.local"
+    s3Url: {{ printf "https://%s" $fqdn | quote }}
     insecureSkipTLSVerify: "true"
 {{- end }}

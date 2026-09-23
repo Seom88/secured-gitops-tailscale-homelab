@@ -5,7 +5,7 @@
 ![Chart](https://img.shields.io/badge/Chart-vmware--tanzu%2Fvelero_12.1.0-orange?style=flat-square)
 ![App](https://img.shields.io/badge/App-1.18.1-yellow?style=flat-square)
 
-Velero backs up cluster manifests and workload data (everything except Vault — see Vault policy below) to an external RustFS S3 bucket (`velero-homelab` at `https://s3-egress.tailscale.svc.cluster.local`) with GitOps automation and no manual bucket setup.
+Velero backs up cluster manifests and workload data (everything except Vault — see Vault policy below) to an external RustFS S3 bucket (`velero-homelab` at `https://rustfs.lonk-mirfak.ts.net`, from `sharedS3.tailnetFqdn`) with GitOps automation and no manual bucket setup. RustFS aborts TLS unless SNI equals its LE-cert FQDN, so every consumer dials the FQDN; the bucket-init Job keeps traffic in-cluster by resolving `s3-egress.tailscale.svc.cluster.local` via kube-dns and pinning the FQDN to those svc IPs in `/etc/hosts` at runtime (live SNI evidence 2026-09-23).
 
 ## Why this design
 
@@ -31,7 +31,7 @@ flowchart LR
     CHART -.->|excluded| VAULT["Vault ns<br/>re-bootstrap, never restore"]
 ```
 
-Wave `-1` `tailscale-operator` (s3-egress Service) → wave `0` `velero` + `longhorn` → wave `1` `vault`. S3 dials the in-cluster Service name via kube-dns (no ts.net stub needed); the `coredns-patch` chart was removed. Guarantees DNS and storage are ready before Vault creates PVCs.
+Wave `-1` `tailscale-operator` (s3-egress Service) → wave `0` `velero` + `longhorn` → wave `1` `vault`. The bucket-init Job resolves the in-cluster Service name via kube-dns (private-IP gate + runtime hosts-pin of the FQDN, no ts.net stub needed); the `coredns-patch` chart was removed. Guarantees DNS and storage are ready before Vault creates PVCs.
 
 ## Schedules
 
@@ -42,7 +42,7 @@ Wave `-1` `tailscale-operator` (s3-egress Service) → wave `0` `velero` + `long
 
 - `defaultVolumesToFsBackup: true` + `deployNodeAgent: true` + `nodeAgent.enabled: true` → Longhorn PVCs backed up via filesystem copy (no CSI snapshots). The node-agent gate and the FsBackup default must stay on together.
 - Resource guard: `resources.limits.memory: 512Mi` (chart default `128Mi` OOMKills during FsBackup on this homelab) — do not lower it.
-- Storage: `s3ForcePathStyle: true`, `s3Url: https://s3-egress.tailscale.svc.cluster.local`, `region: us-east-1`, `prefix: velero/`, single BSL `default`.
+- Storage: `s3ForcePathStyle: true`, `s3Url: https://<FQDN>` (from `sharedS3.tailnetFqdn`; the svc name can never complete a RustFS TLS handshake — SNI must equal the LE-cert FQDN), `region: us-east-1`, `prefix: velero/`, single BSL `default`. Known gap (follow-up): the velero server pod itself has no subchart-native way to pin FQDN→svc-IP without a literal IP (no sidecar knob in vmware-tanzu/velero 12.2.0), so server-side FQDN resolution still depends on cluster DNS — see the `SERVER-RESOLUTION GAP` note in `templates/backupstoragelocation.yaml`.
 
 ## Vault policy — excluded, re-bootstrap + rotation
 
@@ -76,7 +76,8 @@ velero backup get
 | `secret cloud-credentials not found` | Check SOPS secret applied (`init-sops.sh`), or re-run bootstrap with `AWS_*` env vars (fallback) |
 | `NoSuchBucket` | Check `kubectl -n velero logs job/velero-bucket-init`; re-sync ArgoCD |
 | `BSL not Ready` | Verify `s3Url`/`s3ForcePathStyle` and `cloud` key format is `[default]` ini |
-| `nslookup s3-egress.tailscale.svc.cluster.local` fails | Verify the `s3-egress` Service exists in namespace `tailscale` and kube-dns is healthy |
+| `nslookup s3-egress.tailscale.svc.cluster.local` fails | Verify the `s3-egress` Service exists in namespace `tailscale` and kube-dns is healthy (bucket-init Jobs resolve the svc, then pin the FQDN to those IPs in `/etc/hosts` — check `hosts-pin` lines in the job log) |
+| `TLSV1_ALERT_INTERNAL_ERROR` / EOF against RustFS | The dialed host is not the LE-cert FQDN — ENDPOINT/`s3Url` must be `https://<FQDN>` (SNI fix); `--no-verify-ssl` in trailing position is unreliable, it must be global (`aws --no-verify-ssl s3api ...`) |
 
 ## Files
 

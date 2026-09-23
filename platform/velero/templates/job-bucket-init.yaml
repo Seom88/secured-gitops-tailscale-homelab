@@ -1,10 +1,14 @@
 {{- if .Values.velero.enabled }}
-# NOTE (delegated-direct): this Job dials the in-cluster Service
-# s3-egress.tailscale.svc.cluster.local via kube-dns — it no longer consumes
-# s3.tailnetFqdn (the MagicDNS FQDN intermittently resolves to public IPs that
-# die in TLS EOF). The fqdn plumbing stays for the ts-operator s3-egress
-# Service + Cilium policies; --no-verify-ssl is kept (the internal Service
-# name never matches the RustFS LE cert).
+{{- $fqdn := required "s3.tailnetFqdn is required (set gitops/values.yaml sharedS3.tailnetFqdn)" .Values.s3.tailnetFqdn }}
+# NOTE (T-corr, live SNI evidence 2026-09-23): this Job dials
+# https://<FQDN>:443 — RustFS aborts TLS unless SNI equals its LE-cert FQDN
+# (same proxy pod IP: SNI=svc name => TLSV1_ALERT_INTERNAL_ERROR, SNI=FQDN =>
+# HANDSHAKE_OK; --no-verify-ssl can never fix a wrong SNI, the handshake dies
+# before verification). Routing still stays in-cluster: SVC_HOST below is
+# resolved via kube-dns with the private-IP gate, then each resolved private
+# IP is pinned as "<svc-ip> <FQDN>" in /etc/hosts AT RUNTIME (never a static
+# literal — the s3-egress Service is headless so the proxy pod IP changes on
+# restart). ENDPOINT=https://<FQDN> (443 default, path-style).
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -69,12 +73,14 @@ spec:
               # Ensure aws-cli uses path-style addressing (S3 backend requires it)
               aws configure set default.s3.addressing_style path || true
               aws configure set default.s3.addressing_style path --profile default || true
-              # Delegated-direct S3 path: dial the in-cluster tailscale
-              # s3-egress Service via kube-dns — never the MagicDNS FQDN
-              # (the FQDN intermittently resolves to public IPs that die in
-              # TLS EOF; the Service name always stays in-cluster).
-              ENDPOINT_HOST="s3-egress.tailscale.svc.cluster.local"
-              ENDPOINT="https://$ENDPOINT_HOST"
+              # T-corr S3 path: ENDPOINT is https://<FQDN> (RustFS requires
+              # SNI == its LE-cert FQDN; the svc name alone can never
+              # handshake). Routing stays in-cluster via the tailscale
+              # s3-egress Service: resolve SVC_HOST, gate on the resolved
+              # IPs, pin FQDN->svc-IP in /etc/hosts at runtime (below).
+              S3_FQDN="{{ $fqdn }}"
+              SVC_HOST="s3-egress.tailscale.svc.cluster.local"
+              ENDPOINT="https://$S3_FQDN"
               S3_PORT="443"
               BUCKET="{{ .Values.s3.bucket }}"
               if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
@@ -84,12 +90,12 @@ spec:
                 exit 1
               fi
               # Wait for the in-cluster S3 egress Service DNS to be ready
-              echo "[bucket-init] Waiting for $ENDPOINT_HOST (max 120s)..."
+              echo "[bucket-init] Waiting for $SVC_HOST (max 120s)..."
               DNS_WAIT=0
               DNS_MAX=120
               while [ $DNS_WAIT -lt $DNS_MAX ]; do
-                if nslookup "$ENDPOINT_HOST" >/dev/null 2>&1 || getent hosts "$ENDPOINT_HOST" >/dev/null 2>&1; then
-                  echo "[bucket-init] DNS resolved for $ENDPOINT_HOST"
+                if nslookup "$SVC_HOST" >/dev/null 2>&1 || getent hosts "$SVC_HOST" >/dev/null 2>&1; then
+                  echo "[bucket-init] DNS resolved for $SVC_HOST"
                   break
                 fi
                 echo "[bucket-init] DNS not yet resolved ($DNS_WAIT/$DNS_MAX s)..."
@@ -99,7 +105,7 @@ spec:
               if [ $DNS_WAIT -ge $DNS_MAX ]; then
                 echo "[bucket-init] WARNING: DNS still not resolved after $DNS_MAX s — one final resolution attempt below before failing fast"
               fi
-              # Pre-s3api endpoint validation: log every resolved IP:port
+              # Pre-s3api endpoint validation: log every SVC-resolved IP:port
               # BEFORE any aws call, and fail fast if any resolved IP is
               # public. Private = 10/8 (pod/service nets), 100.64/10
               # (Tailscale CGNAT), 192.168/16, fd00::/8 (ULA) — the s3-egress
@@ -119,23 +125,23 @@ spec:
                   *) return 1 ;;
                 esac
               }
-              RESOLVED_IPS="$( (getent hosts "$ENDPOINT_HOST" 2>/dev/null | awk '{print $1}'; nslookup "$ENDPOINT_HOST" 2>/dev/null | awk '/^Address: /{if ($2 !~ /#/) print $2} /^Address [0-9]+:/{print $3}') | sort -u | tr '\n' ' ' || true )"
+              RESOLVED_IPS="$( (getent hosts "$SVC_HOST" 2>/dev/null | awk '{print $1}'; nslookup "$SVC_HOST" 2>/dev/null | awk '/^Address: /{if ($2 !~ /#/) print $2} /^Address [0-9]+:/{print $3}') | sort -u | tr '\n' ' ' || true )"
               if [ -z "$(echo "$RESOLVED_IPS" | tr -d '[:space:]')" ]; then
-                echo "[bucket-init] ERROR: no IP resolved for $ENDPOINT_HOST — refusing aws s3api call (check kube-dns and the s3-egress Service in namespace tailscale)"
+                echo "[bucket-init] ERROR: no IP resolved for $SVC_HOST — refusing aws s3api call (check kube-dns and the s3-egress Service in namespace tailscale)"
                 exit 1
               fi
               for RIP in $RESOLVED_IPS; do
-                echo "[bucket-init] S3 endpoint $ENDPOINT_HOST -> $RIP:$S3_PORT"
+                echo "[bucket-init] S3 endpoint $SVC_HOST -> $RIP:$S3_PORT"
                 if is_private_ip "$RIP"; then
                   echo "[bucket-init] $RIP is private (10/8, 100.64/10, 192.168/16, fd00::/8) — OK"
                 else
                   echo "[bucket-init] ERROR: refusing S3 dial — $RIP is PUBLIC (outside 10/8, 100.64/10, 192.168/16, fd00::/8); expected the tailscale s3-egress ClusterIP/proxy, not MagicDNS public fallback"
                   if command -v openssl >/dev/null 2>&1; then
-                    echo "[bucket-init] TLS diagnostic (best-effort): openssl s_client -connect $RIP:$S3_PORT -servername $ENDPOINT_HOST"
+                    echo "[bucket-init] TLS diagnostic (best-effort): openssl s_client -connect $RIP:$S3_PORT -servername $S3_FQDN"
                     if command -v timeout >/dev/null 2>&1; then
-                      timeout 10 openssl s_client -connect "$RIP:$S3_PORT" -servername "$ENDPOINT_HOST" </dev/null 2>&1 | head -20 || true
+                      timeout 10 openssl s_client -connect "$RIP:$S3_PORT" -servername "$S3_FQDN" </dev/null 2>&1 | head -20 || true
                     else
-                      openssl s_client -connect "$RIP:$S3_PORT" -servername "$ENDPOINT_HOST" </dev/null 2>&1 | head -20 || true
+                      openssl s_client -connect "$RIP:$S3_PORT" -servername "$S3_FQDN" </dev/null 2>&1 | head -20 || true
                     fi
                   else
                     echo "[bucket-init] openssl not available — skipping TLS diagnostic"
@@ -143,16 +149,27 @@ spec:
                   exit 1
                 fi
               done
+              # SNI fix: pin the LE-cert FQDN to the in-cluster svc IPs
+              # resolved above — runtime /etc/hosts entries, never static
+              # literals (the headless proxy pod IP changes on restart).
+              # TLS now offers SNI=$S3_FQDN while packets stay in-cluster.
+              for RIP in $RESOLVED_IPS; do
+                echo "[bucket-init] hosts-pin: $RIP $S3_FQDN"
+                echo "$RIP $S3_FQDN" >> /etc/hosts
+              done
+              echo "[bucket-init] hosts-pin lines:"
+              grep -F "$S3_FQDN" /etc/hosts || true
 
               echo "[bucket-init] Creating bucket $BUCKET at $ENDPOINT (region $AWS_DEFAULT_REGION)..."
 
-              # RustFS serves a public Let's Encrypt cert (verified 2026-09-21), but
-              # --no-verify-ssl is retained: the internal Service name never
-              # matches the LE cert, and this keeps robustness across rotations.
-              AWS_S3_EXTRA="--no-verify-ssl"
+              # RustFS serves a public Let's Encrypt cert for $S3_FQDN, but
+              # --no-verify-ssl is retained (robustness across rotations).
+              # It is a TOP-LEVEL aws-cli option: global position
+              # (`aws --no-verify-ssl s3api ...`) — trailing position after
+              # the subcommand args is unreliable.
 
               set +e
-              OUTPUT="$(aws s3api create-bucket --bucket "$BUCKET" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" $AWS_S3_EXTRA 2>&1)"
+              OUTPUT="$(aws --no-verify-ssl s3api create-bucket --bucket "$BUCKET" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" 2>&1)"
               RC=$?
               set -e
               echo "$OUTPUT"
@@ -163,7 +180,7 @@ spec:
                   echo "[bucket-init] Bucket already exists — continuing (idempotent)."
                 elif echo "$OUTPUT" | grep -qiE 'AccessDenied'; then
                   echo "[bucket-init] AccessDenied on create-bucket — checking if bucket already exists and is accessible..."
-                  if aws s3api head-bucket --bucket "$BUCKET" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" $AWS_S3_EXTRA 2>/dev/null; then
+                  if aws --no-verify-ssl s3api head-bucket --bucket "$BUCKET" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" 2>/dev/null; then
                     echo "[bucket-init] Bucket exists and is accessible — continuing (pre-created, key lacks s3:CreateBucket)."
                   else
                     echo "[bucket-init] ERROR: create-bucket denied AND bucket not accessible — grant s3:CreateBucket on arn:aws:s3:::$BUCKET (see docs/rustfs-iam.md) or pre-create the bucket."
@@ -176,9 +193,9 @@ spec:
               fi
 
               echo "[bucket-init] Verifying bucket with head-bucket..."
-              aws s3api head-bucket --bucket "$BUCKET" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" $AWS_S3_EXTRA
+              aws --no-verify-ssl s3api head-bucket --bucket "$BUCKET" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION"
               echo "[bucket-init] Verification OK — bucket $BUCKET is accessible."
-              aws s3 ls "s3://$BUCKET/" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" $AWS_S3_EXTRA || true
+              aws --no-verify-ssl s3 ls "s3://$BUCKET/" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" || true
               echo "[bucket-init] Done."
           volumeMounts:
             - name: cloud-credentials
