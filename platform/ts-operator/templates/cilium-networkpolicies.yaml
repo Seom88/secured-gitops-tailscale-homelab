@@ -184,6 +184,13 @@ spec:
               protocol: TCP
     - toEndpoints:
         - matchLabels:
+            k8s:io.kubernetes.pod.namespace: immich
+      toPorts:
+        - ports:
+            - port: "2283"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
             k8s:io.kubernetes.pod.namespace: monitoring
       toPorts:
         - ports:

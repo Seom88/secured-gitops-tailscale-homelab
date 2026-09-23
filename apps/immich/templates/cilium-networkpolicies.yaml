@@ -1,0 +1,150 @@
+{{- if .Values.ciliumNetworkPolicy.enabled }}
+# CiliumNetworkPolicies for immich — per-app zero-trust (ADR-014) + per-app Tailscale ingress (ADR-018)
+# Covers: server 2283 http, 8081 metrics-api, 8082 metrics-ms; machine-learning 3003;
+# valkey 6379; CNPG postgres 5432 + metrics 8000. Pod ports only (post-DNAT).
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: immich-allow-dns
+  namespace: immich
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: immich-allow-egress
+  namespace: immich
+spec:
+  endpointSelector: {}
+  egress:
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+    # Intra-immich: server <-> ml <-> valkey <-> CNPG (server 2283/8081/8082, ml 3003, valkey 6379, pg 5432/8000)
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: immich
+      toPorts:
+        - ports:
+            - port: "2283"
+              protocol: TCP
+            - port: "3003"
+              protocol: TCP
+            - port: "6379"
+              protocol: TCP
+            - port: "5432"
+              protocol: TCP
+            - port: "8000"
+              protocol: TCP
+            - port: "8081"
+              protocol: TCP
+            - port: "8082"
+              protocol: TCP
+    # Machine-learning model pulls (HuggingFace) + GHCR image metadata — world 443 only
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # Hubble
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: hubble-relay
+      toPorts:
+        - ports:
+            - port: "4244"
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: immich-allow-ingress
+  namespace: immich
+spec:
+  endpointSelector: {}
+  ingress:
+    # Intra-immich (server <-> ml <-> valkey <-> CNPG)
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: immich
+      toPorts:
+        - ports:
+            - port: "2283"
+              protocol: TCP
+            - port: "3003"
+              protocol: TCP
+            - port: "6379"
+              protocol: TCP
+            - port: "5432"
+              protocol: TCP
+            - port: "8000"
+              protocol: TCP
+            - port: "8081"
+              protocol: TCP
+            - port: "8082"
+              protocol: TCP
+    # CNPG operator reconciliation (lives in cnpg-system) -> postgres 5432 + metrics 8000
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: cnpg-system
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+            - port: "8000"
+              protocol: TCP
+    # Per-app Tailscale Ingress proxy (ADR-018): proxy pods run in tailscale ns
+    # with label tailscale.com/managed=true — server UI/API only, not metrics
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: tailscale
+            k8s:tailscale.com/managed: "true"
+      toPorts:
+        - ports:
+            - port: "2283"
+              protocol: TCP
+    # Prometheus scraping from monitoring -> metrics-api 8081 + metrics-ms 8082
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - port: "8081"
+              protocol: TCP
+            - port: "8082"
+              protocol: TCP
+    # Kubelet probes + apiserver: server /api/server/ping on 2283, ml /ping on 3003
+    - fromEntities:
+        - host
+        - remote-node
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "2283"
+              protocol: TCP
+            - port: "3003"
+              protocol: TCP
+{{- end }}

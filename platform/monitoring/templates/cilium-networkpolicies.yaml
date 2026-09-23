@@ -75,6 +75,7 @@ spec:
     # Prometheus scraping: allow egress to any pod in cluster on scrape ports (9100 node-exporter, 8080 kube-state-metrics, 9090, 9153 coredns, 10250 kubelet)
     # Uses toEntities cluster to avoid enumerating every namespace/selector — Hubble will show flows per-identity
     # Cilium metrics (9962 agent, 9963 operator, 9964 envoy, 9965 hubble, 9966 relay)
+    # Immich server metrics (8081 metrics-api, 8082 metrics-ms)
     - toEntities:
         - cluster
       toPorts:
@@ -82,6 +83,10 @@ spec:
             - port: "9100"
               protocol: TCP
             - port: "8080"
+              protocol: TCP
+            - port: "8081"
+              protocol: TCP
+            - port: "8082"
               protocol: TCP
             - port: "9090"
               protocol: TCP
