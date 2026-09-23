@@ -287,12 +287,13 @@ status:
 
 # ── Validate (local — mirrors CI validate job) ──────
 
-# Run all local validations (gitops + platform + scripts + yaml + json)
+# Run all local validations (gitops + platform + scripts + images + yaml + json)
 validate:
-    @echo "==> validate: running all checks (gitops + platform + scripts + yaml + json)"
+    @echo "==> validate: running all checks (gitops + platform + scripts + images + yaml + json)"
     @just validate-gitops
     @just validate-platform
     @just validate-scripts
+    @just validate-images
     @just validate-yaml
     @just validate-json
     @echo "✅ validate: all checks passed"
@@ -364,6 +365,18 @@ validate-scripts:
     echo "==> shellcheck platform/vault/scripts/bootstrap-vault.sh"
     shellcheck platform/vault/scripts/bootstrap-vault.sh
     echo "✅ validate-scripts: OK"
+
+# Enforce inline image convention (no split repository:/tag: in values) — mirrors CI validate job
+validate-images:
+    #!/usr/bin/env bash
+    set -e
+    matches="$(grep -rn --include='values*.yaml' -E '^[[:space:]]*repository[[:space:]]*:' platform/ apps/ gitops/ || true)"
+    if [ -n "$matches" ]; then
+      echo "❌ split-style image blocks found in values files (use inline 'image: <repo>:<tag>' instead):" >&2
+      printf '%s\n' "$matches" >&2
+      exit 1
+    fi
+    echo "✅ Inline image convention: OK (no 'repository:' keys in values*.yaml)"
 
 # YAML syntax sanity (PyYAML) — skip Helm templates
 validate-yaml:
@@ -522,6 +535,25 @@ scan:
     else
       echo "✅ scan: OK (pinned images clean)"
     fi
+
+# Trivy config/misconfig scan (HIGH,CRITICAL, advisory opt-in) — mirrors CI trivy-config; soft-skips without trivy; never in `validate`
+scan-config:
+    #!/usr/bin/env bash
+    set -e
+    if ! command -v trivy >/dev/null 2>&1; then
+      echo "⚠️  trivy not found — skipping (install with: https://aquasecurity.github.io/trivy/latest/getting-started/installation/)"
+      echo "   CI still runs trivy-config in security.yaml; local check is non-blocking"
+      exit 0
+    fi
+    echo "==> scan-config: trivy misconfig scan (HIGH,CRITICAL, advisory — exit 0 either way)"
+    if trivy config --help >/dev/null 2>&1; then
+      echo "   using 'trivy config' subcommand"
+      trivy config --severity HIGH,CRITICAL --ignore-unfixed . || echo "⚠️  scan-config: findings above are advisory (see CI SARIF); not blocking"
+    else
+      echo "   'trivy config' subcommand missing — using 'trivy fs --scanners misconfig' equivalent"
+      trivy fs --scanners misconfig --severity HIGH,CRITICAL --ignore-unfixed . || echo "⚠️  scan-config: findings above are advisory (see CI SARIF); not blocking"
+    fi
+    echo "✅ scan-config: done (advisory only)"
 
 # ── GitOps ────────────────────────────────────
 

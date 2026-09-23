@@ -10,7 +10,23 @@ repos:
     hooks:
       - id: detect-secrets
         args: ['--baseline', '.secrets.baseline']
-        exclude: '^platform/.*/Chart\.lock$'
+        exclude: '^platform/.*/Chart\.lock$|.*\.enc\.yaml$|\.sops\.yaml$'
+  - repo: local
+    hooks:
+      # Mirrors CI `Inline image convention`: split `repository:` + `tag:` blocks
+      # in values files are invisible to Renovate Manager 1 — fail fast locally.
+      # grep only, no network, runs only when a values file is staged.
+      - id: inline-image-convention
+        name: 'inline image convention (no split repository in values files)'
+        entry: >-
+          bash -c
+          'matches="$(grep -rn --include="values*.yaml" -E "^[[:space:]]*repository[[:space:]]*:" platform/ apps/ gitops/ || true)";
+          if [ -n "$matches" ]; then echo "split-style image blocks found in values files (use inline image instead):";
+          printf "%s\n" "$matches"; exit 1; fi;
+          echo "Inline image convention: OK"'
+        language: system
+        files: 'values.*\.ya?ml$'
+        pass_filenames: false
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
