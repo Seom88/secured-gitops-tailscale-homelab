@@ -1,7 +1,7 @@
 {{- if .Values.ciliumNetworkPolicy.enabled }}
 # CiliumNetworkPolicies for immich — per-app zero-trust (ADR-014) + per-app Tailscale ingress (ADR-018)
 # Covers: server 2283 http, 8081 metrics-api, 8082 metrics-ms; machine-learning 3003;
-# valkey 6379; CNPG postgres 5432 + metrics 8000. Pod ports only (post-DNAT).
+# valkey 6379; CNPG postgres 5432 + metrics 8000/9187. Pod ports only (post-DNAT).
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -126,7 +126,7 @@ spec:
         - ports:
             - port: "2283"
               protocol: TCP
-    # Prometheus scraping from monitoring -> CNPG metrics 8000 +
+    # Prometheus scraping from monitoring -> CNPG metrics 8000/9187 +
     # metrics-api 8081 + metrics-ms 8082
     - fromEndpoints:
         - matchLabels:
@@ -134,6 +134,8 @@ spec:
       toPorts:
         - ports:
             - port: "8000"
+              protocol: TCP
+            - port: "9187"
               protocol: TCP
             - port: "8081"
               protocol: TCP

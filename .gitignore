@@ -11,3 +11,4 @@ charts/
 kubeconfig
 # Local-only orchestrator working memory (ODD task docs + Engram mirror) — never commit
 odd/
+.codegraph/
