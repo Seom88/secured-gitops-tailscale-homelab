@@ -31,6 +31,9 @@
       "depNameTemplate": "helm/helm"
     }
   ],
+  "argocd": {
+    "managerFilePatterns": ["/^gitops\\/templates\\/.*\\.ya?ml$/"]
+  },
   "packageRules": [
     {
       "description": "Automerge patch+minor to dev (human promotes dev -> main after CI green)",
