@@ -1,9 +1,0 @@
-apiVersion: tailscale.com/v1alpha1
-kind: DNSConfig
-metadata:
-  name: ts-dns
-spec:
-  nameserver:
-    image:
-      repo: tailscale/k8s-nameserver
-      tag: stable@sha256:3676e2277ad16da948caee7952b2a27859a66b905edd981e1bb58b2626bc92a4

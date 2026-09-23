@@ -54,7 +54,7 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
-    # Tailscale gateway (for DNS via ts.net stub)
+    # Tailscale namespace (gateway + shared s3-egress proxy path)
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: tailscale

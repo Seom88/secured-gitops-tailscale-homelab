@@ -106,7 +106,7 @@ open https://prometheus.lonk-mirfak.ts.net/
 
 **Cilium CNI (`v1.20.1`) + Gateway API `v1.2.3` with Identity-Aware NetworkPolicies**:
 - **eBPF Kube-Proxy Replacement (strict)** — Service routing and load-balancing in kernel space without iptables; `socketLB: hostNamespaceOnly`, `cgroup.hostRoot: /sys/fs/cgroup`.
-- **Identity-Based Segmentation** — Fine-grained `CiliumNetworkPolicy` (`cilium.io/v2`) across 9 charts (`vault`, `longhorn-system`, `seaweedfs`, `monitoring`, `tailscale`, `tailscale-operator`, `velero`, `cert-manager`, `external-secrets`/`coredns-patch`); gated by `ciliumNetworkPolicy.enabled=true`.
+- **Identity-Based Segmentation** — Fine-grained `CiliumNetworkPolicy` (`cilium.io/v2`) across 9 charts (`vault`, `longhorn-system`, `seaweedfs`, `monitoring`, `tailscale`, `tailscale-operator`, `velero`, `cert-manager`, `external-secrets`); gated by `ciliumNetworkPolicy.enabled=true`.
 - **L7 DNS Visibility & Scoping** — Egress DNS restricted to `kube-system/k8s-app=kube-dns` on UDP/TCP 53 with Cilium L7 DNS rules (`toFQDNs.matchPattern: "*"` + `rules.dns`), blocking DNS-based exfiltration while allowing MagicDNS (`*.ts.net`).
 - **Zero-Trust Default Posture** — `endpointSelector: {}` default-deny per namespace; explicit allows for intra-namespace, kube-apiserver (443/6443), and Hubble relay (4244/4245).
 - **Observability Integration** — Hubble relay whitelisted (`ports 4244/4245`) for real-time flow tracing (`hubble observe`).
@@ -162,13 +162,12 @@ GitOps ensures:
 
 ```
 Wave -1 (Healthy required):
-  ├── ts-operator    ← Must be healthy; gates 0..5; publishes DNSConfig status; owns orphan argocd/hubble Ingresses
+  ├── ts-operator    ← Must be healthy; gates 0..5; owns orphan argocd/hubble Ingresses
   ├── cert-manager   ← Must be ready
   └── longhorn       ← Must be healthy + CSI-gated
 
 Wave 0 (Healthy required):
   ├── external-secrets ← Must be ready
-  ├── coredns-patch    ← Patches kube-system/coredns with ts.net:53 stub from DNSConfig (ADR-011)
   └── velero           ← Backup; bucket-init hook waits for ts.net DNS; NPs scope egress to velero only
 
 Wave 1 (Healthy required):
@@ -196,7 +195,7 @@ No `ts-ingress` chart — deleted; each chart owns its per-app Tailscale Ingress
 - Root app: [`gitops/templates/root-prod-app.yaml`](../gitops/templates/root-prod-app.yaml)
 - Platform apps: [`gitops/templates/platform/`](../gitops/templates/platform/)
   - `-1-ts-operator.yaml`, `-1-cert-manager.yaml`, `-1-longhorn.yaml`
-  - `00-external-secrets.yaml`, `00-coredns-patch.yaml`, `00-velero.yaml`
+  - `00-external-secrets.yaml`, `00-velero.yaml`
   - `01-vault.yaml`, `02-seaweedfs.yaml`, `03-monitoring.yaml`, `03-trivy-operator.yaml`, `04-cloudnative-pg.yaml`
 - User apps: [`gitops/templates/apps/`](../gitops/templates/apps/) — `03-homepage.yaml`, `05-immich.yaml`
 - Helm chart: [`gitops/Chart.yaml`](../gitops/Chart.yaml)

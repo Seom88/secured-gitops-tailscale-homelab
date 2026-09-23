@@ -157,7 +157,7 @@ Same triggers as above (including the weekly cron). Top-level `permissions: cont
 
 All jobs run with `permissions: contents: read` + `security-events: write` (least privilege for SARIF upload). Digest-pinned first-party images (homepage, kubectl jobs, velero plugin, aws-cli bucket-init) block the workflow on HIGH/CRITICAL findings outside `.trivyignore`; upstream subchart images are advisory (`continue-on-error: true`) because only upstream releases fix them — they stay pinned transitively via `Chart.lock` and are re-scanned weekly. Image names contain `/` and `:`, so the SARIF filename is derived in bash (`safe=${IMAGE//[:\/]/_}`). A chart that fails to render is skipped with a warning instead of breaking discovery; empty discovery fails loudly rather than passing vacuously. Consciously accepted CVEs go in `.trivyignore` (one per line, with justification and review date).
 
-First-party images are digest-pinned (`tag@sha256:…`, tag kept for Renovate); `tailscale/k8s-nameserver:stable` is tag-only because the DNSConfig CRD exposes no digest field (digest tracked in a comment). Upstream subchart images are pinned transitively via `Chart.lock`. Renovate's `github-actions` manager already groups these actions for automatic weekly bumps, and the `kubectl jobs` group (`pinDigests: true`) plus the docker regex managers track the pinned refs.
+First-party images are digest-pinned (`tag@sha256:…`, tag kept for Renovate). Upstream subchart images are pinned transitively via `Chart.lock`. Renovate's `github-actions` manager already groups these actions for automatic weekly bumps, and the `kubectl jobs` group (`pinDigests: true`) plus the docker regex managers track the pinned refs.
 
 Local equivalent: `just scan` (same discovery loop + `HIGH,CRITICAL` table summary; soft-fails if `trivy` is not installed — heavy network pulls, deliberately not part of `just validate`).
 
@@ -228,7 +228,7 @@ Local equivalent: `just scan` (same discovery loop + `HIGH,CRITICAL` table summa
 | Group non-critical Helm charts (loki, kube-prometheus-stack, seaweedfs, tailscale-operator, external-secrets) | `helm` excl. vault/longhorn/cert-manager | `helm charts` (`helm-charts`), `helm` | grouped PR |
 | Group GitHub Actions | `github-actions` | `github actions` (`github-actions`), `github-actions` | grouped PR |
 
-Regex managers also cover hardcoded images (`platform/*/templates`, `apps/*/templates`, `apps/*/values*`, coredns-patch split repo/tag, Velero initContainers), `tailscale/k8s-nameserver`, and `HELM_VERSION` in workflows — so digest-pinned refs (`tag@sha256:…`) keep tag bumps flowing with refreshed digests. Validate Vault/Longhorn/cert-manager upgrades via `just validate` + `helm template` before merging.
+Regex managers also cover hardcoded images (`platform/*/templates`, `apps/*/templates`, `apps/*/values*`, Velero initContainers) and `HELM_VERSION` in workflows — so digest-pinned refs (`tag@sha256:…`) keep tag bumps flowing with refreshed digests. Validate Vault/Longhorn/cert-manager upgrades via `just validate` + `helm template` before merging.
 
 ## Velero bootstrap
 

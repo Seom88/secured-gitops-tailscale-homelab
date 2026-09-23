@@ -17,7 +17,7 @@
     },
     {
       "customType": "regex",
-      "description": "Split repo:/tag: pairs (only pair in repo: Tailscale DNSConfig). Inline image: lines belong to Manager 1 — this manager intentionally has no inline matcher so a dep can never be extracted twice. Patterns must stay RE2-compatible: no lookahead, no backreferences (Renovate uses RE2).",
+      "description": "Split repo:/tag: pairs (formerly the Tailscale DNSConfig pair, now removed with coredns-patch). Inline image: lines belong to Manager 1 — this manager intentionally has no inline matcher so a dep can never be extracted twice. Patterns must stay RE2-compatible: no lookahead, no backreferences (Renovate uses RE2).",
       "managerFilePatterns": ["/^platform\\/velero\\/values\\.yaml$/", "/^platform\\/velero\\/templates\\/.*\\.yaml$/", "/^platform\\/ts-operator\\/templates\\/.*\\.yaml$/"],
       "matchStrings": ["repo:\\s*['\"]?(?<depName>[^\\s'\";]+)['\"]?\\s*\\n\\s*tag:\\s*['\"]?(?<currentValue>[^'\"\\s]+)['\"]?"],
       "datasourceTemplate": "docker"

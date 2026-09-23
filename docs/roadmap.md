@@ -80,16 +80,16 @@ Items planned after v1.0.0. Expected to be additive; no CNI or storage re-archit
 
 Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping the current MagicDNS workflow intact. App routing moves to standard Kubernetes Gateway API (`GatewayClass` / `Gateway` / `HTTPRoute`) so swapping the underlying mesh (Tailscale → Netbird or other) later requires no app changes.
 
-**Device inventory — 9 app devices → 1 (plus 2 infra devices unchanged):**
+**Device inventory — 9 app devices → 1 (plus 1 infra device unchanged):**
 
-| Tailnet device | Purpose | Today (per-app Ingresses — ADR-018) | After BYOD (v2 — 3 devices) |
+| Tailnet device | Purpose | Today (per-app Ingresses — ADR-018) | After BYOD (v2 — 2 devices) |
 |---|---|---|---|
-| `k8s-nameserver` | `DNSConfig` device for MagicDNS `ts.net` → CoreDNS sibling `ts.net:53` (`platform/coredns-patch`, ADR-011) | ✅ present | ✅ stays |
+| `k8s-nameserver` | Former `DNSConfig` device for MagicDNS `ts.net` → CoreDNS sibling `ts.net:53` (removed with `platform/coredns-patch`, ADR-011 historical) | ❌ removed | — |
 | `rustfs-egress` | `ExternalName` `rustfs.lonk-mirfak.ts.net` for Velero/S3 via Tailscale | ✅ present | ✅ stays (future optional: consolidate via `TCPRoute`; out of scope for v2) |
 | per-app Ingresses | One `Ingress` + device per app, owned by each chart via `tailscaleIngress` values (`argocd`/`grafana`/`prometheus`/`longhorn`/`seaweedfs-s3`/`seaweedfs-admin`/`homepage`/`hubble`/`vault`, each at `/` root; orphans in `ts-operator/templates/infra/`, ADR-018) | ✅ present (9 devices) | 🔀 consolidated — merged into `gateway-envoy` |
 | `gateway-envoy` | Envoy Gateway `LoadBalancer` with `loadBalancerClass: tailscale` (BYOD) | — | ✅ **single device** serving all 9 app hostnames |
 
-> Operator itself is control-plane only and not counted. `k8s-nameserver` + `rustfs-egress` are unchanged in v2.
+> Operator itself is control-plane only and not counted. `k8s-nameserver`/`DNSConfig` removed with `coredns-patch`; `rustfs-egress` is unchanged in v2.
 
 **BYOD architecture (brief):**
 
@@ -104,7 +104,7 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 |---|---|---|
 | Ingress | Consolidate the 9 per-app `Ingress`es onto one `gateway-envoy` device; keep MagicDNS (`*.lonk-mirfak.ts.net`) | Own domain via Pi-hole/CoreDNS authoritative + `ExternalDNS` + `cert-manager` + Tailscale split DNS (BYOD guide Steps 1–6); reduces MagicDNS dependency but not required for vendor-agnostic routing |
 | Mesh | App `HTTPRoutes` stay vendor-agnostic; swapping `GatewayClass` from `tailscale` to `netbird`/other requires no app changes | Evaluation of alternative meshes (e.g. Netbird) as drop-in `GatewayClass` replacement |
-| DNS / S3 | `k8s-nameserver` and `rustfs-egress` untouched | Own DNS/domain, `TCPRoute` for RustFS |
+| DNS / S3 | `rustfs-egress` untouched (`k8s-nameserver`/`DNSConfig` removed) | Own DNS/domain, `TCPRoute` for RustFS |
 
 **Checklist — v2:**
 
@@ -115,8 +115,8 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 
 **Non-goals for v2:**
 
-- Not removing Tailscale entirely — `k8s-nameserver`, `rustfs-egress`, and tailnet ACLs remain.
-- Not touching `k8s-nameserver` or `rustfs-egress` devices.
+- Not removing Tailscale entirely — `rustfs-egress` and tailnet ACLs remain (`k8s-nameserver`/`DNSConfig` removed).
+- Not touching the `rustfs-egress` device.
 - No change to storage (Longhorn/SeaweedFS), Vault HA, or ArgoCD waves beyond ingress.
 
 ### Compliance & policy
@@ -182,7 +182,7 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 - [x] Real application example (Homepage v2.3.0 digest-pinned, wave 3 `apps/homepage`)
 
 **Planned for v2.0:**
-- [ ] Decoupling & vendor-agnostic ingress — Gateway API BYOD (Envoy Gateway, `GatewayClass: tailscale`; 11→3 devices — 9 per-app `Ingress`es merged into `gateway-envoy`; MagicDNS kept, own-domain split DNS deferred)
+- [ ] Decoupling & vendor-agnostic ingress — Gateway API BYOD (Envoy Gateway, `GatewayClass: tailscale`; 10→2 devices — 9 per-app `Ingress`es merged into `gateway-envoy`; MagicDNS kept, own-domain split DNS deferred)
 - [ ] Compliance & policy (PSA restricted rollout, NetworkPolicy hardening, threat-model doc, Kyverno, CIS Benchmark, RBAC audit, compliance dashboard)
 - [ ] Documentation & onboarding (customization guide refresh + e2e)
 - [ ] Observability & audit (centralized audit logging)

@@ -23,10 +23,10 @@ flowchart LR
 | Wave | Apps | Notes |
 |------|------|-------|
 | `-1` | `ts-operator` | Must be Healthy first — provides MagicDNS |
-| `0` | `coredns-patch`, `velero`, `longhorn` | Storage and DNS ready before Vault |
+| `0` | `velero`, `longhorn` | Storage ready before Vault; S3 resolves via in-cluster `s3-egress` Service + runtime hosts pin |
 | `1` | `vault` | Depends on Longhorn PVCs |
 
-`coredns-patch` installs a `ts.net:53` stub so `rustfs.lonk-mirfak.ts.net` resolves inside the cluster.
+S3 resolves via the in-cluster `s3-egress` Service + runtime `/etc/hosts` pin, so `rustfs.lonk-mirfak.ts.net` needs no `ts.net:53` stub.
 
 ## 3. Bucket creation
 
@@ -80,7 +80,7 @@ Schedules: `daily-full` (02:00, all namespaces except Vault/control-plane, 30d T
 | `cloud-credentials not found` | Re-run bootstrap with env vars |
 | `NoSuchBucket` | Check `kubectl -n velero logs job/velero-bucket-init` |
 | `BSL not Ready` | Verify `s3Url`/`s3ForcePathStyle` and ini format |
-| `nslookup` fails | Check `kubectl -n kube-system get cm coredns | grep ts.net` |
+| `nslookup` fails | Check the `s3-egress` Service endpoints and the bucket-init `/etc/hosts` pin |
 | Velero OOMKilled | `resources.limits.memory` is pinned at `512Mi` (chart default `128Mi` OOMs on FsBackup); `deployNodeAgent: true` is required for `defaultVolumesToFsBackup: true` |
 
 ## 7. References

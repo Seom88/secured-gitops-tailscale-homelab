@@ -56,7 +56,7 @@ spec:
     # S3 backup target (RustFS at {{ $fqdn }}:443, from sharedS3.tailnetFqdn) —
     # longhorn-manager uploads volume backups here. Mirrors velero's S3 egress:
     # FQDN + tailnet wildcard with DNS rules, world 443, and the tailscale
-    # namespace (DNS via ts.net stub + shared s3-egress proxy path).
+    # namespace (MagicDNS via shared s3-egress proxy path).
     - toFQDNs:
         - matchName: {{ $fqdn }}
         - matchPattern: "*.lonk-mirfak.ts.net"
