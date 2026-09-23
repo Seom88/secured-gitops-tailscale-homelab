@@ -62,8 +62,11 @@ spec:
               export AWS_SECRET_ACCESS_KEY="$(grep -E 'aws_secret_access_key' "$CRED_FILE" | cut -d'=' -f2 | tr -d '[:space:]')"
               export AWS_DEFAULT_REGION="{{ .Values.s3.region }}"
               export AWS_EC2_METADATA_DISABLED="true"
-              export AWS_S3_ADDRESSING_STYLE="path"
-              # Ensure aws-cli uses path-style addressing (S3 backend requires it)
+               export AWS_S3_ADDRESSING_STYLE="path"
+               # Silence only the expected urllib3 warning (--no-verify-ssl is
+               # intentional); real errors still surface.
+               export PYTHONWARNINGS='ignore::urllib3.exceptions.InsecureRequestWarning'
+               # Ensure aws-cli uses path-style addressing (S3 backend requires it)
               aws configure set default.s3.addressing_style path || true
               aws configure set default.s3.addressing_style path --profile default || true
               # s3-egress Service: resolve SVC_HOST, gate on the resolved
@@ -85,7 +88,6 @@ spec:
               DNS_MAX=120
               while [ $DNS_WAIT -lt $DNS_MAX ]; do
                 if nslookup "$SVC_HOST" >/dev/null 2>&1 || getent hosts "$SVC_HOST" >/dev/null 2>&1; then
-                  echo "[bucket-init] DNS resolved for $SVC_HOST"
                   break
                 fi
                 echo "[bucket-init] DNS not yet resolved ($DNS_WAIT/$DNS_MAX s)..."
@@ -118,7 +120,7 @@ spec:
                 exit 1
               fi
               for RIP in $RESOLVED_IPS; do
-                echo "[bucket-init] S3 endpoint $SVC_HOST -> $RIP:$S3_PORT"
+                echo "[bucket-init] egress $SVC_HOST -> $RIP, dialing https://$S3_FQDN (SNI)"
                 if is_private_ip "$RIP"; then
                   echo "[bucket-init] $RIP is private (10/8, 100.64/10, 192.168/16, fd00::/8) — OK"
                 else
@@ -142,36 +144,42 @@ spec:
                 echo "[bucket-init] hosts-pin: $RIP $S3_FQDN"
                 echo "$RIP $S3_FQDN" >> /etc/hosts
               done
-              echo "[bucket-init] hosts-pin lines:"
-              grep -F "$S3_FQDN" /etc/hosts || true
 
-              echo "[bucket-init] Creating bucket $BUCKET at $ENDPOINT (region $AWS_DEFAULT_REGION)..."
+              echo "[bucket-init] Checking bucket $BUCKET at $ENDPOINT (region $AWS_DEFAULT_REGION)..."
 
               # RustFS serves a public Let's Encrypt cert for $S3_FQDN, but
               # --no-verify-ssl is retained (robustness across rotations).
 
+              # Idempotent: head-bucket first; create only on 404/NoSuchBucket.
               set +e
-              OUTPUT="$(aws --no-verify-ssl s3api create-bucket --bucket "$BUCKET" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" 2>&1)"
-              RC=$?
+              HEAD_OUTPUT="$(aws --no-verify-ssl s3api head-bucket --bucket "$BUCKET" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" 2>&1)"
+              HEAD_RC=$?
               set -e
-              echo "$OUTPUT"
-              if [ $RC -eq 0 ]; then
-                echo "[bucket-init] Bucket created successfully."
-              else
-                if echo "$OUTPUT" | grep -qiE 'BucketAlreadyOwnedByYou|BucketAlreadyExists|already exists'; then
-                  echo "[bucket-init] Bucket already exists — continuing (idempotent)."
-                elif echo "$OUTPUT" | grep -qiE 'AccessDenied'; then
-                  echo "[bucket-init] AccessDenied on create-bucket — checking if bucket already exists and is accessible..."
-                  if aws --no-verify-ssl s3api head-bucket --bucket "$BUCKET" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" 2>/dev/null; then
-                    echo "[bucket-init] Bucket exists and is accessible — continuing (pre-created, key lacks s3:CreateBucket)."
-                  else
-                    echo "[bucket-init] ERROR: create-bucket denied AND bucket not accessible — grant s3:CreateBucket on arn:aws:s3:::$BUCKET (see docs/rustfs-iam.md) or pre-create the bucket."
-                    exit $RC
-                  fi
+              if [ $HEAD_RC -eq 0 ]; then
+                echo "[bucket-init] Bucket $BUCKET ready (already existed)."
+              elif echo "$HEAD_OUTPUT" | grep -qiE '404|NoSuchBucket|NotFound'; then
+                echo "[bucket-init] Creating bucket $BUCKET at $ENDPOINT (region $AWS_DEFAULT_REGION)..."
+                set +e
+                OUTPUT="$(aws --no-verify-ssl s3api create-bucket --bucket "$BUCKET" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" 2>&1)"
+                RC=$?
+                set -e
+                if [ $RC -eq 0 ]; then
+                  echo "[bucket-init] Bucket created successfully."
+                elif echo "$OUTPUT" | grep -qiE 'BucketAlreadyOwnedByYou|BucketAlreadyExists|already exists'; then
+                  echo "[bucket-init] Bucket $BUCKET ready (already existed)."
                 else
+                  echo "$OUTPUT"
                   echo "[bucket-init] ERROR: create-bucket failed with exit $RC"
                   exit $RC
                 fi
+              else
+                echo "$HEAD_OUTPUT"
+                if echo "$HEAD_OUTPUT" | grep -qiE 'AccessDenied|403|Forbidden'; then
+                  echo "[bucket-init] ERROR: head-bucket denied AND bucket not confirmed — grant s3:CreateBucket on arn:aws:s3:::$BUCKET (see docs/rustfs-iam.md) or pre-create the bucket."
+                else
+                  echo "[bucket-init] ERROR: head-bucket failed with exit $HEAD_RC"
+                fi
+                exit $HEAD_RC
               fi
 
               echo "[bucket-init] Verifying bucket with head-bucket..."
