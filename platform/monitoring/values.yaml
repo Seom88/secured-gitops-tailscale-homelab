@@ -339,112 +339,52 @@ alloy:
           format = "logfmt"
         }
 
-        // 1. Discover all pods in the cluster
+        // 1. Discover only the pods on this node (filtered server-side)
         discovery.kubernetes "pods" {
           role = "pod"
+          selectors {
+            role  = "pod"
+            field = "spec.nodeName=" + sys.env("K8S_NODE_NAME")
+          }
         }
 
-        // 2. Filter to only pods running on the current node (K8S_NODE_NAME injected by Helm)
+        // 2. Relabel: same labels as before + __path__ for file tailing
         discovery.relabel "local_pods" {
           targets = discovery.kubernetes.pods.targets
 
+          // NEW: path of the container log file on the node
           rule {
-            source_labels = ["__meta_kubernetes_pod_node_name"]
-            regex         = sys.env("K8S_NODE_NAME")
-            action        = "keep"
-          }
-
-          rule {
-            source_labels = ["__meta_kubernetes_namespace"]
-            target_label  = "namespace"
-          }
-
-          rule {
-            source_labels = ["__meta_kubernetes_pod_name"]
-            target_label  = "pod"
-          }
-
-          rule {
-            source_labels = ["__meta_kubernetes_pod_container_name"]
-            target_label  = "container"
-          }
-
-          rule {
-            source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
-            target_label  = "app"
-          }
-
-          // Node the pod runs on — lets you isolate noisy/failing nodes.
-          rule {
-            source_labels = ["__meta_kubernetes_pod_node_name"]
-            target_label  = "node"
-          }
-
-          // Workload owner (Deployment/StatefulSet/DaemonSet/Job/CronJob...).
-          // Low cardinality, broad filter: {workload="immich-server"}.
-          rule {
-            source_labels = ["__meta_kubernetes_pod_controller_kind"]
-            target_label  = "workload_type"
-          }
-
-          rule {
-            source_labels = ["__meta_kubernetes_pod_controller_name"]
-            target_label  = "workload"
-          }
-
-          // ReplicaSets carry the Deployment hash (immich-server-7d9f8b).
-          // Strip it so workload matches the Deployment name; no match leaves
-          // StatefulSet/DaemonSet/Job names untouched.
-          rule {
-            source_labels = ["workload_type", "workload"]
-            regex         = "ReplicaSet;(.*)-[a-z0-9]+"
-            replacement   = "$1"
-            target_label  = "workload"
-          }
-
-          // Helm release name (app.kubernetes.io/instance): groups every
-          // object of a release — {instance="immich"} spans all its workloads.
-          rule {
-            source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_instance"]
-            target_label  = "instance"
-          }
-
-          // Component within the release (server, machine-learning, ...).
-          rule {
-            source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_component"]
-            target_label  = "component"
-          }
-
-          rule {
-            source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
-            target_label  = "service_name"
-          }
-
-          rule {
-            source_labels = ["service_name", "__meta_kubernetes_pod_container_name"]
-            regex         = "^$;(.+)"
-            replacement   = "$1"
-            target_label  = "service_name"
+            source_labels = ["__meta_kubernetes_pod_uid", "__meta_kubernetes_pod_container_name"]
+            separator     = "/"
+            replacement   = "/var/log/pods/*$1/*.log"
+            target_label  = "__path__"
           }
         }
 
-        // 3. Drop noisy probe logs before pushing
+        // 3. Resolve the glob paths into actual files
+        local.file_match "pod_logs" {
+          path_targets = discovery.relabel.local_pods.output
+        }
+
+        // 4. Tail the files from disk (no apiserver involved)
+        loki.source.file "pods" {
+          targets    = local.file_match.pod_logs.targets
+          forward_to = [loki.process.drop_noise.receiver]
+        }
+
+        // 5. Parse CRI format, then drop probe noise
         loki.process "drop_noise" {
           forward_to = [loki.write.grafana_loki.receiver]
 
+          stage.cri {}
+
           stage.drop {
-            expression = ".*(kube-probe|healthz|livez|readyz).*"
+            expression          = ".*(kube-probe|healthz|livez|readyz).*"
             drop_counter_reason = "healthcheck_noise"
           }
         }
 
-        // 4. Collect logs from /var/log/pods on the node
-        loki.source.kubernetes "pods" {
-          targets    = discovery.relabel.local_pods.output
-          forward_to = [loki.process.drop_noise.receiver]
-        }
-
-        // 5. Send logs to Loki Gateway
+        // 6. Send logs to Loki Gateway
         loki.write "grafana_loki" {
           endpoint {
             url = "http://monitoring-loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push"
