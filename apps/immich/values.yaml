@@ -14,6 +14,16 @@ immich:
   server:
     controllers:
       main:
+        pod:
+          affinity:
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      app.kubernetes.io/instance: "{{ .Release.Name }}"
+                      app.kubernetes.io/name: machine-learning
+                      app.kubernetes.io/controller: main
+                  topologyKey: kubernetes.io/hostname
         containers:
           main:
             env:
@@ -25,6 +35,19 @@ immich:
                 valueFrom: { secretKeyRef: { name: immich-database-app, key: password } }
               DB_DATABASE_NAME:
                 valueFrom: { secretKeyRef: { name: immich-database-app, key: dbname } }
+  machine-learning:
+    controllers:
+      main:
+        pod:
+          affinity:
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      app.kubernetes.io/instance: "{{ .Release.Name }}"
+                      app.kubernetes.io/name: server
+                      app.kubernetes.io/controller: main
+                  topologyKey: kubernetes.io/hostname
   valkey:
     enabled: true
 
