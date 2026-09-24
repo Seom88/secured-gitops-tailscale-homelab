@@ -10,7 +10,7 @@ loki:
   singleBinary:
     replicas: 1
     persistence:
-      size: 2Gi # chunks live on SeaweedFS S3; local PVC holds WAL only (measured ~10Mi, 2026-09-22)
+      size: 2Gi  # chunks live on SeaweedFS S3; local PVC holds WAL only (measured ~10Mi, 2026-09-22)
       # storageClass "" = cluster default (Longhorn default class in prod).
       # No StorageClass named "longhorn" is defined in this repo (only
       # longhorn-prod in platform/longhorn/templates/storageclass.yaml),
