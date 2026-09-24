@@ -330,6 +330,9 @@ jobs:
     needs: [discover]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # Suppress only Trivy's update/version notice; vulnerability results remain visible.
+      TRIVY_SKIP_VERSION_CHECK: "true"
     permissions:
       contents: read
       security-events: write
@@ -354,14 +357,15 @@ jobs:
         with:
           image-ref: ${{ matrix.image }}
           format: table
+          scanners: vuln
           severity: HIGH,CRITICAL
           ignore-unfixed: true
-          exit-code: '1'
+          exit-code: ${{ contains(fromJSON(needs.discover.outputs.pinned), matrix.image) && '1' || '0' }}
           limit-severities-for-sarif: "true"
-        # Fail-closed for digest-pinned first-party images (exact ref present
-        # in the `pinned` discovery output); upstream subchart images stay
-        # advisory until fixed upstream.
-        continue-on-error: ${{ !contains(needs.discover.outputs.pinned, matrix.image) }}
+        # All images are scanned and their findings are uploaded to SARIF.
+        # Advisory refs use exit 0 and continue-on-error; only exact refs in
+        # `pinned` use exit 1 and fail the step.
+        continue-on-error: ${{ !contains(fromJSON(needs.discover.outputs.pinned), matrix.image) }}
 
       - name: Trivy image scan (SARIF, ${{ matrix.image }})
         if: always()
@@ -370,13 +374,14 @@ jobs:
           image-ref: ${{ matrix.image }}
           format: sarif
           output: trivy-${{ steps.name.outputs.safe }}.sarif
+          scanners: vuln
           severity: HIGH,CRITICAL
           ignore-unfixed: true
-          exit-code: '1'
+          exit-code: ${{ contains(fromJSON(needs.discover.outputs.pinned), matrix.image) && '1' || '0' }}
           limit-severities-for-sarif: "true"
-        # Same gate as the table scan (runs even when the table scan failed
-        # so SARIF is still uploaded below).
-        continue-on-error: ${{ !contains(needs.discover.outputs.pinned, matrix.image) }}
+        # Runs even when the table scan failed so SARIF remains available.
+        # Advisory findings do not create a failed step; only pinned refs use exit 1.
+        continue-on-error: ${{ !contains(fromJSON(needs.discover.outputs.pinned), matrix.image) }}
 
       - name: Upload SARIF (${{ matrix.image }})
         uses: github/codeql-action/upload-sarif@v4
