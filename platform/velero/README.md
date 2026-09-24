@@ -31,7 +31,7 @@ flowchart LR
     CHART -.->|excluded| VAULT["Vault ns<br/>re-bootstrap, never restore"]
 ```
 
-Wave `-1` `tailscale-operator` (s3-egress Service) → wave `0` `velero` + `longhorn` → wave `1` `vault`. The bucket-init Job resolves the in-cluster Service name via kube-dns (private-IP gate + runtime hosts-pin of the FQDN, no ts.net stub needed); the `coredns-patch` chart was removed. Guarantees DNS and storage are ready before Vault creates PVCs.
+Wave `-1` `tailscale-operator` (s3-egress Service, `DNSConfig ts-dns`, `ts.net:53` CoreDNS stub reconciler) → wave `0` `velero` + `longhorn` → wave `1` `vault`. The bucket-init Job resolves the in-cluster Service name via kube-dns (private-IP gate + runtime hosts-pin of the FQDN); the velero server pod resolves the FQDN via the cluster DNS `ts.net:53` stub (no separate `coredns-patch` chart — the reconciler lives in `platform/ts-operator`). Guarantees DNS and storage are ready before Vault creates PVCs.
 
 ## Schedules
 
@@ -42,7 +42,7 @@ Wave `-1` `tailscale-operator` (s3-egress Service) → wave `0` `velero` + `long
 
 - `defaultVolumesToFsBackup: true` + `deployNodeAgent: true` + `nodeAgent.enabled: true` → Longhorn PVCs backed up via filesystem copy (no CSI snapshots). The node-agent gate and the FsBackup default must stay on together.
 - Resource guard: `resources.limits.memory: 512Mi` (chart default `128Mi` OOMKills during FsBackup on this homelab) — do not lower it.
-- Storage: `s3ForcePathStyle: true`, `s3Url: https://<FQDN>` (from `sharedS3.tailnetFqdn`; the svc name can never complete a RustFS TLS handshake — SNI must equal the LE-cert FQDN), `region: us-east-1`, `prefix: velero/`, single BSL `default`. Known gap (follow-up): the velero server pod itself has no subchart-native way to pin FQDN→svc-IP without a literal IP (no sidecar knob in vmware-tanzu/velero 12.2.0), so server-side FQDN resolution still depends on cluster DNS — see the `SERVER-RESOLUTION GAP` note in `templates/backupstoragelocation.yaml`.
+- Storage: `s3ForcePathStyle: true`, `s3Url: https://<FQDN>` (from `sharedS3.tailnetFqdn`; the svc name can never complete a RustFS TLS handshake — SNI must equal the LE-cert FQDN), `region: us-east-1`, `prefix: velero/`, single BSL `default`. Server-side FQDN resolution is covered by the cluster DNS `ts.net:53` stub (`DNSConfig ts-dns` + reconciler in `platform/ts-operator`, closing the former `SERVER-RESOLUTION GAP`); the bucket-init Job additionally pins FQDN→svc-IP at runtime (see `templates/job-bucket-init.yaml`).
 
 ## Vault policy — excluded, re-bootstrap + rotation
 
