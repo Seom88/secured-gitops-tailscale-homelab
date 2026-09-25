@@ -8,9 +8,10 @@
 # - reuses the existing credentials Secret untouched (never rotates);
 # - otherwise provisions a dedicated IAM user + access key via the S3-embedded
 #   IAM API using the static admin identity (provisioning only), attaches a
-#   bucket-scoped policy, creates the bucket with the ADMIN credentials, persists
-#   ONLY the generated pair in the Secret, then verifies with head-bucket plus a
-#   canary put/delete under the DEDICATED credentials (proves the policy end to end);
+#   bucket-scoped policy, creates the bucket with the ADMIN credentials, verifies
+#   with head-bucket plus a canary put/delete under the DEDICATED credentials
+#   (proves the policy end to end, with retries for transient InternalError),
+#   and only then persists ONLY the generated pair in the Secret;
 #   (Bucket creation stays in the admin phase because SeaweedFS 4.47 embedded-IAM
 #   validation — getActions() in weed/s3api/s3api_embedded_iam.go:943-999 over
 #   fineGrainedActionMap + baseS3ActionMap in weed/iam/helpers.go — has no
@@ -127,11 +128,19 @@ spec:
                 AK="$(printf '%s' "$BODY" | jq -r '.data.ACCESS_KEY_ID // empty | @base64d')"
                 SK="$(printf '%s' "$BODY" | jq -r '.data.SECRET_ACCESS_KEY // empty | @base64d')"
                 if [ -n "$AK" ] && [ -n "$SK" ]; then
-                  echo "[backup-init] Existing credentials found — verifying with head-bucket (no rotation)."
+                  echo "[backup-init] Existing credentials found — verifying head-bucket + canary (no rotation)."
                   export AWS_ACCESS_KEY_ID="$AK" AWS_SECRET_ACCESS_KEY="$SK"
                   if $S3 s3api head-bucket --bucket "$BACKUP_BUCKET"; then
-                    echo "[backup-init] DONE — existing credentials verified."
-                    exit 0
+                    echo -n "immich-backup-init-reuse $(date -u +%FT%TZ)" > /tmp/canary-reuse
+                    if $S3 s3api put-object --bucket "$BACKUP_BUCKET" --key .backup-init-canary --body /tmp/canary-reuse >/dev/null \
+                      && $S3 s3api delete-object --bucket "$BACKUP_BUCKET" --key .backup-init-canary >/dev/null; then
+                      rm -f /tmp/canary-reuse
+                      echo "[backup-init] DONE — existing credentials verified (read + write)."
+                      exit 0
+                    fi
+                    echo "[backup-init] ERROR: stored credentials passed head-bucket but failed the canary put/delete on $BACKUP_BUCKET."
+                    echo "[backup-init] Server-side or policy write failure — refusing to rotate automatically."
+                    exit 1
                   fi
                   echo "[backup-init] ERROR: stored credentials failed head-bucket on $BACKUP_BUCKET."
                   echo "[backup-init] Restore Secret $BACKUP_SECRET_NAME from backup, or rotate manually"
@@ -240,7 +249,41 @@ spec:
                 fi
               fi
 
-              # 6. Persist ONLY the generated pair — never overwrite usable credentials.
+              # 6. Verification BEFORE persist with the DEDICATED credentials (proves
+              # the policy end to end). Persisting first would leave a
+              # persisted-but-unverified Secret behind on canary failure, and the
+              # next retry would take the reuse path (head-bucket only) and report
+              # DONE without ever proving Put — a "fallo con exito".
+              export AWS_ACCESS_KEY_ID="$NEW_AK" AWS_SECRET_ACCESS_KEY="$NEW_SK"
+              echo "[backup-init] Verifying bucket with head-bucket (dedicated credentials)..."
+              $S3 s3api head-bucket --bucket "$BACKUP_BUCKET"
+              echo "[backup-init] Write-probe with a canary object (proves Put/Delete for backups)..."
+              echo -n "immich-backup-init $(date -u +%FT%TZ)" > /tmp/canary
+              PUT_OK=false
+              for ATTEMPT in 1 2 3 4 5; do
+                if $S3 s3api put-object --bucket "$BACKUP_BUCKET" --key .backup-init-canary --body /tmp/canary >/dev/null 2>/tmp/put-err.log; then
+                  PUT_OK=true
+                  break
+                fi
+                echo "[backup-init] Canary put attempt $ATTEMPT/5 failed: $(cat /tmp/put-err.log | tr '\n' ' ' | cut -c1-300)"
+                # InternalError is server-side (NOT a policy denial — denials are
+                # 403); SeaweedFS IAM policy propagation and filer/volume hiccups
+                # are transient, so back off before retrying.
+                sleep $((ATTEMPT * 5))
+              done
+              if [ "$PUT_OK" != "true" ]; then
+                echo "[backup-init] ERROR: canary put-object failed after 5 attempts (last: $(cat /tmp/put-err.log | tr '\n' ' ' | cut -c1-300))."
+                echo "[backup-init] Hints: kubectl logs -n seaweedfs deploy/seaweedfs-s3 + statefulset filer/volume;"
+                echo "[backup-init] repro with admin creds to isolate backend vs IAM: if admin put also 500s, the backend (filer/volume) is down;"
+                echo "[backup-init] if only the dedicated key 500s, check 'weed shell -> s3.configure' policy propagation."
+                echo "[backup-init] Nothing persisted — next re-sync re-runs orphan recovery (revokes key prefix $(printf '%.8s' "$NEW_AK")...) and mints fresh."
+                exit 1
+              fi
+              $S3 s3api delete-object --bucket "$BACKUP_BUCKET" --key .backup-init-canary >/dev/null
+
+              # 7. Persist ONLY the generated pair — never overwrite usable credentials.
+              # Reached only after the dedicated pair proved read + write above.
+              echo "[backup-init] Verification passed — persisting credentials in Secret $POD_NAMESPACE/$BACKUP_SECRET_NAME..."
               jq -n --arg name "$BACKUP_SECRET_NAME" --arg ak "$NEW_AK" --arg sk "$NEW_SK" \
                 '{apiVersion: "v1", kind: "Secret",
                    metadata: {name: $name}, type: "Opaque",
@@ -289,15 +332,6 @@ spec:
                 exit 1
               fi
               echo "[backup-init] Credentials persisted in Secret $POD_NAMESPACE/$BACKUP_SECRET_NAME."
-
-              # 7. Verification with the DEDICATED credentials (proves the policy end to end).
-              export AWS_ACCESS_KEY_ID="$NEW_AK" AWS_SECRET_ACCESS_KEY="$NEW_SK"
-              echo "[backup-init] Verifying bucket with head-bucket (dedicated credentials)..."
-              $S3 s3api head-bucket --bucket "$BACKUP_BUCKET"
-              echo "[backup-init] Write-probe with a canary object (proves Put/Delete for backups)..."
-              echo -n "immich-backup-init $(date -u +%FT%TZ)" > /tmp/canary
-              $S3 s3api put-object --bucket "$BACKUP_BUCKET" --key .backup-init-canary --body /tmp/canary >/dev/null
-              $S3 s3api delete-object --bucket "$BACKUP_BUCKET" --key .backup-init-canary >/dev/null
               shred -u /tmp/canary /tmp/secret-body.json /tmp/secret-put.json /tmp/bucket-policy.json 2>/dev/null || true
               echo "[backup-init] DONE — bucket $BACKUP_BUCKET ready, dedicated credentials verified."
 {{- end }}
