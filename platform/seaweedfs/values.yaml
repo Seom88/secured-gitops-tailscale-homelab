@@ -63,6 +63,11 @@ seaweedfs:
     enabled: true
     enableAuth: true
     existingConfigSecret: seaweedfs-s3-credentials
+    # Writable embedded IAM: the default is read-only, which would reject the
+    # backup-init hook's IAM user/key provisioning (immich-seaweedfs-backups).
+    # Static SOPS identities in existingConfigSecret are preserved and merged
+    # with dynamic filer-stored identities.
+    extraArgs: ["-iam.readOnly=false"]
     # Lean homelab sizing (prod): Loki-only S3 traffic; minimal scheduling
     # request, limit caps spikes.
     resources:

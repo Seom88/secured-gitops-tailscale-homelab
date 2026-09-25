@@ -142,6 +142,20 @@ spec:
         - ports:
             - port: "8333"
               protocol: TCP
+    # Immich CNPG backups (immich-seaweedfs-backups): instance pods (label
+    # cnpg.io/cluster set by the operator) + backup-init hook pods -> S3 8333.
+    # Auth still enforced by SeaweedFS IAM (dedicated per-app identity).
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: immich
+            k8s:cnpg.io/cluster: immich-database
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: immich
+            k8s:app.kubernetes.io/name: immich-backup-init
+      toPorts:
+        - ports:
+            - port: "8333"
+              protocol: TCP
     # Cilium health/probe — narrowed to 8080,9333,8888,9327 (volume, master, filer, metrics for health probes) — no longer allow-all
     - fromEntities:
         - host
