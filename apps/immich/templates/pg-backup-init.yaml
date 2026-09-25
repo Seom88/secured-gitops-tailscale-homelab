@@ -10,8 +10,10 @@
 #   IAM API using the static admin identity (provisioning only), attaches a
 #   bucket-scoped policy, persists ONLY the generated pair in the Secret, and
 #   creates/heads the bucket with the dedicated credentials;
-# - fails safely (no silent rotation) when the IAM user exists remotely while
-#   our credentials are lost.
+# - self-heals the orphan state (IAM user exists remotely while our
+#   credentials are lost): revokes all orphaned keys, mints one fresh key,
+#   persists it, and continues the normal flow. Never rotates usable
+#   credentials.
 # Generated credential values only ever exist at runtime — never in Git.
 apiVersion: batch/v1
 kind: Job
@@ -157,22 +159,36 @@ spec:
               fi
               export AWS_ACCESS_KEY_ID="$ADMIN_AK" AWS_SECRET_ACCESS_KEY="$ADMIN_SK"
 
-              # 4. Fail safe: IAM user exists remotely but we hold no credentials.
+              # 4. Orphan recovery: IAM user exists remotely but we hold no credentials.
+              # Live-cluster feedback shows this happens in practice (Secret lost while
+              # the dynamic IAM identity persists in the SeaweedFS filer). The manual
+              # `weed shell` cleanup route proved flaky, so the hook heals itself
+              # instead of CrashLooping for manual intervention.
+              ORPHAN=false
               if OUT="$($S3 iam get-user --user-name "$BACKUP_IAM_USER" 2>&1)"; then
-                echo "[backup-init] ERROR: IAM user '$BACKUP_IAM_USER' exists but Secret"
-                echo "[backup-init] $POD_NAMESPACE/$BACKUP_SECRET_NAME is missing or empty."
-                echo "[backup-init] Restore the Secret from backup instead of rotating. Manual recovery:"
-                echo "[backup-init] delete IAM user $BACKUP_IAM_USER (and its policies/keys) plus this"
-                echo "[backup-init] Secret, then re-sync to re-provision. Refusing to rotate silently."
-                exit 1
+                echo "[backup-init] ORPHAN RECOVERY starting: IAM user '$BACKUP_IAM_USER' exists"
+                echo "[backup-init] but Secret $POD_NAMESPACE/$BACKUP_SECRET_NAME is missing or empty."
+                ORPHAN=true
               elif ! printf '%s' "$OUT" | grep -q 'NoSuchEntity'; then
                 echo "[backup-init] ERROR: iam get-user failed unexpectedly: $OUT"
                 exit 1
               fi
 
               # 5. Create the dedicated identity + key, attach a bucket-scoped policy.
-              echo "[backup-init] Creating IAM user $BACKUP_IAM_USER..."
-              $S3 iam create-user --user-name "$BACKUP_IAM_USER" >/dev/null
+              if [ "$ORPHAN" = "true" ]; then
+                # With the Secret gone no in-cluster consumer can hold those credentials,
+                # so revoking unknown keys is the safe action, not rotation risk.
+                echo "[backup-init] ORPHAN RECOVERY: listing access keys of $BACKUP_IAM_USER..."
+                KEYS_JSON="$($S3 iam list-access-keys --user-name "$BACKUP_IAM_USER")"
+                for KEY_ID in $(printf '%s' "$KEYS_JSON" | jq -r '.AccessKeyMetadata[].AccessKeyId // empty'); do
+                  echo "[backup-init] ORPHAN RECOVERY: revoking access key (id prefix: $(printf '%.8s' "$KEY_ID")...)."
+                  $S3 iam delete-access-key --user-name "$BACKUP_IAM_USER" --access-key-id "$KEY_ID"
+                done
+                echo "[backup-init] ORPHAN RECOVERY: orphaned keys revoked — minting one fresh key."
+              else
+                echo "[backup-init] Creating IAM user $BACKUP_IAM_USER..."
+                $S3 iam create-user --user-name "$BACKUP_IAM_USER" >/dev/null
+              fi
               CREDS="$($S3 iam create-access-key --user-name "$BACKUP_IAM_USER")"
               NEW_AK="$(printf '%s' "$CREDS" | jq -r '.AccessKey.AccessKeyId // empty')"
               NEW_SK="$(printf '%s' "$CREDS" | jq -r '.AccessKey.SecretAccessKey // empty')"
