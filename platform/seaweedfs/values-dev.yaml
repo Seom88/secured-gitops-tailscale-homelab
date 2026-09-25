@@ -14,7 +14,10 @@ seaweedfs:
         type: "persistentVolumeClaim"
         size: "5Gi"
         storageClass: ""
-        maxVolumes: 0
+        # 1 volume per S3 bucket/collection minimum; sparse volume files cost
+        # no disk upfront. 2026-09-25 prod hit 9/9 auto cap with only 268M of
+        # 9.7G used. Dev (5Gi disk, fewer apps) gets 20.
+        maxVolumes: 20
   filer:
     # Dev sizing: full scheduling floor for metadata bursts; prod stays lean.
     resources:

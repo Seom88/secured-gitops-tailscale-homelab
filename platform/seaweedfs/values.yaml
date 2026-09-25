@@ -35,7 +35,11 @@ seaweedfs:
         type: "persistentVolumeClaim"
         size: "10Gi"  # Loki chunks backend; measured ~121Mi (2026-09-22). Old chunks beyond capacity are expendable (logs).
         storageClass: ""
-        maxVolumes: 0
+        # 1 volume per S3 bucket/collection minimum; sparse volume files
+        # (volumeSizeLimit 1000MB logical) cost no disk upfront. 2026-09-25
+        # hit 9/9 auto cap with only 268M of 9.7G used — new collections got
+        # "No writable volumes and no free volumes left".
+        maxVolumes: 30
     logs:
       type: "emptyDir"
 
