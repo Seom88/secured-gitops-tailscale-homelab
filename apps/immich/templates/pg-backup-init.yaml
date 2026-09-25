@@ -8,8 +8,13 @@
 # - reuses the existing credentials Secret untouched (never rotates);
 # - otherwise provisions a dedicated IAM user + access key via the S3-embedded
 #   IAM API using the static admin identity (provisioning only), attaches a
-#   bucket-scoped policy, persists ONLY the generated pair in the Secret, and
-#   creates/heads the bucket with the dedicated credentials;
+#   bucket-scoped policy, creates the bucket with the ADMIN credentials, persists
+#   ONLY the generated pair in the Secret, then verifies with head-bucket plus a
+#   canary put/delete under the DEDICATED credentials (proves the policy end to end);
+#   (Bucket creation stays in the admin phase because SeaweedFS 4.47 embedded-IAM
+#   validation — getActions() in weed/s3api/s3api_embedded_iam.go:943-999 over
+#   fineGrainedActionMap + baseS3ActionMap in weed/iam/helpers.go — has no
+#   CreateBucket action, so PutUserPolicy rejects it with MalformedPolicyDocument.)
 # - self-heals the orphan state (IAM user exists remotely while our
 #   credentials are lost): revokes all orphaned keys, mints one fresh key,
 #   persists it, and continues the normal flow. Never rotates usable
@@ -196,19 +201,44 @@ spec:
                 echo "[backup-init] ERROR: access-key creation returned no credentials."
                 exit 1
               fi
+              # Dedicated policy uses only valid SeaweedFS 4.47 embedded-IAM actions
+              # (getActions() in weed/s3api/s3api_embedded_iam.go:943-999): CreateBucket
+              # and ListMultipartUploadParts are NOT valid and PutUserPolicy rejects them
+              # with MalformedPolicyDocument, so bucket creation stays in the admin phase
+              # below and multipart uses ListParts/ListMultipartUploads. All actions keep
+              # the s3: prefix — unprefixed actions are silently skipped by validation.
               jq -n --arg b "$BACKUP_BUCKET" \
                 '{Version: "2012-10-17", Statement: [
                   {Effect: "Allow",
-                   Action: ["s3:GetBucketLocation", "s3:ListBucket", "s3:CreateBucket"],
+                   Action: ["s3:GetBucketLocation", "s3:ListBucket"],
                    Resource: ["arn:aws:s3:::\($b)"]},
                   {Effect: "Allow",
                    Action: ["s3:GetObject", "s3:PutObject", "s3:DeleteObject",
-                             "s3:AbortMultipartUpload", "s3:ListMultipartUploadParts"],
+                             "s3:CreateMultipartUpload", "s3:UploadPart",
+                             "s3:CompleteMultipartUpload", "s3:AbortMultipartUpload",
+                             "s3:ListParts", "s3:ListMultipartUploads"],
                    Resource: ["arn:aws:s3:::\($b)/*"]}]}' > /tmp/bucket-policy.json
               $S3 iam put-user-policy --user-name "$BACKUP_IAM_USER" \
                 --policy-name "$BACKUP_IAM_USER-bucket" \
                 --policy-document file:///tmp/bucket-policy.json
               echo "[backup-init] Dedicated identity ready (key id prefix: $(printf '%.8s' "$NEW_AK")...)."
+
+              # Bucket creation with ADMIN credentials (still exported): the dedicated
+              # policy cannot grant CreateBucket on SeaweedFS 4.47 embedded IAM.
+              echo "[backup-init] Creating bucket $BACKUP_BUCKET (admin credentials)..."
+              set +e
+              OUT="$($S3 s3api create-bucket --bucket "$BACKUP_BUCKET" 2>&1)"
+              RC=$?
+              set -e
+              echo "$OUT"
+              if [ $RC -ne 0 ]; then
+                if printf '%s' "$OUT" | grep -qiE 'BucketAlreadyOwnedByYou|BucketAlreadyExists|already exists'; then
+                  echo "[backup-init] Bucket already exists — continuing (idempotent)."
+                else
+                  echo "[backup-init] ERROR: create-bucket failed with exit $RC."
+                  exit $RC
+                fi
+              fi
 
               # 6. Persist ONLY the generated pair — never overwrite usable credentials.
               jq -n --arg name "$BACKUP_SECRET_NAME" --arg ak "$NEW_AK" --arg sk "$NEW_SK" \
@@ -236,23 +266,9 @@ spec:
               fi
               echo "[backup-init] Credentials persisted in Secret $POD_NAMESPACE/$BACKUP_SECRET_NAME."
 
-              # 7. Bucket ops with the DEDICATED credentials (proves the policy end to end).
+              # 7. Verification with the DEDICATED credentials (proves the policy end to end).
               export AWS_ACCESS_KEY_ID="$NEW_AK" AWS_SECRET_ACCESS_KEY="$NEW_SK"
-              echo "[backup-init] Creating bucket $BACKUP_BUCKET..."
-              set +e
-              OUT="$($S3 s3api create-bucket --bucket "$BACKUP_BUCKET" 2>&1)"
-              RC=$?
-              set -e
-              echo "$OUT"
-              if [ $RC -ne 0 ]; then
-                if printf '%s' "$OUT" | grep -qiE 'BucketAlreadyOwnedByYou|BucketAlreadyExists|already exists'; then
-                  echo "[backup-init] Bucket already exists — continuing (idempotent)."
-                else
-                  echo "[backup-init] ERROR: create-bucket failed with exit $RC."
-                  exit $RC
-                fi
-              fi
-              echo "[backup-init] Verifying bucket with head-bucket..."
+              echo "[backup-init] Verifying bucket with head-bucket (dedicated credentials)..."
               $S3 s3api head-bucket --bucket "$BACKUP_BUCKET"
               echo "[backup-init] Write-probe with a canary object (proves Put/Delete for backups)..."
               echo -n "immich-backup-init $(date -u +%FT%TZ)" > /tmp/canary
