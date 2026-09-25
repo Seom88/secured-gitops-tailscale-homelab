@@ -20,10 +20,16 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "-1"
 rules:
+  # create cannot be name-scoped: resourceNames never match create because the
+  # object name does not exist yet at admission, so a name-scoped create rule
+  # would always yield 403 "cannot create resource secrets".
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create"]
   - apiGroups: [""]
     resources: ["secrets"]
     resourceNames: [{{ .Values.backup.secretName | quote }}]
-    verbs: ["get", "create", "update"]
+    verbs: ["get", "update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

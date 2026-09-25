@@ -255,6 +255,30 @@ spec:
                 RESP="$(k8s_api PUT "/api/v1/namespaces/$POD_NAMESPACE/secrets/$BACKUP_SECRET_NAME" /tmp/secret-put.json)"
               else
                 RESP="$(k8s_api POST "/api/v1/namespaces/$POD_NAMESPACE/secrets" /tmp/secret-body.json)"
+                CODE="$(resp_code "$RESP")"
+                PBODY="$(resp_body "$RESP")"
+                if [ "$CODE" = "409" ] || printf '%s' "$PBODY" | grep -qiE 'AlreadyExists|code[^0-9]*409'; then
+                  # Race: Secret was created between the initial GET and this POST
+                  # (or this is a retry after partial success). Re-GET for a fresh
+                  # resourceVersion, then PUT (replace) with the same generated pair.
+                  # Safe: this path is only reached when the initial GET was 404 or
+                  # keyless, so there are no usable credentials to overwrite.
+                  echo "[backup-init] Secret already exists (409 race) — re-reading for replace..."
+                  RESP="$(k8s_api GET "/api/v1/namespaces/$POD_NAMESPACE/secrets/$BACKUP_SECRET_NAME")"
+                  CODE="$(resp_code "$RESP")"
+                  BODY="$(resp_body "$RESP")"
+                  if [ "$CODE" != "200" ]; then
+                    echo "[backup-init] ERROR: Secret re-read after 409 failed (HTTP $CODE): $BODY"
+                    exit 1
+                  fi
+                  RV="$(printf '%s' "$BODY" | jq -r '.metadata.resourceVersion // empty')"
+                  if [ -z "$RV" ]; then
+                    echo "[backup-init] ERROR: cannot replace raced Secret (no resourceVersion)."
+                    exit 1
+                  fi
+                  jq --arg rv "$RV" '.metadata.resourceVersion = $rv' /tmp/secret-body.json > /tmp/secret-put.json
+                  RESP="$(k8s_api PUT "/api/v1/namespaces/$POD_NAMESPACE/secrets/$BACKUP_SECRET_NAME" /tmp/secret-put.json)"
+                fi
               fi
               CODE="$(resp_code "$RESP")"
               if [ "$CODE" != "200" ] && [ "$CODE" != "201" ]; then
