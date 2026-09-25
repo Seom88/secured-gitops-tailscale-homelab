@@ -9,7 +9,7 @@ metadata:
 spec:
   monitoring:
     enablePodMonitor: true
-  instances: 3
+  instances: 2
   imageName: ghcr.io/cloudnative-pg/postgresql:18.6-system-trixie
 {{- if .Values.backup.enabled }}
   # WAL archiving via the plugin-barman-cloud CNPG-I plugin (ObjectStore
@@ -33,9 +33,9 @@ spec:
           - /usr/lib/postgresql/18/lib
         extension_control_path:
           - /usr/share/postgresql/18/
-    synchronous:
-      method: any
-      number: 1
+    # synchronous:
+    #   method: any
+    #   number: 1
     
     
   bootstrap:
@@ -47,4 +47,4 @@ spec:
   #       name: immich-secret
 
   storage:
-    size: 2Gi # fresh DB measured ~130Mi (2026-09-22); photos live in library PVC, not here
+    size: 2Gi
