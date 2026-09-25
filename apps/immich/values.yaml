@@ -4,6 +4,22 @@ ciliumNetworkPolicy:
 developmentApp:
   enabled: false
 
+# CloudNativePG Barman backups to SeaweedFS S3 (immich-seaweedfs-backups).
+# Credentials live in Secret backup.secretName, created at sync time by the
+# backup-init hook — never committed to Git.
+backup:
+  enabled: true
+  endpoint: http://seaweedfs-s3.seaweedfs.svc:8333
+  region: us-east-1
+  bucket: immich-db-backups
+  iamUser: immich-backup
+  secretName: immich-backup-s3-credentials
+  # 04:00 UTC daily, matching Longhorn default-daily-backup (retain 3).
+  schedule: "0 4 * * *"
+  # Recovery-window retention. The plugin CRD only accepts `<n>[dwm]`, so the
+  # "3 backup points" policy is expressed as 3d (one backup/day ≈ 3 points).
+  retentionPolicy: "3d"
+
 immich:
   immich:
     metrics:

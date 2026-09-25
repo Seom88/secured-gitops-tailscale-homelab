@@ -4,6 +4,13 @@ ciliumNetworkPolicy:
 developmentApp:
   enabled: true
 
+# Dev backup identity: separate bucket/user/secret so dev and prod never share
+# a backup store or credentials. Schedule/retention mirror prod.
+backup:
+  bucket: immich-db-backups-dev
+  iamUser: immich-backup-dev
+  secretName: immich-backup-s3-credentials-dev
+
 tailscaleIngress:
   immich:
     hostname: immich-dev
