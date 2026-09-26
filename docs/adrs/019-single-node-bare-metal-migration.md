@@ -19,11 +19,11 @@ The homelab runs on 3 worker VMs. The user plans to migrate to bare metal with a
 | Homepage | 1 replica | **2 replicas** | Stateless dashboard; zero-downtime restarts. |
 | Grafana | 1 replica (default) | **2 replicas** | Stateless UI; zero-downtime restarts. |
 | Alertmanager | 1 replica | **2 replicas** | Stateless alerting; zero-downtime restarts. |
-| Loki gateway | 1 replica (default) | **2 replicas** | Stateless query path; zero-downtime restarts. |
+| Loki gateway | 1 replica (default) | **1 replica** | Chart's hard `podAntiAffinity` cannot be disabled via `affinity: {}` (Helm deep-merge preserves it); 2 replicas unschedulable on single node. Zero-downtime restarts lost. |
 | Loki singleBinary | 1 replica | **1 replica** | Stateful, 1 PVC. |
 | Longhorn `longhorn-prod` | 3 replicas | **1 replica** | No distribution possible; snapshots + S3 backups retained. |
 | Longhorn default | 2 replicas | **1 replica** | Idem. |
-| `podAntiAffinity` | Active (required + preferred) | **Commented out** | Cannot be satisfied with a single `kubernetes.io/hostname` topology key. |
+| `podAntiAffinity` | Active (required + preferred) | **Commented out** where possible; **replicas reduced to 1** where chart hard-codes it (Loki gateway) | Cannot be satisfied with a single `kubernetes.io/hostname` topology key. Loki chart's affinity survives `affinity: {}` due to Helm deep-merge; `null` also fails. Only fix: reduce replicas to 1. |
 
 ## Tradeoffs
 

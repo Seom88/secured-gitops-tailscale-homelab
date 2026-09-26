@@ -94,8 +94,7 @@ loki:
   # Enable gateway (default is true, but we ensure it)
   gateway:
     enabled: true
-    replicas: 2
-    affinity: {}  # Disable podAntiAffinity for single-node scheduling
+    replicas: 1  # single-node: chart's hard podAntiAffinity prevents 2 replicas on same node
     # Lean sidecar: nginx gateway just reverse-proxies to singleBinary.
     resources:
       requests:
