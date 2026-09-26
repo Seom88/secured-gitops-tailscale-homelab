@@ -29,7 +29,7 @@ metadata:
 provisioner: driver.longhorn.io
 allowVolumeExpansion: true
 parameters:
-  numberOfReplicas: "2" # was 3: 100Gi x3 never schedules on 161GB homelab disks; 2 x 30Gi fits
+  numberOfReplicas: "1"
   encrypted: "true"
   recurringJobGroup: "default" # enroll every encrypted volume in default-daily-backup (remote, RustFS)
   csi.storage.k8s.io/provisioner-secret-name: "longhorn-crypto"
