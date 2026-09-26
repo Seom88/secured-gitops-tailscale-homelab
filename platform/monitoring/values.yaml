@@ -95,6 +95,7 @@ loki:
   gateway:
     enabled: true
     replicas: 2
+    affinity: {}  # Disable podAntiAffinity for single-node scheduling
     # Lean sidecar: nginx gateway just reverse-proxies to singleBinary.
     resources:
       requests:
