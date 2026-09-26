@@ -13,7 +13,7 @@ backup:
   region: us-east-1
   bucket: immich-db-backups
   iamUser: immich-backup
-  secretName: immich-backup-s3-credentials
+  secretName: immich-backup-s3-credentials # pragma: allowlist secret
   # 04:00 UTC daily, matching Longhorn default-daily-backup (retain 3).
   schedule: "0 4 * * *"
   # Recovery-window retention. The plugin CRD only accepts `<n>[dwm]`, so the
@@ -31,15 +31,15 @@ immich:
     controllers:
       main:
         pod:
-          affinity:
-            podAntiAffinity:
-              requiredDuringSchedulingIgnoredDuringExecution:
-                - labelSelector:
-                    matchLabels:
-                      app.kubernetes.io/instance: "{{ .Release.Name }}"
-                      app.kubernetes.io/name: machine-learning
-                      app.kubernetes.io/controller: main
-                  topologyKey: kubernetes.io/hostname
+          # affinity:
+          #   podAntiAffinity:
+          #     requiredDuringSchedulingIgnoredDuringExecution:
+          #       - labelSelector:
+          #           matchLabels:
+          #             app.kubernetes.io/instance: "{{ .Release.Name }}"
+          #             app.kubernetes.io/name: machine-learning
+          #             app.kubernetes.io/controller: main
+          #         topologyKey: kubernetes.io/hostname
         containers:
           main:
             env:
@@ -47,7 +47,7 @@ immich:
                 valueFrom: { secretKeyRef: { name: immich-database-app, key: host } }
               DB_USERNAME:
                 valueFrom: { secretKeyRef: { name: immich-database-app, key: username } }
-              DB_PASSWORD:
+              DB_PASSWORD: # pragma: allowlist secret
                 valueFrom: { secretKeyRef: { name: immich-database-app, key: password } }
               DB_DATABASE_NAME:
                 valueFrom: { secretKeyRef: { name: immich-database-app, key: dbname } }
@@ -55,15 +55,15 @@ immich:
     controllers:
       main:
         pod:
-          affinity:
-            podAntiAffinity:
-              requiredDuringSchedulingIgnoredDuringExecution:
-                - labelSelector:
-                    matchLabels:
-                      app.kubernetes.io/instance: "{{ .Release.Name }}"
-                      app.kubernetes.io/name: server
-                      app.kubernetes.io/controller: main
-                  topologyKey: kubernetes.io/hostname
+          # affinity:
+          #   podAntiAffinity:
+          #     requiredDuringSchedulingIgnoredDuringExecution:
+          #       - labelSelector:
+          #           matchLabels:
+          #             app.kubernetes.io/instance: "{{ .Release.Name }}"
+          #             app.kubernetes.io/name: server
+          #             app.kubernetes.io/controller: main
+          #         topologyKey: kubernetes.io/hostname
   valkey:
     enabled: true
 

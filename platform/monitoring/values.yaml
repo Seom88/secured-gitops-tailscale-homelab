@@ -94,6 +94,7 @@ loki:
   # Enable gateway (default is true, but we ensure it)
   gateway:
     enabled: true
+    replicas: 2
     # Lean sidecar: nginx gateway just reverse-proxies to singleBinary.
     resources:
       requests:
@@ -136,6 +137,7 @@ kube-prometheus-stack:
 
   # Grafana configuration
   grafana:
+    replicas: 2
     admin:
       existingSecret: "grafana-admin-credentials"
       userKey: admin-user
@@ -260,7 +262,7 @@ kube-prometheus-stack:
   # Alertmanager configuration:
   alertmanager:
     alertmanagerSpec:
-      replicas: 1
+      replicas: 2
       # Lean: alertmanager is idle except on firing alerts.
       resources:
         requests:

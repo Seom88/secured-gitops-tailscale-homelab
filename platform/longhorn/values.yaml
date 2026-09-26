@@ -23,7 +23,7 @@ longhorn:
     backupTarget: "s3://longhorn-homelab@us-east-1/"
     backupTargetCredentialSecret: longhorn-backup-secret  # pragma: allowlist secret
   defaultSettings:
-    defaultReplicaCount: 2
+    defaultReplicaCount: 1
     replicaSoftAntiAffinity: false
     # single-zone homelab, pin explicit to avoid silent upstream default change.
     replicaZoneSoftAntiAffinity: true
@@ -84,7 +84,7 @@ longhorn:
         memory: 128Mi
   persistence:
     defaultClass: true
-    defaultClassReplicaCount: 2
+    defaultClassReplicaCount: 1
     # Best-practices io-performance/data-locality: mirror defaultSettings so the
     # default StorageClass prefers a local replica (best-effort scheduling).
     defaultDataLocality: best-effort
